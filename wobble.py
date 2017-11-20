@@ -14,7 +14,7 @@ class star(object):
     a.optimize(niter=10)
     '''
     
-    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, N=16 *args):
+    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, N=16):
         filename = filepath + filename
         self.N = N
         self.wavelength_lower = wl_lower
@@ -224,20 +224,41 @@ class star(object):
         lnprior = self.model_ys_lnprior(model_ys_t)
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t)
         return -lnlike - lnprior, -dlnlike_dw - dlnprior
+    
 
 
     def improve_telluric_model(self, step_scale=5e-7):
         w = np.copy(self.model_ys_t)
-        for i in range(50):
+        lnlike_o = 1e10
+        quitc = -1e10
+        while quitc < -1:
             lnlike, dlnlike_dw = self.dlnlike_t_dw_t(w)
-            w -= step_scale * dlnlike_dw    
+            stepsize = step_scale * dlnlike_dw
+            dlnlike = lnlike - lnlike_o
+            if dlnlike < 0.0:
+                w -= stepsize   
+                step_scale *= 1.1
+                quitc = lnlike - lnlike_o
+                lnlike_o = lnlike + 0.0
+            else:
+                step_scale *= 0.5
         return w
 
     def improve_star_model(self, step_scale=5e-7):
         w = np.copy(self.model_ys_star)
-        for i in range(50):
+        lnlike_o = 1e10
+        quitc = -1e10
+        while quitc < -1:
             lnlike, dlnlike_dw = self.dlnlike_star_dw_star(w)
-            w -= step_scale * dlnlike_dw 
+            stepsize = step_scale * dlnlike_dw 
+            dlnlike = lnlike - lnlike_o
+            if dlnlike < 0.0:
+                w -= stepsize
+                step_scale *= 1.1
+                quitc = lnlike_o - lnlike
+                lnlike_o = lnlike + 0.0
+            else:
+                step_scale *= 0.5
         return w
         
     def optimize(self, niter=5, restart = False, plot=False):
