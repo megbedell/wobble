@@ -14,11 +14,11 @@ class star(object):
     a.optimize(niter=10)
     '''
     
-    def __init__(self, filename, filepath='../data/', *args):
+    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, N=16 *args):
         filename = filepath + filename
-        self.N = 16
-        self.wavelength_lower = 5900.
-        self.wavelength_upper = 6000.
+        self.N = N
+        self.wavelength_lower = wl_lower
+        self.wavelength_upper = wl_upper
         
         with h5py.File(filename) as f:
             inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
