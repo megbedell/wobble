@@ -36,19 +36,20 @@ class star(object):
         
         with h5py.File(filename) as f:
             inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
-            self.data = np.copy(f['data'])[:self.N,inds]
-            self.data_xs = np.log(np.copy(f['xs'][inds]))
-            self.ivars = np.copy(f['ivars'])[:self.N,inds]
+            N_all, M_all = np.shape(inds)
+            data = np.copy(f['data'])[inds]
+            self.data = np.reshape(data, (N_all, -1))[:self.N,:]
+            data_xs = np.log(np.copy(f['xs'][inds]))
+            self.data_xs = np.reshape(data_xs, (N_all, -1))[:self.N,:]
+            ivars = np.copy(f['ivars'])[inds]
+            self.ivars = np.reshape(ivars, (N_all, -1))[:self.N,:]
             self.true_rvs = np.copy(f['true_rvs'])[:self.N]
             self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
             
-            for i in xrange(len(self.data)):
-                self.data[i] = continuum_normalize(self.data[i])
+        for i in xrange(len(self.data)):
+            self.data[i] /= np.median(self.data[i])
                 
-            self.data = np.log(self.data)
-    
-    def continuum_normalize(vec):
-        return vec - np.median(vec)
+        self.data = np.log(self.data)
         
     def doppler(self, v):
         frac = (1. - v/c) / (1. + v/c)
@@ -126,14 +127,14 @@ class star(object):
         """
         `all_data`: `[N, M]` array of pixels
         `rvs`: `[N]` array of RVs
-        `xs`: `[M]` array of wavelength values
+        `xs`: `[N, M]` array of wavelength values
         `dx`: linear spacing desired for template wavelength grid (A)
         """
 
         (N,M) = np.shape(self.data)
         all_xs = np.empty_like(self.data)
         for i in range(N):
-            all_xs[i,:] = self.data_xs - np.log(self.doppler(rvs[i])) # shift to rest frame
+            all_xs[i,:] = self.data_xs[i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
         all_data, all_xs = np.ravel(self.data), np.ravel(all_xs)
         tiny = 10.
         template_xs = np.arange(min(all_xs)-tiny*dx, max(all_xs)+tiny*dx, dx)
@@ -160,9 +161,9 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(x0_star[n], self.data_xs, self.model_xs_star)
+            state_star = self.state(x0_star[n], self.data_xs[n], self.model_xs_star)
             pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs, self.model_xs_t)
+            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
             pd_t = self.Pdot(state_t, self.model_ys_t)
             pd = pd_star + pd_t
             lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
@@ -180,9 +181,9 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs, self.model_xs_star)
+            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
             pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(x0_t[n], self.data_xs, self.model_xs_t)
+            state_t = self.state(x0_t[n], self.data_xs[n], self.model_xs_t)
             pd_t = self.Pdot(state_t, self.model_ys_t)
             pd = pd_star + pd_t
             lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
@@ -209,9 +210,9 @@ class star(object):
         Mp = len(self.model_xs_star)
         dlnlike_dw = np.zeros(Mp)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs, self.model_xs_star)
+            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
             pd_star = self.Pdot(state_star, model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs, self.model_xs_t)
+            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
             pd_t = self.Pdot(state_t, self.model_ys_t)
             pd = pd_star + pd_t
             dp_star = self.dotP(state_star, (self.data[n,:] - pd)*self.ivars[n,:]) 
@@ -230,9 +231,9 @@ class star(object):
         Mp = len(self.model_xs_t)
         dlnlike_dw = np.zeros(Mp)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs, self.model_xs_star)
+            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
             pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs, self.model_xs_t)
+            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
             pd_t = self.Pdot(state_t, model_ys_t)
             pd = pd_star + pd_t
             dp_t = self.dotP(state_t, (self.data[n,:] - pd)*self.ivars[n,:]) 
