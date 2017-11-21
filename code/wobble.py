@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import fmin_cg, minimize
 import h5py
+from utils import fit_continuum
 
 c = 2.99792458e8   # m/s
 
@@ -62,12 +63,11 @@ class star(object):
                 self.true_rvs = np.copy(f['true_rvs'])[:self.N]
                 self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
 
-            
-        for i in xrange(len(self.data)):
-            self.data[i] /= np.median(self.data[i])
-                
-        self.data = np.log(self.data)
+        self.data = np.log(self.data)    
         
+        for r in range(self.R):
+            for n in range(self.N):
+                self.data[r][n] -= fit_continuum(self.data_xs[r][n], self.data[r][n])        
         
         
     def doppler(self, v):
@@ -361,9 +361,9 @@ class star(object):
             self.x0_star[r] = self.soln_star[r]
             self.x0_t[r] = self.soln_t[r]
 
-            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] + self.true_rvs), np.std(self.soln_t[r]))
+            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] - self.bervs), np.std(self.soln_t[r]))
             if plot == True:
-                plt.plot(np.arange(self.N), self.soln_star[r] + self.true_rvs - np.mean(self.soln_star[r] + self.true_rvs), color='k')
+                plt.plot(np.arange(self.N), self.soln_star[r] - self.bervs - np.mean(self.soln_star[r] - self.bervs), color='k')
                 plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
                 plt.show()
             
