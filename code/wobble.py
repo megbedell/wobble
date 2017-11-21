@@ -43,9 +43,12 @@ class star(object):
             self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
             
             for i in xrange(len(self.data)):
-                self.data[i] /= np.median(self.data[i])
-    
+                self.data[i] = continuum_normalize(self.data[i])
+                
             self.data = np.log(self.data)
+    
+    def continuum_normalize(vec):
+        return vec - np.median(vec)
         
     def doppler(self, v):
         frac = (1. - v/c) / (1. + v/c)
