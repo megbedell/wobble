@@ -12,8 +12,13 @@ class star(object):
     
     Example use case:
     import wobble
-    a = wobble.star('hip30037.hdf5')
+    a = wobble.star('hip30037.hdf5', e2ds = False)
     a.optimize(niter=10)
+    
+    or:
+    import wobble
+    a = wobble.star('hip54287_e2ds.hdf5')
+    a.optimize(niter=3)
 
     Args: 
         filename: The name of the file which contains your radial velocity data (for now, must be 
@@ -28,28 +33,42 @@ class star(object):
 
     """
     
-    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, N=16):
+    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, 
+                    N = 16, e2ds = True, orders = [30]):
         filename = filepath + filename
         self.N = N
-        self.wavelength_lower = wl_lower
-        self.wavelength_upper = wl_upper
+        self.R = len(orders) # number of orders to be analyzed
+        if e2ds:
+            self.orders = orders
+            with h5py.File(filename) as f:
+                self.data = [f['data'][i][:self.N,:] for i in orders]
+                self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
+                self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
+                self.true_rvs = np.copy(f['true_rvs'])[:self.N]
+                self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
+        else:
+            self.wavelength_lower = wl_lower
+            self.wavelength_upper = wl_upper
         
-        with h5py.File(filename) as f:
-            inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
-            N_all, M_all = np.shape(inds)
-            data = np.copy(f['data'])[inds]
-            self.data = np.reshape(data, (N_all, -1))[:self.N,:]
-            data_xs = np.log(np.copy(f['xs'][inds]))
-            self.data_xs = np.reshape(data_xs, (N_all, -1))[:self.N,:]
-            ivars = np.copy(f['ivars'])[inds]
-            self.ivars = np.reshape(ivars, (N_all, -1))[:self.N,:]
-            self.true_rvs = np.copy(f['true_rvs'])[:self.N]
-            self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
+            with h5py.File(filename) as f:
+                inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
+                N_all, M_all = np.shape(inds)
+                data = np.copy(f['data'])[inds]
+                self.data = [np.reshape(data, (N_all, -1))[:self.N,:]]
+                data_xs = np.log(np.copy(f['xs'][inds]))
+                self.data_xs = [np.reshape(data_xs, (N_all, -1))[:self.N,:]]
+                ivars = np.copy(f['ivars'])[inds]
+                self.ivars = [np.reshape(ivars, (N_all, -1))[:self.N,:]]
+                self.true_rvs = np.copy(f['true_rvs'])[:self.N]
+                self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
+
             
         for i in xrange(len(self.data)):
             self.data[i] /= np.median(self.data[i])
                 
         self.data = np.log(self.data)
+        
+        
         
     def doppler(self, v):
         frac = (1. - v/c) / (1. + v/c)
@@ -123,7 +142,7 @@ class star(object):
         result[ms] = (vec[mps - 1] - vec[mps]) * self.dlndopplerdv(v) / seas
         return result
 
-    def make_template(self, rvs, dx = np.log(6000.01) - np.log(6000.)):
+    def make_template(self, r, rvs, dx = np.log(6000.01) - np.log(6000.)):
         """
         `all_data`: `[N, M]` array of pixels
         `rvs`: `[N]` array of RVs
@@ -131,11 +150,11 @@ class star(object):
         `dx`: linear spacing desired for template wavelength grid (A)
         """
 
-        (N,M) = np.shape(self.data)
-        all_xs = np.empty_like(self.data)
+        (N,M) = np.shape(self.data[r])
+        all_xs = np.empty_like(self.data[r])
         for i in range(N):
-            all_xs[i,:] = self.data_xs[i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
-        all_data, all_xs = np.ravel(self.data), np.ravel(all_xs)
+            all_xs[i,:] = self.data_xs[r][i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
+        all_data, all_xs = np.ravel(self.data[r]), np.ravel(all_xs)
         tiny = 10.
         template_xs = np.arange(min(all_xs)-tiny*dx, max(all_xs)+tiny*dx, dx)
         template_ys = np.nan + np.zeros_like(template_xs)
@@ -144,7 +163,7 @@ class star(object):
             if np.sum(ind) > 0:
                 template_ys[i] = np.nanmedian(all_data[ind])
         ind_nan = np.isnan(template_ys)
-        template_ys.flat[ind_nan] = np.interp(template_xs[ind_nan], template_xs[~ind_nan], template_ys[~ind_nan]) #np.interp(template_xs[ind_nan], template_xs[~ind_nan], template_ys[~ind_nan])
+        template_ys.flat[ind_nan] = np.interp(template_xs[ind_nan], template_xs[~ind_nan], template_ys[~ind_nan])
         return template_xs, template_ys
 
     def rv_lnprior(self, rvs):
@@ -153,7 +172,7 @@ class star(object):
     def drv_lnprior_dv(self, rvs):
         return np.zeros_like(rvs) - np.mean(rvs)/1.**2/len(rvs)
 
-    def lnlike_star(self, x0_star):
+    def lnlike_star(self, x0_star, r):
         try:
             N = len(x0_star)
         except:
@@ -161,19 +180,19 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(x0_star[n], self.data_xs[n], self.model_xs_star)
-            pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
-            pd_t = self.Pdot(state_t, self.model_ys_t)
+            state_star = self.state(x0_star[n], self.data_xs[r][n], self.model_xs_star[r])
+            pd_star = self.Pdot(state_star, self.model_ys_star[r])
+            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
+            pd_t = self.Pdot(state_t, self.model_ys_t[r])
             pd = pd_star + pd_t
-            lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
-            dpd_dv = self.dPdotdv(state_star, self.model_ys_star)
-            dlnlike_dv[n] = np.sum((self.data[n,:] - pd) * self.ivars[n,:] * dpd_dv)
+            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
+            dpd_dv = self.dPdotdv(state_star, self.model_ys_star[r])
+            dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike + self.rv_lnprior(x0_star)
         dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_star)
         return -1 * lnpost, -1 * dlnpost_dv
 
-    def lnlike_t(self, x0_t):
+    def lnlike_t(self, x0_t, r):
         try:
             N = len(x0_t)
         except:
@@ -181,14 +200,14 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
-            pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(x0_t[n], self.data_xs[n], self.model_xs_t)
-            pd_t = self.Pdot(state_t, self.model_ys_t)
+            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
+            pd_star = self.Pdot(state_star, self.model_ys_star[r])
+            state_t = self.state(x0_t[n], self.data_xs[r][n], self.model_xs_t[r])
+            pd_t = self.Pdot(state_t, self.model_ys_t[r])
             pd = pd_star + pd_t
-            lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
-            dpd_dv = self.dPdotdv(state_t, self.model_ys_t)
-            dlnlike_dv[n] = np.sum((self.data[n,:] - pd) * self.ivars[n,:] * dpd_dv)
+            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
+            dpd_dv = self.dPdotdv(state_t, self.model_ys_t[r])
+            dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike + self.rv_lnprior(x0_t)
         dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_t)
         return -1 * lnpost, -1 * dlnpost_dv
@@ -201,56 +220,58 @@ class star(object):
         return -1.*w / 100.**2
 
 
-    def dlnlike_star_dw_star(self, model_ys_star):
+    def dlnlike_star_dw_star(self, r, model_ys_star):
         try:
-            N = len(self.x0_star)
+            N = len(self.x0_star[r])
         except:
             N = 1  
         lnlike = 0.
-        Mp = len(self.model_xs_star)
+        Mp = len(self.model_xs_star[r])
         dlnlike_dw = np.zeros(Mp)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
+            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             pd_star = self.Pdot(state_star, model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
-            pd_t = self.Pdot(state_t, self.model_ys_t)
+            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
+            pd_t = self.Pdot(state_t, self.model_ys_t[r])
             pd = pd_star + pd_t
-            dp_star = self.dotP(state_star, (self.data[n,:] - pd)*self.ivars[n,:]) 
-            lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
+            dp_star = self.dotP(state_star, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
+            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dw += dp_star
-        lnprior = self.model_ys_lnprior(model_ys_star)
-        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_star)
+        lnprior = self.model_ys_lnprior(model_ys_star[r])
+        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_star[r])
         return -lnlike - lnprior, -dlnlike_dw - dlnprior
 
-    def dlnlike_t_dw_t(self, model_ys_t):
+    def dlnlike_t_dw_t(self, r, model_ys_t):
         try:
-            N = len(self.x0_t)
+            N = len(self.x0_t[r])
         except:
             N = 1  
         lnlike = 0.
-        Mp = len(self.model_xs_t)
+        Mp = len(self.model_xs_t[r])
         dlnlike_dw = np.zeros(Mp)
         for n in range(N):
-            state_star = self.state(self.x0_star[n], self.data_xs[n], self.model_xs_star)
-            pd_star = self.Pdot(state_star, self.model_ys_star)
-            state_t = self.state(self.x0_t[n], self.data_xs[n], self.model_xs_t)
+            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
+            pd_star = self.Pdot(state_star, self.model_ys_star[r])
+            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
             pd_t = self.Pdot(state_t, model_ys_t)
             pd = pd_star + pd_t
-            dp_t = self.dotP(state_t, (self.data[n,:] - pd)*self.ivars[n,:]) 
-            lnlike += -0.5 * np.sum((self.data[n,:] - pd)**2 * self.ivars[n,:])
+            dp_t = self.dotP(state_t, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
+            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dw += dp_t
-        lnprior = self.model_ys_lnprior(model_ys_t)
-        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t)
+        lnprior = self.model_ys_lnprior(model_ys_t[r])
+        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
         return -lnlike - lnprior, -dlnlike_dw - dlnprior
     
 
 
-    def improve_telluric_model(self, step_scale=5e-7):
-        w = np.copy(self.model_ys_t)
+    def improve_telluric_model(self, r, step_scale=5e-7, maxniter=50):
+        w = np.copy(self.model_ys_t[r])
         lnlike_o = 1e10
         quitc = -1e10
-        while quitc < -1:
-            lnlike, dlnlike_dw = self.dlnlike_t_dw_t(w)
+        i = 0
+        while ((quitc < -1) and (i < maxniter)):
+            i += 1 
+            lnlike, dlnlike_dw = self.dlnlike_t_dw_t(r, w)
             stepsize = step_scale * dlnlike_dw
             dlnlike = lnlike - lnlike_o
             if dlnlike < 0.0:
@@ -262,12 +283,14 @@ class star(object):
                 step_scale *= 0.5
         return w
 
-    def improve_star_model(self, step_scale=5e-7):
-        w = np.copy(self.model_ys_star)
+    def improve_star_model(self, r, step_scale=5e-7, maxniter=50):
+        w = np.copy(self.model_ys_star[r])
         lnlike_o = 1e10
         quitc = -1e10
-        while quitc < -1:
-            lnlike, dlnlike_dw = self.dlnlike_star_dw_star(w)
+        i = 0
+        while ((quitc < -1) and (i < maxniter)):
+            i += 1 
+            lnlike, dlnlike_dw = self.dlnlike_star_dw_star(r, w)
             stepsize = step_scale * dlnlike_dw 
             dlnlike = lnlike - lnlike_o
             if dlnlike < 0.0:
@@ -279,7 +302,27 @@ class star(object):
                 step_scale *= 0.5
         return w
         
-    def optimize(self, niter=5, restart = False, plot=False):
+    def optimize(self, restart = False, **kwargs):
+        """
+        Loops over all orders in the e2ds case and optimizes them all as separate spectra.
+        Takes the same kwargs as optimize_order.
+        """
+        if (hasattr(self, 'model_xs_star') == False) or (restart == True):
+            self.x0_star = [np.zeros(self.N) for r in range(self.R)]
+            self.x0_t = [np.zeros(self.N) for r in range(self.R)]
+            self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs
+            self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
+            self.model_ys_t = [np.zeros(self.N) for r in range(self.R)]
+            self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
+        
+        self.soln_star = [np.zeros(self.N) for r in range(self.R)]
+        self.soln_t = [np.zeros(self.N) for r in range(self.R)]
+        
+        for r in range(self.R):
+            self.optimize_order(r, restart=restart, **kwargs)
+              
+        
+    def optimize_order(self, r, niter=5, restart = False, plot=False):
         """
         Optimize the velocities of the telluric spectrum and star as observed from the Earth, as well as
         the data-driven model for the star and telluric features.
@@ -293,52 +336,53 @@ class star(object):
             plot: Display diagnostic plots after each optimization iteration (default: ``False``)
         """
         
-        if (hasattr(self, 'model_xs_star') == False) or (restart == True):
-
-            self.x0_star = -np.copy(self.true_rvs)
-            self.x0_star -= np.mean(self.x0_star)
-            self.x0_t = np.zeros(self.N)
-            self.model_xs_star, self.model_ys_star = self.make_template(self.x0_star)
-            self.model_xs_t, self.model_ys_t = self.make_template(self.x0_t)
+        if (hasattr(self, 'model_xs_star') == False)  or (self.model_xs_star[r] == 0).all() \
+                or (restart == True):
+            self.x0_star[r] = -np.copy(self.true_rvs)
+            self.x0_star[r] -= np.mean(self.x0_star[r])
+            self.x0_t[r] = np.zeros(self.N)
+            self.model_xs_star[r], self.model_ys_star[r] = self.make_template(r, self.x0_star[r])
+            self.model_xs_t[r], self.model_ys_t[r] = self.make_template(r, self.x0_t[r])
         
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            self.soln_star =  minimize(self.lnlike_star, self.x0_star,
+            self.soln_star[r] =  minimize(self.lnlike_star, self.x0_star[r], args=(r),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
-            self.model_ys_t = self.improve_telluric_model()
-            self.model_ys_star = self.improve_star_model()
+            self.model_ys_t[r] = self.improve_telluric_model(r)
+            self.model_ys_star[r] = self.improve_star_model(r)
             print "Star model improved. Fitting telluric RVs..."
-            self.soln_t =  minimize(self.lnlike_t, self.x0_t, 
+            self.soln_t[r] =  minimize(self.lnlike_t, self.x0_t[r], args=(r),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
-            self.model_ys_t = self.improve_telluric_model()
-            self.model_ys_star = self.improve_star_model()
+            self.model_ys_t[r] = self.improve_telluric_model(r)
+            self.model_ys_star[r] = self.improve_star_model(r)
 
-            self.x0_star = self.soln_star
-            self.x0_t = self.soln_t
+            self.x0_star[r] = self.soln_star[r]
+            self.x0_t[r] = self.soln_t[r]
 
-            print "iter {0}: star std = {1:.2f}, telluric std = {2:.2f}".format(iteration, np.std(self.soln_star + self.true_rvs), np.std(self.soln_t))
+            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] + self.true_rvs), np.std(self.soln_t[r]))
             if plot == True:
-                plt.plot(np.arange(self.N), self.soln_star + self.true_rvs - np.mean(self.soln_star + self.true_rvs), color='k')
-                plt.plot(np.arange(self.N), self.soln_t - np.mean(self.soln_t), color='red')
+                plt.plot(np.arange(self.N), self.soln_star[r] + self.true_rvs - np.mean(self.soln_star[r] + self.true_rvs), color='k')
+                plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
                 plt.show()
             
-    def show_results(self):
+    def show_results(self, r):
         """
         Plot three diagnostic plots. In order, the difference between the inferred RVs and those returned by the 
         HARPS pipeline, the same with the inferred telluric velocities at each epoch plotted as well, and a
         plot of the inferred RVs and the HARPS pipeline RVs overplotted (without the barycentric correction 
         removed).
         
+        r is the index of the order to be plotted.
         """
-        plt.scatter(np.arange(self.N), self.soln_star+self.true_rvs)
+        plt.scatter(np.arange(self.N), self.soln_star[r]+self.true_rvs)
         plt.show()
         
-        plt.plot(np.arange(self.N), self.soln_star + self.true_rvs - np.mean(self.soln_star + self.true_rvs), color='k')
-        plt.plot(np.arange(self.N), self.soln_t - np.mean(self.soln_t), color='red')
+        plt.plot(np.arange(self.N), self.soln_star[r] + self.true_rvs - np.mean(self.soln_star[r] + self.true_rvs), color='k')
+        plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
         plt.show()
         
-        plt.plot(np.arange(self.N), self.soln_star - np.mean(self.soln_star) + self.bervs, 'ko')
+        plt.plot(np.arange(self.N), self.soln_star[r] - np.mean(self.soln_star[r]) + self.bervs, 'ko')
         plt.plot(np.arange(self.N), -self.true_rvs + np.mean(self.true_rvs) + self.bervs, 'r.')
         plt.show()
