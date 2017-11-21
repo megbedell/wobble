@@ -7,12 +7,26 @@ import h5py
 c = 2.99792458e8   # m/s
 
 class star(object):
-    '''
+    """
+    The main interface to the wobble package
+    
     Example use case:
     import wobble
     a = wobble.star('hip30037.hdf5')
     a.optimize(niter=10)
-    '''
+
+    Args: 
+        filename: The name of the file which contains your radial velocity data (for now, must be 
+            an HDF5 file containing particular information in HARPS format). 
+        filepath: The directory relative to your current working directory where your 
+            RV data are stored (default: ``../data/``)
+        wl_lower: The lowest wavelength, in angstroms in air, for the region of the spectrum you 
+            would like to analyze (default: ``5900``)
+        wl_upper: The highest wavelength, in angstroms in air, for the region of the spectrum you 
+            would like to analyze (default: ``5900``)
+        N: The number of epochs of RV data to analyze. Will select the first N epochs (default: ``16``).
+
+    """
     
     def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, N=16):
         filename = filepath + filename
@@ -262,6 +276,18 @@ class star(object):
         return w
         
     def optimize(self, niter=5, restart = False, plot=False):
+        """
+        Optimize the velocities of the telluric spectrum and star as observed from the Earth, as well as
+        the data-driven model for the star and telluric features.
+        
+        Args: 
+            niter: The number of iterations to perform on updating the velocities and model spectra. 
+                (default: ``5``)
+            restart: If an optimization has already been performed, this flag will reject it and start from
+                the initial system defaults, rather than continuing to optimize from the previous best fit
+                (default: ``False``)
+            plot: Display diagnostic plots after each optimization iteration (default: ``False``)
+        """
         
         if (hasattr(self, 'model_xs_star') == False) or (restart == True):
 
@@ -295,6 +321,13 @@ class star(object):
                 plt.show()
             
     def show_results(self):
+        """
+        Plot three diagnostic plots. In order, the difference between the inferred RVs and those returned by the 
+        HARPS pipeline, the same with the inferred telluric velocities at each epoch plotted as well, and a
+        plot of the inferred RVs and the HARPS pipeline RVs overplotted (without the barycentric correction 
+        removed).
+        
+        """
         plt.scatter(np.arange(self.N), self.soln_star+self.true_rvs)
         plt.show()
         
