@@ -386,6 +386,11 @@ class star(object):
             if new_lnlike != self.lnlike_t(self.x0_t[r], r)[0]:
                 print "new_lnlike for star: {0}, new_lnlike for tellurics: {1}".format(new_lnlike, self.lnlike_t(self.x0_t[r], r)[0])
                 assert False
+
+            if new_lnlike > previous_lnlike:
+                print "likelihood got worse this iteration. Step-size issues?"
+                assert False
+            previous_lnlike = new_lnlike
             
     def show_results(self, r):
         """
