@@ -201,7 +201,7 @@ class star(object):
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike + self.rv_lnprior(x0_star) + self.rv_lnprior(self.x0_t[r])
         dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_star)
-        return -1 * lnpost, -1 * dlnpost_dv
+        return lnpost, dlnpost_dv
 
     def lnlike_t(self, x0_t, r):
         try:
@@ -221,7 +221,7 @@ class star(object):
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike  + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0_t)
         dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_t)
-        return -1 * lnpost, -1 * dlnpost_dv
+        return lnpost, dlnpost_dv
 
     def model_ys_lnprior(self, w):
         return -0.5 * np.sum(w**2)/100.**2
@@ -250,7 +250,7 @@ class star(object):
             dlnlike_dw += dp_star
         lnprior = self.model_ys_lnprior(model_ys_star[r])
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_star[r])
-        return -lnlike - lnprior, -dlnlike_dw - dlnprior
+        return lnlike + lnprior, dlnlike_dw + dlnprior
 
     def dlnlike_t_dw_t(self, r, model_ys_t):
         try:
@@ -271,21 +271,21 @@ class star(object):
             dlnlike_dw += dp_t
         lnprior = self.model_ys_lnprior(model_ys_t[r])
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
-        return -lnlike - lnprior, -dlnlike_dw - dlnprior
+        return lnlike + lnprior, dlnlike_dw + dlnprior
     
 
 
     def improve_telluric_model(self, r, step_scale=5e-7, maxniter=50):
         w = np.copy(self.model_ys_t[r])
-        lnlike_o = 1e10
-        quitc = -1e10
+        lnlike_o = -1e10
+        quitc = +1e10
         i = 0
-        while ((quitc < -1) and (i < maxniter)):
+        while ((quitc > 1) and (i < maxniter)):
             i += 1 
             lnlike, dlnlike_dw = self.dlnlike_t_dw_t(r, w)
             stepsize = step_scale * dlnlike_dw
             dlnlike = lnlike - lnlike_o
-            if dlnlike < 0.0:
+            if dlnlike > 0.0:
                 w -= stepsize   
                 step_scale *= 1.1
                 quitc = lnlike - lnlike_o
@@ -296,15 +296,15 @@ class star(object):
 
     def improve_star_model(self, r, step_scale=5e-7, maxniter=50):
         w = np.copy(self.model_ys_star[r])
-        lnlike_o = 1e10
-        quitc = -1e10
+        lnlike_o = -1e10
+        quitc = 1e10
         i = 0
-        while ((quitc < -1) and (i < maxniter)):
+        while ((quitc > 1) and (i < maxniter)):
             i += 1 
             lnlike, dlnlike_dw = self.dlnlike_star_dw_star(r, w)
             stepsize = step_scale * dlnlike_dw 
             dlnlike = lnlike - lnlike_o
-            if dlnlike < 0.0:
+            if dlnlike > 0.0:
                 w -= stepsize
                 step_scale *= 1.1
                 quitc = lnlike_o - lnlike
@@ -360,13 +360,13 @@ class star(object):
         assert previous_lnlike == self.lnlike_t(self.x0_t[r], r)[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            self.soln_star[r] =  minimize(self.lnlike_star, self.x0_star[r], args=(r),
+            self.soln_star[r] =  minimize(-1.*self.lnlike_star, self.x0_star[r], args=(r),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
             self.model_ys_t[r] = self.improve_telluric_model(r)
             self.model_ys_star[r] = self.improve_star_model(r)
             print "Star model improved. Fitting telluric RVs..."
-            self.soln_t[r] =  minimize(self.lnlike_t, self.x0_t[r], args=(r),
+            self.soln_t[r] =  minimize(-1*.self.lnlike_t, self.x0_t[r], args=(r),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
             self.model_ys_t[r] = self.improve_telluric_model(r)
