@@ -183,6 +183,24 @@ class star(object):
 
     def drv_lnprior_dv(self, rvs):
         return np.zeros_like(rvs) - np.mean(rvs)/1.**2/len(rvs)
+    
+    def calc_pds(self, r, n, x0, role):
+        if role == 'star':
+            state_star = self.state(x0, self.data_xs[r][n], self.model_xs_star[r])    
+            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
+            dpd_dv = self.dPdotdv(state_star, self.model_ys_star[r])
+            
+        elif role == 't':
+            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
+            state_t = self.state(x0, self.data_xs[r][n], self.model_xs_t[r])
+            dpd_dv = self.dPdotdv(state_t, self.model_ys_t[r])
+            
+        pd_star = self.Pdot(state_star, self.model_ys_star[r])
+        pd_t = self.Pdot(state_t, self.model_ys_t[r])
+        pd = pd_star + pd_t
+
+        return pd, dpd_dv
+    
 
     def lnlike_star(self, x0_star, r):
         try:
@@ -192,13 +210,8 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(x0_star[n], self.data_xs[r][n], self.model_xs_star[r])
-            pd_star = self.Pdot(state_star, self.model_ys_star[r])
-            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.Pdot(state_t, self.model_ys_t[r])
-            pd = pd_star + pd_t
+            pd, dpd_dv = self.calc_pds(r, n, x0_star[n], 'star')
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dpd_dv = self.dPdotdv(state_star, self.model_ys_star[r])
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike + self.rv_lnprior(x0_star) + self.rv_lnprior(self.x0_t[r])
 
@@ -213,13 +226,8 @@ class star(object):
         lnlike = 0.
         dlnlike_dv = np.zeros(N)
         for n in range(N):
-            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            pd_star = self.Pdot(state_star, self.model_ys_star[r])
-            state_t = self.state(x0_t[n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.Pdot(state_t, self.model_ys_t[r])
-            pd = pd_star + pd_t
+            pd, dpd_dv = self.calc_pds(r, n, x0_t[n], 't')
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dpd_dv = self.dPdotdv(state_t, self.model_ys_t[r])
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         lnpost = lnlike + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0_t) 
         dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_t)
@@ -274,6 +282,7 @@ class star(object):
         lnprior = self.model_ys_lnprior(model_ys_t[r])
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
         return -lnlike - lnprior, -dlnlike_dw - dlnprior
+
     
 
 
