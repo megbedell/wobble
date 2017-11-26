@@ -21,6 +21,7 @@ class star(object):
     import wobble
     a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(0,72), N=40)
     a.optimize(niter=30)
+    a.save_results('../results/hip54287_results.hdf5')
 
     Args: 
         filename: The name of the file which contains your radial velocity data (for now, must be 
@@ -412,10 +413,16 @@ class star(object):
         plt.show()
         
     def save_results(self, filename):
+        max_len = np.max([len(x) for x in self.model_xs_star])
+        for r in range(self.R): # resize to make rectangular arrays bc h5py is infuriating
+            self.model_xs_star[r] = np.append(self.model_xs_star[r], np.zeros(max_len - len(self.model_xs_star[r])))
+            self.model_ys_star[r] = np.append(self.model_ys_star[r], np.zeros(max_len - len(self.model_ys_star[r])))
+            self.model_xs_t[r] = np.append(self.model_xs_t[r], np.zeros(max_len - len(self.model_xs_t[r])))
+            self.model_ys_t[r] = np.append(self.model_ys_t[r], np.zeros(max_len - len(self.model_ys_t[r])))
         with h5py.File(filename,'w') as f:
+            dset = f.create_dataset('rvs_star', data=self.soln_star)
+            dset = f.create_dataset('rvs_t', data=self.soln_t)
             dset = f.create_dataset('model_xs_star', data=self.model_xs_star)
             dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
             dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
             dset = f.create_dataset('model_ys_t', data=self.model_ys_t)
-            dset = f.create_dataset('rvs_star', data=self.soln_star)
-            dset = f.create_dataset('rvs_t', data=self.soln_t)
