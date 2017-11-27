@@ -432,8 +432,7 @@ class star(object):
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
-            previous_lnlike = new_lnlike
-        
+            previous_lnlike = new_lnlike    
             
     def show_results(self, r):
         """
@@ -484,4 +483,7 @@ class star(object):
             self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
             self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
             
-            
+def separate_rvs(rvs):
+    # takes an R x N block of rvs
+    # returns RV_R, RV_N vectors
+                
