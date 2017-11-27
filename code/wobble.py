@@ -47,13 +47,14 @@ class star(object):
                 self.data = [f['data'][i][:self.N,:] for i in orders]
                 self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
                 self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
-                self.true_rvs = np.copy(f['true_rvs'])[:self.N]
+                self.drs_rvs = np.copy(f['true_rvs'])[:self.N]
                 self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
                 self.drifts = np.copy(f['drift'])[:self.N]
                 self.airms = np.copy(f['airm'])[:self.N]
         else:
             self.wavelength_lower = wl_lower
             self.wavelength_upper = wl_upper
+            self.R = 1
         
             with h5py.File(filename) as f:
                 inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
@@ -64,18 +65,30 @@ class star(object):
                 self.data_xs = [np.reshape(data_xs, (N_all, -1))[:self.N,:]]
                 ivars = np.copy(f['ivars'])[inds]
                 self.ivars = [np.reshape(ivars, (N_all, -1))[:self.N,:]]
-                self.true_rvs = np.copy(f['true_rvs'])[:self.N]
+                self.drs_rvs = np.copy(f['true_rvs'])[:self.N]
                 self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
                 self.drifts = np.copy(f['drift'])[:self.N]
                 self.airms = np.copy(f['airm'])[:self.N]
 
+        # mask out bad data:
         for r in range(self.R):
             bad = np.where(self.data[r] < min_flux)
             self.data[r][bad] = min_flux
             self.ivars[r][bad] = 0.
+            
+        # log and normalize:
         self.data = np.log(self.data) 
-        
         self.continuum_normalize() 
+        
+        # set up attributes for optimization:
+        self.x0_star = [-np.copy(self.drs_rvs)+np.mean(self.drs_rvs) for r in range(self.R)]
+        self.x0_t = [np.zeros(self.N) for r in range(self.R)]
+        self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
+        self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
+        self.model_ys_t = [np.zeros(self.N) for r in range(self.R)]
+        self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
+        self.soln_star = [np.zeros(self.N) for r in range(self.R)]
+        self.soln_t = [np.zeros(self.N) for r in range(self.R)]
         
     def continuum_normalize(self):
         for r in range(self.R):
@@ -292,7 +305,19 @@ class star(object):
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
         return lnlike + lnprior, dlnlike_dw + dlnprior
 
-    
+    def dmodel_dv(self, r, n, role):
+        # returns an M-vector corresponding to the "star" or "t" model's first derivative w.r.t v
+        if role == 'star':
+            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
+            return self.dPdotdv(state_star, model_ys_star[r])
+        elif role == 't':
+            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
+            return self.dPdotdv(state_t, model_ys_t[r])
+            
+    def d2lnlike_dv2(self, r, n, role):
+        # returns a scalar corresponding to the second derivative of lnlike w.r.t v (of "star" or of "t")
+        dm_dv = self.dmodel_dv(r, n, role)
+        return np.dot(dm_dv, self.ivars[r][n] * dm_dv)
 
 
     def improve_telluric_model(self, r, step_scale=5e-7, maxniter=50):
@@ -341,13 +366,13 @@ class star(object):
         if (hasattr(self, 'model_xs_star') == False) or (restart == True):
             self.x0_star = [np.zeros(self.N) for r in range(self.R)]
             self.x0_t = [np.zeros(self.N) for r in range(self.R)]
-            self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs
+            self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
             self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
             self.model_ys_t = [np.zeros(self.N) for r in range(self.R)]
             self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
         
-        self.soln_star = [np.zeros(self.N) for r in range(self.R)]
-        self.soln_t = [np.zeros(self.N) for r in range(self.R)]
+            self.soln_star = [np.zeros(self.N) for r in range(self.R)]
+            self.soln_t = [np.zeros(self.N) for r in range(self.R)]
         
         for r in range(self.R):
             self.optimize_order(r, restart=restart, **kwargs)
@@ -367,9 +392,8 @@ class star(object):
             plot: Display diagnostic plots after each optimization iteration (default: ``False``)
         """
         
-        if (hasattr(self, 'model_xs_star') == False)  or (self.model_xs_star[r] == 0).all() \
-                or (restart == True):
-            self.x0_star[r] = -np.copy(self.true_rvs)
+        if (self.model_xs_star[r] == 0).all() or (restart == True):
+            self.x0_star[r] = -np.copy(self.drs_rvs)
             self.x0_star[r] -= np.mean(self.x0_star[r])
             self.x0_t[r] = np.zeros(self.N)
             self.model_xs_star[r], self.model_ys_star[r] = self.make_template(r, self.x0_star[r])
@@ -409,6 +433,7 @@ class star(object):
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
             previous_lnlike = new_lnlike
+        
             
     def show_results(self, r):
         """
@@ -419,15 +444,15 @@ class star(object):
         
         r is the index of the order to be plotted.
         """
-        plt.scatter(np.arange(self.N), self.soln_star[r]+self.true_rvs)
+        plt.scatter(np.arange(self.N), self.soln_star[r]+self.drs_rvs)
         plt.show()
         
-        plt.plot(np.arange(self.N), self.soln_star[r] + self.true_rvs - np.mean(self.soln_star[r] + self.true_rvs), color='k')
+        plt.plot(np.arange(self.N), self.soln_star[r] + self.drs_rvs - np.mean(self.soln_star[r] + self.drs_rvs), color='k')
         plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
         plt.show()
         
         plt.plot(np.arange(self.N), self.soln_star[r] - np.mean(self.soln_star[r]) + self.bervs, 'ko')
-        plt.plot(np.arange(self.N), -self.true_rvs + np.mean(self.true_rvs) + self.bervs, 'r.')
+        plt.plot(np.arange(self.N), -self.drs_rvs + np.mean(self.drs_rvs) + self.bervs, 'r.')
         plt.show()
         
     def save_results(self, filename):
@@ -444,3 +469,19 @@ class star(object):
             dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
             dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
             dset = f.create_dataset('model_ys_t', data=self.model_ys_t)
+            
+    def load_results(self, filename):
+        with h5py.File(filename) as f:
+            self.soln_star = f['rvs_star']
+            self.soln_t = f['rvs_t']
+            self.model_xs_star = np.copy(f['model_xs_star']).tolist()
+            self.model_ys_star = np.copy(f['model_ys_star']).tolist()
+            self.model_xs_t = np.copy(f['model_xs_t']).tolist()
+            self.model_ys_t = np.copy(f['model_ys_t']).tolist()
+        for r in range(self.R): # trim off that padding
+            self.model_xs_star[r] = np.trim_zeros(np.asarray(self.model_xs_star[r]), 'b')
+            self.model_ys_star[r] = np.trim_zeros(np.asarray(self.model_ys_star[r]), 'b')
+            self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
+            self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
+            
+            
