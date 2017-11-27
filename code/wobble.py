@@ -194,10 +194,10 @@ class star(object):
         elif role == 't':
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             state_t = self.state(x0, self.data_xs[r][n], self.model_xs_t[r])
-            dpd_dv = self.dPdotdv(state_t, self.model_ys_t[r])
+            dpd_dv = self.airms[n] * self.dPdotdv(state_t, self.model_ys_t[r])
             
         pd_star = self.Pdot(state_star, self.model_ys_star[r])
-        pd_t = self.Pdot(state_t, self.model_ys_t[r])
+        pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
         pd = pd_star + pd_t
 
         return pd, dpd_dv
@@ -262,7 +262,7 @@ class star(object):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             pd_star = self.Pdot(state_star, model_ys_star)
             state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.Pdot(state_t, self.model_ys_t[r])
+            pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
             pd = pd_star + pd_t
             dp_star = self.dotP(state_star, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
@@ -283,7 +283,7 @@ class star(object):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             pd_star = self.Pdot(state_star, self.model_ys_star[r])
             state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.Pdot(state_t, model_ys_t)
+            pd_t = self.airms[n] * self.Pdot(state_t, model_ys_t)
             pd = pd_star + pd_t
             dp_t = self.dotP(state_t, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
