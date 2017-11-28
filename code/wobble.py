@@ -20,6 +20,7 @@ class star(object):
     import numpy as np
     import wobble
     a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(0,72), N=40)
+    a.optimize_order(30, niter=2)
     a.optimize(niter=30)
     a.save_results('../results/hip54287_results.hdf5')
 
@@ -89,6 +90,8 @@ class star(object):
         self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
         self.soln_star = [np.zeros(self.N) for r in range(self.R)]
         self.soln_t = [np.zeros(self.N) for r in range(self.R)]
+        self.ivars_rv_star = [np.zeros(self.N) for r in range(self.R)]
+        self.ivars_rv_t = [np.zeros(self.N) for r in range(self.R)]
         
     def continuum_normalize(self):
         for r in range(self.R):
@@ -175,10 +178,8 @@ class star(object):
         `xs`: `[N, M]` array of wavelength values
         `dx`: linear spacing desired for template wavelength grid (A)
         """
-
-        (N,M) = np.shape(self.data[r])
         all_xs = np.empty_like(self.data[r])
-        for i in range(N):
+        for i in range(self.N):
             all_xs[i,:] = self.data_xs[r][i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
         all_data, all_xs = np.ravel(self.data[r]), np.ravel(all_xs)
         tiny = 10.
@@ -197,6 +198,9 @@ class star(object):
 
     def drv_lnprior_dv(self, rvs):
         return np.zeros_like(rvs) - np.mean(rvs)/1.**2/len(rvs)
+        
+    def d2rv_lnprior_dv2(self, rvs):
+        return np.zeros_like(rvs) - 1./1.**2/len(rvs)**2
     
     def calc_pds(self, r, n, x0, role):
         if role == 'star':
@@ -212,66 +216,51 @@ class star(object):
         pd_star = self.Pdot(state_star, self.model_ys_star[r])
         pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
         pd = pd_star + pd_t
-
         return pd, dpd_dv
-    
-
-    def lnlike_star(self, x0_star, r):
-        try:
-            N = len(x0_star)
-        except:
-            N = 1  
+        
+    def lnlike(self, x0, r, role):
         lnlike = 0.
-        dlnlike_dv = np.zeros(N)
-        for n in range(N):
-            pd, dpd_dv = self.calc_pds(r, n, x0_star[n], 'star')
+        dlnlike_dv = np.zeros(self.N)
+        for n in range(self.N):
+            pd, dpd_dv = self.calc_pds(r, n, x0[n], role)
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
-        lnpost = lnlike + self.rv_lnprior(x0_star) + self.rv_lnprior(self.x0_t[r])
-
-        dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_star)
+        if role == 'star':
+            lnpost = lnlike + self.rv_lnprior(x0) + self.rv_lnprior(self.x0_t[r])
+        elif role == 't':
+            lnpost = lnlike + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0)
+        dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)            
         return  lnpost,  dlnpost_dv
-
-    def lnlike_t(self, x0_t, r):
-        try:
-            N = len(x0_t)
-        except:
-            N = 1  
-        lnlike = 0.
-        dlnlike_dv = np.zeros(N)
-        for n in range(N):
-            pd, dpd_dv = self.calc_pds(r, n, x0_t[n], 't')
-            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
-        lnpost = lnlike + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0_t) 
-        dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0_t)
-        return lnpost, dlnpost_dv
-    
-    def opposite_lnlike_t(self, x0_t, r):
-        lnpost, dlnpost_dv = self.lnlike_t(x0_t, r)
+        
+    def opposite_lnlike(self, x0, r, role):
+        # for scipy.optimize
+        lnpost, dlnpost_dv = self.lnlike(x0, r, role)
         return -1.* lnpost, -1.* dlnpost_dv
-    
-    def opposite_lnlike_star(self, x0_star, r):
-        lnpost, dlnpost_dv = self.lnlike_star(x0_star, r)
-        return -1.* lnpost, -1.* dlnpost_dv
+               
+    def d2lnlike_dv2(self, r, role):
+        # returns an N-vector corresponding to the second derivative of lnlike w.r.t v_n (of "star" or of "t")
+        if role == 'star':
+            x0 = self.x0_star[r]
+        elif role == 't':
+            x0 = self.x0_t[r]
+        d2lnlikes = np.zeros_like(x0)
+        for n in range(self.N):
+            _, dpd_dv = self.calc_pds(r, n, x0[n], role)
+            d2lnlikes[n] = np.dot(dpd_dv, self.ivars[r][n] * dpd_dv)
+        d2lnposts = d2lnlikes + self.d2rv_lnprior_dv2(x0)
+        return d2lnposts # TODO: do we want d2lnposts or d2lnlikes?
 
     def model_ys_lnprior(self, w):
         return -0.5 * np.sum(w**2)/100.**2
 
-
     def dmodel_ys_lnprior_dw(self, w):
         return -1.*w / 100.**2
 
-
     def dlnlike_star_dw_star(self, r, model_ys_star):
-        try:
-            N = len(self.x0_star[r])
-        except:
-            N = 1  
         lnlike = 0.
         Mp = len(self.model_xs_star[r])
         dlnlike_dw = np.zeros(Mp)
-        for n in range(N):
+        for n in range(self.N):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             pd_star = self.Pdot(state_star, model_ys_star)
             state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
@@ -284,15 +273,11 @@ class star(object):
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_star[r])
         return lnlike + lnprior, dlnlike_dw + dlnprior
 
-    def dlnlike_t_dw_t(self, r, model_ys_t):
-        try:
-            N = len(self.x0_t[r])
-        except:
-            N = 1  
+    def dlnlike_t_dw_t(self, r, model_ys_t): 
         lnlike = 0.
         Mp = len(self.model_xs_t[r])
         dlnlike_dw = np.zeros(Mp)
-        for n in range(N):
+        for n in range(self.N):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
             pd_star = self.Pdot(state_star, self.model_ys_star[r])
             state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
@@ -304,21 +289,6 @@ class star(object):
         lnprior = self.model_ys_lnprior(model_ys_t[r])
         dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
         return lnlike + lnprior, dlnlike_dw + dlnprior
-
-    def dmodel_dv(self, r, n, role):
-        # returns an M-vector corresponding to the "star" or "t" model's first derivative w.r.t v
-        if role == 'star':
-            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            return self.dPdotdv(state_star, model_ys_star[r])
-        elif role == 't':
-            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            return self.dPdotdv(state_t, model_ys_t[r])
-            
-    def d2lnlike_dv2(self, r, n, role):
-        # returns a scalar corresponding to the second derivative of lnlike w.r.t v (of "star" or of "t")
-        dm_dv = self.dmodel_dv(r, n, role)
-        return np.dot(dm_dv, self.ivars[r][n] * dm_dv)
-
 
     def improve_telluric_model(self, r, step_scale=5e-7, maxniter=50):
         w = np.copy(self.model_ys_t[r])
@@ -373,6 +343,8 @@ class star(object):
         
             self.soln_star = [np.zeros(self.N) for r in range(self.R)]
             self.soln_t = [np.zeros(self.N) for r in range(self.R)]
+            self.ivars_rv_star = [np.zeros(self.N) for r in range(self.R)]
+            self.ivars_rv_t = [np.zeros(self.N) for r in range(self.R)]
         
         for r in range(self.R):
             self.optimize_order(r, restart=restart, **kwargs)
@@ -399,17 +371,17 @@ class star(object):
             self.model_xs_star[r], self.model_ys_star[r] = self.make_template(r, self.x0_star[r])
             self.model_xs_t[r], self.model_ys_t[r] = self.make_template(r, self.x0_t[r])
         
-        previous_lnlike = self.lnlike_star(self.x0_star[r], r)[0]
-        assert previous_lnlike == self.lnlike_t(self.x0_t[r], r)[0]
+        previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+        assert previous_lnlike == self.lnlike(self.x0_t[r], r, 't')[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            self.soln_star[r] =  minimize(self.opposite_lnlike_star, self.x0_star[r], args=(r),
+            self.soln_star[r] =  minimize(self.opposite_lnlike, self.x0_star[r], args=(r, 'star'),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
             self.model_ys_t[r] = self.improve_telluric_model(r)
             self.model_ys_star[r] = self.improve_star_model(r)
             print "Star model improved. Fitting telluric RVs..."
-            self.soln_t[r] =  minimize(self.opposite_lnlike_t, self.x0_t[r], args=(r),
+            self.soln_t[r] =  minimize(self.opposite_lnlike, self.x0_t[r], args=(r, 't'),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
 
             self.model_ys_t[r] = self.improve_telluric_model(r)
@@ -424,15 +396,18 @@ class star(object):
                 plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
                 plt.show()
                 
-            new_lnlike = self.lnlike_star(self.x0_star[r], r)[0]
-            if new_lnlike != self.lnlike_t(self.x0_t[r], r)[0]:
-                print "new_lnlike for star: {0}, new_lnlike for tellurics: {1}".format(new_lnlike, self.lnlike_t(self.x0_t[r], r)[0])
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike != self.lnlike(self.x0_t[r], r, 't')[0]:
+                print "new_lnlike for star: {0}, new_lnlike for tellurics: {1}".format(new_lnlike, self.lnlike(self.x0_t[r], r, 't')[0])
                 assert False
 
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
-            previous_lnlike = new_lnlike    
+            previous_lnlike = new_lnlike 
+        self.ivars_rv_star = self.d2lnlike_dv2(r, 'star')   
+        self.ivars_rv_t = self.d2lnlike_dv2(r, 't')   
+        
             
     def show_results(self, r):
         """
@@ -463,7 +438,9 @@ class star(object):
             self.model_ys_t[r] = np.append(self.model_ys_t[r], np.zeros(max_len - len(self.model_ys_t[r])))
         with h5py.File(filename,'w') as f:
             dset = f.create_dataset('rvs_star', data=self.soln_star)
+            dset = f.create_dataset('ivars_rv_star', data=self.ivars_rv_star)
             dset = f.create_dataset('rvs_t', data=self.soln_t)
+            dset = f.create_dataset('ivars_rv_t', data=self.ivars_rv_t)
             dset = f.create_dataset('model_xs_star', data=self.model_xs_star)
             dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
             dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
@@ -472,7 +449,9 @@ class star(object):
     def load_results(self, filename):
         with h5py.File(filename) as f:
             self.soln_star = f['rvs_star']
+            self.ivars_rv_star = f['ivars_rv_star']
             self.soln_t = f['rvs_t']
+            self.ivars_rv_t = f['ivars_rv_t']
             self.model_xs_star = np.copy(f['model_xs_star']).tolist()
             self.model_ys_star = np.copy(f['model_ys_star']).tolist()
             self.model_xs_t = np.copy(f['model_xs_t']).tolist()
@@ -483,7 +462,12 @@ class star(object):
             self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
             self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
             
-def separate_rvs(rvs):
-    # takes an R x N block of rvs
+def separate_rvs(rvs, ivars):
+    # takes an R x N block of rvs and a same-sized block of their inverse variances
+    # optimizes model RV_rn = RV_r + RV_n + noise
     # returns RV_R, RV_N vectors
-                
+    ys = np.ravel(rvs)
+    C_ys = np.ravel(ivars) # diagonal of C
+    # UNFINISHED
+    
+    
