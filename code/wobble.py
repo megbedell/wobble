@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from scipy.optimize import fmin_cg, minimize
+import scipy.sparse as sp
 import h5py
 from utils import fit_continuum
 
@@ -19,10 +20,9 @@ class star(object):
     or:
     import numpy as np
     import wobble
-    a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(0,72), N=40)
-    a.optimize_order(30, niter=2)
-    a.optimize(niter=30)
-    a.save_results('../results/hip54287_results.hdf5')
+    a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(30,34), N=40)
+    a.optimize(niter=20)
+    a.save_results('../results/hip54287_results_3orders.hdf5')
 
     Args: 
         filename: The name of the file which contains your radial velocity data (for now, must be 
@@ -247,7 +247,7 @@ class star(object):
         for n in range(self.N):
             _, dpd_dv = self.calc_pds(r, n, x0[n], role)
             d2lnlikes[n] = np.dot(dpd_dv, self.ivars[r][n] * dpd_dv)
-        d2lnposts = d2lnlikes + self.d2rv_lnprior_dv2(x0)
+        d2lnposts = d2lnlikes # + self.d2rv_lnprior_dv2(x0)
         return d2lnposts # TODO: do we want d2lnposts or d2lnlikes?
 
     def model_ys_lnprior(self, w):
@@ -309,12 +309,12 @@ class star(object):
                 step_scale *= 0.5
         return w
 
-    def improve_star_model(self, r, step_scale=5e-7, maxniter=50):
+    def improve_star_model(self, r, step_scale=5e-7, maxniter=100):
         w = np.copy(self.model_ys_star[r])
         lnlike_o = -1e10
         quitc = +1e10
         i = 0
-        while ((quitc > 1) and (i < maxniter)):
+        while ((quitc > 0.01) and (i < maxniter)):
             i += 1 
             lnlike, dlnlike_dw = self.dlnlike_star_dw_star(r, w)
             stepsize = step_scale * dlnlike_dw 
@@ -372,7 +372,6 @@ class star(object):
             self.model_xs_t[r], self.model_ys_t[r] = self.make_template(r, self.x0_t[r])
         
         previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
-        assert previous_lnlike == self.lnlike(self.x0_t[r], r, 't')[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
             self.soln_star[r] =  minimize(self.opposite_lnlike, self.x0_star[r], args=(r, 'star'),
@@ -397,16 +396,13 @@ class star(object):
                 plt.show()
                 
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
-            if new_lnlike != self.lnlike(self.x0_t[r], r, 't')[0]:
-                print "new_lnlike for star: {0}, new_lnlike for tellurics: {1}".format(new_lnlike, self.lnlike(self.x0_t[r], r, 't')[0])
-                assert False
 
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
             previous_lnlike = new_lnlike 
-        self.ivars_rv_star = self.d2lnlike_dv2(r, 'star')   
-        self.ivars_rv_t = self.d2lnlike_dv2(r, 't')   
+        self.ivars_rv_star[r] = self.d2lnlike_dv2(r, 'star')   
+        self.ivars_rv_t[r] = self.d2lnlike_dv2(r, 't')   
         
             
     def show_results(self, r):
@@ -466,8 +462,23 @@ def separate_rvs(rvs, ivars):
     # takes an R x N block of rvs and a same-sized block of their inverse variances
     # optimizes model RV_rn = RV_r + RV_n + noise
     # returns RV_R, RV_N vectors
-    ys = np.ravel(rvs)
-    C_ys = np.ravel(ivars) # diagonal of C
-    # UNFINISHED
+    R, N = np.shape(rvs)
+    assert np.shape(ivars) == (R, N)
+    ys = np.zeros(N*R)
+    Cinv_diag = np.zeros_like(ys)
+    A = np.zeros((R * N, R + N)) # sp.dok_matrix((R*N, R+N))
+    for r in range(R):
+        j = r * N
+        k = (r + 1) * N
+        ys[j:k] = rvs[r]
+        Cinv_diag[j:k] = ivars[r]
+        # idiotically loopy
+        for m,l in enumerate(range(j,k)):
+            A[l, r] = 1
+            A[l, R+m] = 1
+    inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
+    xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
+    order_rvs, time_rvs = xs[:R], xs[R:]
+    return order_rvs, time_rvs
     
     
