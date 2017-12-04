@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
 
 from scipy.optimize import fmin_cg, minimize
 import h5py
@@ -482,6 +483,11 @@ def separate_rvs(rvs, ivars):
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
     a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
+    
+    if False: # optimize
+        a.optimize(niter=20)
+        a.save_results('../results/hip54287_results.hdf5')
+        
     a.load_results('../results/hip54287_results.hdf5')
     
     if False: # make model plots
@@ -491,19 +497,49 @@ if __name__ == "__main__":
     order_rvs, ivars_order_rvs, time_rvs, ivars_time_rvs, rv_predictions = separate_rvs(a.soln_star, a.ivars_rv_star)
     print "RV std = {0:.2f} m/s".format(np.std(time_rvs + a.bervs))
     
+    cmap = matplotlib.cm.get_cmap(name='jet')
+    colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
+    colors_by_order = [cmap(1.*i/a.R) for i in range(a.R)]
+        
+    rvs = np.asarray(a.soln_star)
+    ivars = np.asarray(a.ivars_rv_star)
+    resids = rvs - rv_predictions
+    
     fig = plt.figure()
-    ax = plt.subplot(111)  
-    ax.errorbar(np.arange(a.R), order_rvs, 1./np.sqrt(ivars_order_rvs))
-    ax.set_ylabel(r'RV (m s$^{-1}$)')
+    ax = plt.subplot(111) 
+    for n in range(a.N): 
+        ax.errorbar(np.arange(a.R), rvs[:,n] + a.bervs[n], 1./np.sqrt(ivars[:,n]), color=colors_by_epoch[n], alpha=0.5)
+    ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
     ax.set_xlabel('Order #')
     plt.savefig('../results/plots/rv_per_order.png')
     plt.close(fig) 
     
     fig = plt.figure()
-    ax = plt.subplot(111)  
-    ax.errorbar(np.arange(a.N), time_rvs + a.bervs, 1./np.sqrt(ivars_time_rvs))
+    ax = plt.subplot(111) 
+    for r in range(a.R): 
+        ax.errorbar(np.arange(a.N), rvs[r,:] + a.bervs, 1./np.sqrt(ivars[r,:]), color=colors_by_order[r], alpha=0.5)
     ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
     ax.set_xlabel('Epoch #')
     plt.savefig('../results/plots/rv_per_epoch.png')
     plt.close(fig) 
     
+    fig = plt.figure()
+    ax = plt.subplot(111) 
+    for n in range(a.N): 
+        ax.errorbar(np.arange(a.R), resids[:,n], 1./np.sqrt(ivars[:,n]), color=colors_by_epoch[n], alpha=0.5)
+    ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
+    ax.set_xlabel('Order #')
+    plt.savefig('../results/plots/resids_per_order.png')
+    plt.close(fig) 
+    
+    fig = plt.figure()
+    ax = plt.subplot(111) 
+    for r in range(a.R): 
+        ax.errorbar(np.arange(a.N), resids[r,:], 1./np.sqrt(ivars[r,:]), color=colors_by_order[r], alpha=0.5)
+    ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
+    ax.set_xlabel('Epoch #')
+    plt.savefig('../results/plots/resids_per_epoch.png')
+    plt.close(fig)
+    
+    
+        
