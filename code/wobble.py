@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from scipy.optimize import fmin_cg, minimize
-import scipy.sparse as sp
 import h5py
 from utils import fit_continuum
 
@@ -20,9 +19,9 @@ class star(object):
     or:
     import numpy as np
     import wobble
-    a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(30,34), N=40)
+    a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
     a.optimize(niter=20)
-    a.save_results('../results/hip54287_results_3orders.hdf5')
+    a.save_results('../results/hip54287_results.hdf5')
 
     Args: 
         filename: The name of the file which contains your radial velocity data (for now, must be 
@@ -348,6 +347,8 @@ class star(object):
         
         for r in range(self.R):
             self.optimize_order(r, restart=restart, **kwargs)
+            if (r % 5) == 0:
+                self.save_results('state_order{0}.hdf5'.format(r))
               
         
     def optimize_order(self, r, niter=5, restart = False, plot=False):
@@ -461,7 +462,7 @@ class star(object):
 def separate_rvs(rvs, ivars):
     # takes an R x N block of rvs and a same-sized block of their inverse variances
     # optimizes model RV_rn = RV_r + RV_n + noise
-    # returns RV_R, RV_N vectors
+    # returns RV_R, RV_N vectors, R x N block of predictions
     R, N = np.shape(rvs)
     assert np.shape(ivars) == (R, N)
     ys = np.zeros(N*R)
@@ -479,6 +480,7 @@ def separate_rvs(rvs, ivars):
     inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
     xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
     order_rvs, time_rvs = xs[:R], xs[R:]
-    return order_rvs, time_rvs
+    rv_predictions = np.tile(order_rvs[:,None], (1,N)) + np.tile(time_rvs, (R,1))
+    return order_rvs, time_rvs, rv_predictions
     
     
