@@ -254,49 +254,41 @@ class star(object):
 
     def dmodel_ys_lnprior_dw(self, w):
         return -1.*w / 100.**2
-
-    def dlnlike_star_dw_star(self, r, model_ys_star):
+        
+    def dlnlike_dw(self, r, model, role):
         lnlike = 0.
         Mp = len(self.model_xs_star[r])
         dlnlike_dw = np.zeros(Mp)
         for n in range(self.N):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            pd_star = self.Pdot(state_star, model_ys_star)
             state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
+            if role =='star':
+                pd_star = self.Pdot(state_star, model)
+                pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
+                state = state_star # for derivative
+            elif role == 't':
+                pd_star = self.Pdot(state_star, self.model_ys_star[r])
+                pd_t = self.airms[n] * self.Pdot(state_t, model)
+                state = state_t # for derivative
             pd = pd_star + pd_t
-            dp_star = self.dotP(state_star, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
+            dp_star = self.dotP(state, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dw += dp_star
-        lnprior = self.model_ys_lnprior(model_ys_star[r])
-        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_star[r])
-        return lnlike + lnprior, dlnlike_dw + dlnprior
+        lnprior = self.model_ys_lnprior(model)
+        dlnprior = self.dmodel_ys_lnprior_dw(model)
+        return lnlike + lnprior, dlnlike_dw + dlnprior                
 
-    def dlnlike_t_dw_t(self, r, model_ys_t): 
-        lnlike = 0.
-        Mp = len(self.model_xs_t[r])
-        dlnlike_dw = np.zeros(Mp)
-        for n in range(self.N):
-            state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            pd_star = self.Pdot(state_star, self.model_ys_star[r])
-            state_t = self.state(self.x0_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            pd_t = self.airms[n] * self.Pdot(state_t, model_ys_t)
-            pd = pd_star + pd_t
-            dp_t = self.dotP(state_t, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
-            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dlnlike_dw += dp_t
-        lnprior = self.model_ys_lnprior(model_ys_t[r])
-        dlnprior = self.dmodel_ys_lnprior_dw(model_ys_t[r])
-        return lnlike + lnprior, dlnlike_dw + dlnprior
-
-    def improve_telluric_model(self, r, step_scale=5e-7, maxniter=50):
-        w = np.copy(self.model_ys_t[r])
+    def improve_model(self, r, step_scale=5e-7, maxniter=100):
+        if role == 'star':
+            w = np.copy(self.model_ys_star[r])
+        elif role == 't':
+            w = np.copy(self.model_ys_t[r])
         lnlike_o = -1e10
         quitc = +1e10
         i = 0
         while ((quitc > 1) and (i < maxniter)):
             i += 1 
-            lnlike, dlnlike_dw = self.dlnlike_t_dw_t(r, w)
+            lnlike, dlnlike_dw = self.dlnlike_t_dw_t(r, w, role)
             stepsize = step_scale * dlnlike_dw
             dlnlike = lnlike - lnlike_o
             if dlnlike > 0.0:
@@ -307,26 +299,7 @@ class star(object):
             else:
                 step_scale *= 0.5
         return w
-
-    def improve_star_model(self, r, step_scale=5e-7, maxniter=100):
-        w = np.copy(self.model_ys_star[r])
-        lnlike_o = -1e10
-        quitc = +1e10
-        i = 0
-        while ((quitc > 0.01) and (i < maxniter)):
-            i += 1 
-            lnlike, dlnlike_dw = self.dlnlike_star_dw_star(r, w)
-            stepsize = step_scale * dlnlike_dw 
-            dlnlike = lnlike - lnlike_o
-            if dlnlike > 0.0:
-                w += stepsize
-                step_scale *= 1.1
-                quitc = lnlike_o - lnlike
-                lnlike_o = lnlike + 0.0
-            else:
-                step_scale *= 0.5
-        return w       
-        
+       
     def optimize(self, restart = False, **kwargs):
         """
         Loops over all orders in the e2ds case and optimizes them all as separate spectra.
@@ -377,15 +350,15 @@ class star(object):
             print "Fitting stellar RVs..."
             self.soln_star[r] =  minimize(self.opposite_lnlike, self.x0_star[r], args=(r, 'star'),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
-
-            self.model_ys_t[r] = self.improve_telluric_model(r)
-            self.model_ys_star[r] = self.improve_star_model(r)
-            print "Star model improved. Fitting telluric RVs..."
+            print "Improving models..."
+            self.model_ys_t[r] = self.improve_model(r, 't')
+            self.model_ys_star[r] = self.improve_model(r, 'star')
+            print "Fitting telluric RVs..."
             self.soln_t[r] =  minimize(self.opposite_lnlike, self.x0_t[r], args=(r, 't'),
                              method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
-
-            self.model_ys_t[r] = self.improve_telluric_model(r)
-            self.model_ys_star[r] = self.improve_star_model(r)
+            print "Improving models..."
+            self.model_ys_t[r] = self.improve_model(r, 't')
+            self.model_ys_star[r] = self.improve_model(r, 'star')
 
             self.x0_star[r] = self.soln_star[r]
             self.x0_t[r] = self.soln_t[r]
