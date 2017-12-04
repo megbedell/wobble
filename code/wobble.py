@@ -445,10 +445,10 @@ class star(object):
             
     def load_results(self, filename):
         with h5py.File(filename) as f:
-            self.soln_star = f['rvs_star']
-            self.ivars_rv_star = f['ivars_rv_star']
-            self.soln_t = f['rvs_t']
-            self.ivars_rv_t = f['ivars_rv_t']
+            self.soln_star = np.copy(f['rvs_star'])
+            self.ivars_rv_star = np.copy(f['ivars_rv_star'])
+            self.soln_t = np.copy(f['rvs_t'])
+            self.ivars_rv_t = np.copy(f['ivars_rv_t'])
             self.model_xs_star = np.copy(f['model_xs_star']).tolist()
             self.model_ys_star = np.copy(f['model_ys_star']).tolist()
             self.model_xs_t = np.copy(f['model_xs_t']).tolist()
@@ -482,5 +482,7 @@ def separate_rvs(rvs, ivars):
     order_rvs, time_rvs = xs[:R], xs[R:]
     rv_predictions = np.tile(order_rvs[:,None], (1,N)) + np.tile(time_rvs, (R,1))
     return order_rvs, time_rvs, rv_predictions
+    
+def plot_rvs_by_order():
     
     
