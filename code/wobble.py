@@ -257,7 +257,7 @@ class star(object):
         
     def dlnlike_dw(self, r, model, role):
         lnlike = 0.
-        Mp = len(self.model_xs_star[r])
+        Mp = len(model)
         dlnlike_dw = np.zeros(Mp)
         for n in range(self.N):
             state_star = self.state(self.x0_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
@@ -288,7 +288,7 @@ class star(object):
         i = 0
         while ((quitc > 1) and (i < maxniter)):
             i += 1 
-            lnlike, dlnlike_dw = self.dlnlike_t_dw_t(r, w, role)
+            lnlike, dlnlike_dw = self.dlnlike_dw(r, w, role)
             stepsize = step_scale * dlnlike_dw
             dlnlike = lnlike - lnlike_o
             if dlnlike > 0.0:
