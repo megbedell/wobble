@@ -278,7 +278,7 @@ class star(object):
         dlnprior = self.dmodel_ys_lnprior_dw(model)
         return lnlike + lnprior, dlnlike_dw + dlnprior                
 
-    def improve_model(self, r, step_scale=5e-7, maxniter=100):
+    def improve_model(self, r, role, step_scale=5e-7, maxniter=100):
         if role == 'star':
             w = np.copy(self.model_ys_star[r])
         elif role == 't':
