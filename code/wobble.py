@@ -325,7 +325,7 @@ class star(object):
                 lnlike_o = lnlike + 0.0
             else:
                 step_scale *= 0.5
-        return w
+        return w       
         
     def optimize(self, restart = False, **kwargs):
         """
@@ -403,8 +403,30 @@ class star(object):
                 assert False
             previous_lnlike = new_lnlike 
         self.ivars_rv_star[r] = self.d2lnlike_dv2(r, 'star')   
-        self.ivars_rv_t[r] = self.d2lnlike_dv2(r, 't')   
+        self.ivars_rv_t[r] = self.d2lnlike_dv2(r, 't') 
         
+    def plot_models(self, r, n, filepath='../results/plots/'):
+        #calculate models
+        state_star = self.state(self.soln_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
+        model_star = self.Pdot(state_star, self.model_ys_star[r])
+        state_t = self.state(self.soln_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
+        model_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
+        #plot
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.plot(np.exp(self.data_xs[r][n]), np.exp(self.data[r][n]), 
+                    color='blue', alpha=0.5, label='data')
+        ax.plot(np.exp(self.data_xs[r][n]), np.exp(model_star), 
+                    color='k', alpha=0.5, label='star model')
+        ax.plot(np.exp(self.data_xs[r][n]), np.exp(model_t), 
+                    color='red', alpha=0.5, label='telluric model')
+        ax.set_xlabel(r'Wavelength ($\AA$)')
+        ax.set_ylabel('Normalized Flux')
+        ax.set_ylim([0.0, 1.2])
+        ax.legend(loc='lower right')
+        ax.set_title('Order #{0}, Epoch #{1}'.format(r,n))
+        plt.savefig(filepath+'model_order{0}_epoch{1}.png'.format(r,n))
+        plt.close(fig)          
             
     def show_results(self, r):
         """
@@ -467,7 +489,7 @@ def separate_rvs(rvs, ivars):
     assert np.shape(ivars) == (R, N)
     ys = np.zeros(N*R)
     Cinv_diag = np.zeros_like(ys)
-    A = np.zeros((R * N, R + N)) # sp.dok_matrix((R*N, R+N))
+    A = np.zeros((R * N, R + N))
     for r in range(R):
         j = r * N
         k = (r + 1) * N
@@ -480,9 +502,35 @@ def separate_rvs(rvs, ivars):
     inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
     xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
     order_rvs, time_rvs = xs[:R], xs[R:]
+    ivars_order_rvs, ivars_time_rvs = 1./np.diag(inv_cov)[:R], 1./np.diag(inv_cov)[R:] # make this something smarter?
     rv_predictions = np.tile(order_rvs[:,None], (1,N)) + np.tile(time_rvs, (R,1))
-    return order_rvs, time_rvs, rv_predictions
+    return order_rvs, ivars_order_rvs, time_rvs, ivars_time_rvs, rv_predictions
     
-def plot_rvs_by_order():
+if __name__ == "__main__":
+    # temporary code to diagnose issues in results
+    a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
+    a.load_results('../results/hip54287_results.hdf5')
     
+    if False: # make model plots
+        for r in range(a.R):
+            a.plot_models(r, 0)
+        
+    order_rvs, ivars_order_rvs, time_rvs, ivars_time_rvs, rv_predictions = separate_rvs(a.soln_star, a.ivars_rv_star)
+    print "RV std = {0:.2f} m/s".format(np.std(time_rvs + a.bervs))
+    
+    fig = plt.figure()
+    ax = plt.subplot(111)  
+    ax.errorbar(np.arange(a.R), order_rvs, 1./np.sqrt(ivars_order_rvs))
+    ax.set_ylabel(r'RV (m s$^{-1}$)')
+    ax.set_xlabel('Order #')
+    plt.savefig('../results/plots/rv_per_order.png')
+    plt.close(fig) 
+    
+    fig = plt.figure()
+    ax = plt.subplot(111)  
+    ax.errorbar(np.arange(a.N), time_rvs + a.bervs, 1./np.sqrt(ivars_time_rvs))
+    ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
+    ax.set_xlabel('Epoch #')
+    plt.savefig('../results/plots/rv_per_epoch.png')
+    plt.close(fig) 
     
