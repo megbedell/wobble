@@ -467,7 +467,7 @@ class star(object):
     def unpack_rv_pars(self, rv_pars):
         self.order_rvs = np.copy(rv_pars[:self.R])
         self.time_rvs = np.copy(rv_pars[self.R:self.R + self.N])
-        self.order_vars = np.copy(rv_pars[self.R + self.N:])
+        self.order_vars = np.exp(rv_pars[self.R + self.N:])
                 
     def lnlike_rvs(self, rv_pars):
         self.unpack_rv_pars(rv_pars)
@@ -486,23 +486,13 @@ class star(object):
         return -1. * lnlike, -1. * dlnlike_drv_pars
         
     def combine_rvs(self):
-        # do some linear algebra to get a first guess (neglecting order weighting):
-        ys = np.zeros(self.N * self.R)
-        Cinv_diag = np.zeros_like(ys)
-        A = np.zeros((self.R * self.N, self.R + self.N))
-        for r in range(self.R):
-            j = r * self.N
-            k = (r + 1) * self.N
-            ys[j:k] = self.soln_star[r]
-            Cinv_diag[j:k] = self.ivars_star[r]
-            # idiotically loopy
-            for m,l in enumerate(range(j,k)):
-                A[l, r] = 1
-                A[l, self.R + m] = 1
-        inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
-        xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
-        # add order weighting terms and optimize:
-        x0_rv_pars = np.append(xs, np.zeros(self.R))
+        # first guesses:
+        x0_order_rvs = np.median(self.soln_star, axis=1)
+        x0_time_rvs = np.median(self.soln_star - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
+        x0_rvs = np.append(x0_order_rvs, x0_time_rvs)
+        rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
+        x0_rv_pars = np.append(x0_rvs, np.log(np.var(self.soln_star - rv_predictions, axis=1)))
+        # optimize:
         soln_rv_pars = minimize(self.opposite_lnlike_rvs, x0_rv_pars,
                              method='BFGS', jac=True, options={'disp':True})['x']
         self.unpack_rv_pars(soln_rv_pars)
