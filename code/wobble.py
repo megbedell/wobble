@@ -90,8 +90,8 @@ class star(object):
         self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
         self.soln_star = [np.zeros(self.N) for r in range(self.R)]
         self.soln_t = [np.zeros(self.N) for r in range(self.R)]
-        self.ivars_rv_star = [np.zeros(self.N) for r in range(self.R)]
-        self.ivars_rv_t = [np.zeros(self.N) for r in range(self.R)]
+        self.ivars_star = [np.zeros(self.N) for r in range(self.R)]
+        self.ivars_t = [np.zeros(self.N) for r in range(self.R)]
         
     def continuum_normalize(self):
         for r in range(self.R):
@@ -316,13 +316,18 @@ class star(object):
         
             self.soln_star = [np.zeros(self.N) for r in range(self.R)]
             self.soln_t = [np.zeros(self.N) for r in range(self.R)]
-            self.ivars_rv_star = [np.zeros(self.N) for r in range(self.R)]
-            self.ivars_rv_t = [np.zeros(self.N) for r in range(self.R)]
+            self.ivars_star = [np.zeros(self.N) for r in range(self.R)]
+            self.ivars_t = [np.zeros(self.N) for r in range(self.R)]
         
         for r in range(self.R):
             self.optimize_order(r, restart=restart, **kwargs)
             if (r % 5) == 0:
                 self.save_results('state_order{0}.hdf5'.format(r))
+                
+        self.soln_star = np.asarray(self.soln_star)
+        self.soln_t = np.asarray(self.soln_t)
+        self.ivars_star = np.asarray(self.ivars_star)
+        self.ivars_t = np.asarray(self.ivars_t)
               
         
     def optimize_order(self, r, niter=5, restart = False, plot=False):
@@ -376,8 +381,8 @@ class star(object):
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
             previous_lnlike = new_lnlike 
-        self.ivars_rv_star[r] = self.d2lnlike_dv2(r, 'star')   
-        self.ivars_rv_t[r] = self.d2lnlike_dv2(r, 't') 
+        self.ivars_star[r] = self.d2lnlike_dv2(r, 'star')   
+        self.ivars_t[r] = self.d2lnlike_dv2(r, 't') 
         
     def plot_models(self, r, n, filepath='../results/plots/'):
         #calculate models
@@ -431,9 +436,9 @@ class star(object):
             self.model_ys_t[r] = np.append(self.model_ys_t[r], np.zeros(max_len - len(self.model_ys_t[r])))
         with h5py.File(filename,'w') as f:
             dset = f.create_dataset('rvs_star', data=self.soln_star)
-            dset = f.create_dataset('ivars_rv_star', data=self.ivars_rv_star)
+            dset = f.create_dataset('ivars_star', data=self.ivars_star)
             dset = f.create_dataset('rvs_t', data=self.soln_t)
-            dset = f.create_dataset('ivars_rv_t', data=self.ivars_rv_t)
+            dset = f.create_dataset('ivars_t', data=self.ivars_t)
             dset = f.create_dataset('model_xs_star', data=self.model_xs_star)
             dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
             dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
@@ -442,44 +447,66 @@ class star(object):
     def load_results(self, filename):
         with h5py.File(filename) as f:
             self.soln_star = np.copy(f['rvs_star'])
-            self.ivars_rv_star = np.copy(f['ivars_rv_star'])
             self.soln_t = np.copy(f['rvs_t'])
-            self.ivars_rv_t = np.copy(f['ivars_rv_t'])
             self.model_xs_star = np.copy(f['model_xs_star']).tolist()
             self.model_ys_star = np.copy(f['model_ys_star']).tolist()
             self.model_xs_t = np.copy(f['model_xs_t']).tolist()
             self.model_ys_t = np.copy(f['model_ys_t']).tolist()
+            try:
+                self.ivars_star = np.copy(f['ivars_star'])
+                self.ivars_t = np.copy(f['ivars_t'])
+            except:  # temporary fix for old results files
+                self.ivars_star = np.copy(f['ivars_rv_star'])
+                self.ivars_t = np.copy(f['ivars_rv_t'])                
         for r in range(self.R): # trim off that padding
             self.model_xs_star[r] = np.trim_zeros(np.asarray(self.model_xs_star[r]), 'b')
             self.model_ys_star[r] = np.trim_zeros(np.asarray(self.model_ys_star[r]), 'b')
             self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
             self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
             
-def separate_rvs(rvs, ivars):
-    # takes an R x N block of rvs and a same-sized block of their inverse variances
-    # optimizes model RV_rn = RV_r + RV_n + noise
-    # returns RV_R, RV_N vectors, R x N block of predictions
-    R, N = np.shape(rvs)
-    assert np.shape(ivars) == (R, N)
-    ys = np.zeros(N*R)
-    Cinv_diag = np.zeros_like(ys)
-    A = np.zeros((R * N, R + N))
-    for r in range(R):
-        j = r * N
-        k = (r + 1) * N
-        ys[j:k] = rvs[r]
-        Cinv_diag[j:k] = ivars[r]
-        # idiotically loopy
-        for m,l in enumerate(range(j,k)):
-            A[l, r] = 1
-            A[l, R+m] = 1
-    inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
-    xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
-    order_rvs, time_rvs = xs[:R], xs[R:]
-    ivars_order_rvs, ivars_time_rvs = 1./np.diag(inv_cov)[:R], 1./np.diag(inv_cov)[R:] # make this something smarter?
-    rv_predictions = np.tile(order_rvs[:,None], (1,N)) + np.tile(time_rvs, (R,1))
-    return order_rvs, ivars_order_rvs, time_rvs, ivars_time_rvs, rv_predictions
-    
+    def unpack_rv_pars(self, rv_pars):
+        self.order_rvs = np.copy(rv_pars[:self.R])
+        self.time_rvs = np.copy(rv_pars[self.R:self.R + self.N])
+        self.order_vars = np.copy(rv_pars[self.R + self.N:])
+                
+    def lnlike_rvs(self, rv_pars):
+        self.unpack_rv_pars(rv_pars)
+        rv_predictions = np.tile(self.order_rvs[:,None], (1,self.N)) + np.tile(self.time_rvs, (self.R,1))
+        resids = self.soln_star - rv_predictions
+        all_vars = 1./self.ivars_star**2 + np.tile(self.order_vars[:,None], (1,self.N))
+        lnlike = -0.5 * np.sum(resids**2 / all_vars + np.log(2. * np.pi * all_vars))
+        dlnlike_drv_pars = np.zeros_like(rv_pars)
+        dlnlike_drv_pars[:self.R] = np.sum(resids / all_vars, axis=1)
+        dlnlike_drv_pars[self.R:self.R + self.N] = np.sum(resids / all_vars, axis=0)
+        dlnlike_drv_pars[self.R + self.N:] = np.sum((0.5 * resids**2 / all_vars**2 - 0.5 / all_vars), axis=1)
+        return lnlike, dlnlike_drv_pars
+                
+    def opposite_lnlike_rvs(self, rv_pars):
+        lnlike, dlnlike_drv_pars = self.lnlike_rvs(rv_pars)
+        return -1. * lnlike, -1. * dlnlike_drv_pars
+        
+    def combine_rvs(self):
+        # do some linear algebra to get a first guess (neglecting order weighting):
+        ys = np.zeros(self.N * self.R)
+        Cinv_diag = np.zeros_like(ys)
+        A = np.zeros((self.R * self.N, self.R + self.N))
+        for r in range(self.R):
+            j = r * self.N
+            k = (r + 1) * self.N
+            ys[j:k] = self.soln_star[r]
+            Cinv_diag[j:k] = self.ivars_star[r]
+            # idiotically loopy
+            for m,l in enumerate(range(j,k)):
+                A[l, r] = 1
+                A[l, self.R + m] = 1
+        inv_cov = np.dot(A.T, Cinv_diag[:, None] * A)
+        xs = np.linalg.solve(inv_cov, np.dot(A.T, Cinv_diag * ys))
+        # add order weighting terms and optimize:
+        x0_rv_pars = np.append(xs, np.zeros(self.R))
+        soln_rv_pars = minimize(self.opposite_lnlike_rvs, x0_rv_pars,
+                             method='BFGS', jac=True, options={'disp':True})['x']
+        self.unpack_rv_pars(soln_rv_pars)
+            
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
     a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
@@ -494,21 +521,23 @@ if __name__ == "__main__":
         for r in range(a.R):
             a.plot_models(r, 0)
         
-    order_rvs, ivars_order_rvs, time_rvs, ivars_time_rvs, rv_predictions = separate_rvs(a.soln_star, a.ivars_rv_star)
-    print "RV std = {0:.2f} m/s".format(np.std(time_rvs + a.bervs))
+    a.soln_star = np.asarray(a.soln_star) # just in case
+    a.ivars_star = np.asarray(a.ivars_star)
+    a.combine_rvs()
+    print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
     
     cmap = matplotlib.cm.get_cmap(name='jet')
     colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
     colors_by_order = [cmap(1.*i/a.R) for i in range(a.R)]
         
-    rvs = np.asarray(a.soln_star)
-    ivars = np.asarray(a.ivars_rv_star)
-    resids = rvs - rv_predictions
+    rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
+    resids = a.soln_star - rv_predictions
     
     fig = plt.figure()
     ax = plt.subplot(111) 
     for n in range(a.N): 
-        ax.errorbar(np.arange(a.R), rvs[:,n] + a.bervs[n], 1./np.sqrt(ivars[:,n]), color=colors_by_epoch[n], alpha=0.5)
+        ax.errorbar(np.arange(a.R), a.soln_star[:,n] + a.bervs[n], 1./np.sqrt(a.ivars_star[:,n]), 
+            color=colors_by_epoch[n], alpha=0.5, fmt='o')
     ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
     ax.set_xlabel('Order #')
     plt.savefig('../results/plots/rv_per_order.png')
@@ -517,7 +546,8 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = plt.subplot(111) 
     for r in range(a.R): 
-        ax.errorbar(np.arange(a.N), rvs[r,:] + a.bervs, 1./np.sqrt(ivars[r,:]), color=colors_by_order[r], alpha=0.5)
+        ax.errorbar(np.arange(a.N), a.soln_star[r,:] + a.bervs, 1./np.sqrt(a.ivars_star[r,:]), 
+            color=colors_by_order[r], alpha=0.5, fmt='o')
     ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
     ax.set_xlabel('Epoch #')
     plt.savefig('../results/plots/rv_per_epoch.png')
@@ -526,7 +556,8 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = plt.subplot(111) 
     for n in range(a.N): 
-        ax.errorbar(np.arange(a.R), resids[:,n], 1./np.sqrt(ivars[:,n]), color=colors_by_epoch[n], alpha=0.5)
+        ax.errorbar(np.arange(a.R), resids[:,n], 1./np.sqrt(a.ivars_star[:,n]), 
+            color=colors_by_epoch[n], alpha=0.5, fmt='o')
     ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
     ax.set_xlabel('Order #')
     plt.savefig('../results/plots/resids_per_order.png')
@@ -535,7 +566,8 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = plt.subplot(111) 
     for r in range(a.R): 
-        ax.errorbar(np.arange(a.N), resids[r,:], 1./np.sqrt(ivars[r,:]), color=colors_by_order[r], alpha=0.5)
+        ax.errorbar(np.arange(a.N), resids[r,:], 1./np.sqrt(a.ivars_star[r,:]), 
+            color=colors_by_order[r], alpha=0.5, fmt='o')
     ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
     ax.set_xlabel('Epoch #')
     plt.savefig('../results/plots/resids_per_epoch.png')
