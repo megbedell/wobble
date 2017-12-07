@@ -50,6 +50,7 @@ class star(object):
                 self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
                 self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
                 self.drs_rvs = np.copy(f['true_rvs'])[:self.N]
+                self.dates = np.copy(f['date'])[:self.N]
                 self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
                 self.drifts = np.copy(f['drift'])[:self.N]
                 self.airms = np.copy(f['airm'])[:self.N]
@@ -172,27 +173,43 @@ class star(object):
         result[ms] = (vec[mps - 1] - vec[mps]) * self.dlndopplerdv(v) / seas
         return result
 
-    def make_template(self, r, rvs, dx = np.log(6000.01) - np.log(6000.)):
+    def initialize_model(self, r, role, dx = np.log(6000.01) - np.log(6000.)):
         """
         `all_data`: `[N, M]` array of pixels
         `rvs`: `[N]` array of RVs
-        `xs`: `[N, M]` array of wavelength values
-        `dx`: linear spacing desired for template wavelength grid (A)
         """
+        resids = 1. * self.data[r]            
+        if role == 'star':
+            print 'initializing star model...'
+            rvs = self.x0_star[r]
+            if self.model_ys_t[r] is not None:
+                for n in range(self.N):
+                    pd, dpd_dv = self.calc_pds(r, n, self.x0_t[r][n], 't')
+                    resids[n] -= pd
+        elif role == 't':
+            rvs = self.x0_t[r]
+            if self.model_ys_star[r] is not None:
+                for n in range(self.N):
+                    pd, dpd_dv = self.calc_pds(r, n, self.x0_star[r][n], 'star')
+                    resids[n] -= pd        
         all_xs = np.empty_like(self.data[r])
         for i in range(self.N):
             all_xs[i,:] = self.data_xs[r][i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
-        all_data, all_xs = np.ravel(self.data[r]), np.ravel(all_xs)
+        all_resids, all_xs = np.ravel(resids), np.ravel(all_xs)
         tiny = 10.
         template_xs = np.arange(min(all_xs)-tiny*dx, max(all_xs)+tiny*dx, dx)
         template_ys = np.nan + np.zeros_like(template_xs)
         for i,t in enumerate(template_xs):
             ind = (all_xs >= t-dx/2.) & (all_xs < t+dx/2.)
             if np.sum(ind) > 0:
-                template_ys[i] = np.nanmedian(all_data[ind])
+                template_ys[i] = np.nanmedian(all_resids[ind])
         ind_nan = np.isnan(template_ys)
         template_ys.flat[ind_nan] = np.interp(template_xs[ind_nan], template_xs[~ind_nan], template_ys[~ind_nan])
-        return template_xs, template_ys
+        if role == 'star':
+            self.model_xs_star[r], self.model_ys_star[r] = template_xs, template_ys
+        elif role == 't':
+            self.model_xs_t[r], self.model_ys_t[r] = template_xs, template_ys
+            
 
     def rv_lnprior(self, rvs):
         return -0.5 * np.mean(rvs)**2/1.**2
@@ -300,6 +317,7 @@ class star(object):
                 lnlike_o = lnlike + 0.0
             else:
                 step_scale *= 0.5
+                print "improve_model: reducing step size to", step_scale
         return w
        
     def optimize(self, restart = False, **kwargs):
@@ -310,10 +328,10 @@ class star(object):
         if (hasattr(self, 'model_xs_star') == False) or (restart == True):
             self.x0_star = [np.zeros(self.N) for r in range(self.R)]
             self.x0_t = [np.zeros(self.N) for r in range(self.R)]
-            self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
-            self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
-            self.model_ys_t = [np.zeros(self.N) for r in range(self.R)]
-            self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
+            self.model_ys_star = [None for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
+            self.model_xs_star = [None for r in range(self.R)]
+            self.model_ys_t = [None for r in range(self.R)]
+            self.model_xs_t = [None for r in range(self.R)]
         
             self.soln_star = [np.zeros(self.N) for r in range(self.R)]
             self.soln_t = [np.zeros(self.N) for r in range(self.R)]
@@ -349,8 +367,8 @@ class star(object):
             self.x0_star[r] = -np.copy(self.drs_rvs)
             self.x0_star[r] -= np.mean(self.x0_star[r])
             self.x0_t[r] = np.zeros(self.N)
-            self.model_xs_star[r], self.model_ys_star[r] = self.make_template(r, self.x0_star[r])
-            self.model_xs_t[r], self.model_ys_t[r] = self.make_template(r, self.x0_t[r])
+            self.initialize_model(r, 'star')
+            self.initialize_model(r, 't')
         
         previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
         for iteration in range(niter):
@@ -382,10 +400,13 @@ class star(object):
                 print "likelihood got worse this iteration. Step-size issues?"
                 assert False
             previous_lnlike = new_lnlike 
+            if True:
+                self.plot_models(r,0, filename='order{0}_iter{1}.png'.format(r, iteration))
         self.ivars_star[r] = self.d2lnlike_dv2(r, 'star')   
         self.ivars_t[r] = self.d2lnlike_dv2(r, 't') 
         
-    def plot_models(self, r, n, filepath='../results/plots/'):
+    def plot_models(self, r, n, filepath='../results/plots/', filename=None):
+
         #calculate models
         state_star = self.state(self.soln_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
         model_star = self.Pdot(state_star, self.model_ys_star[r])
@@ -405,7 +426,9 @@ class star(object):
         ax.set_ylim([0.0, 1.2])
         ax.legend(loc='lower right')
         ax.set_title('Order #{0}, Epoch #{1}'.format(r,n))
-        plt.savefig(filepath+'model_order{0}_epoch{1}.png'.format(r,n))
+        if filename is None:
+            filename = 'model_order{0}_epoch{1}.png'.format(r,n)
+        plt.savefig(filepath+filename)
         plt.close(fig)          
             
     def show_results(self, r):
@@ -493,6 +516,9 @@ class star(object):
         x0_rvs = np.append(x0_order_rvs, x0_time_rvs)
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
         x0_rv_pars = np.append(x0_rvs, np.log(np.var(self.soln_star - rv_predictions, axis=1)))
+        self.unpack_rv_pars(x0_rv_pars)
+        if self.R < 2:
+            return
         # optimize:
         soln_rv_pars = minimize(self.opposite_lnlike_rvs, x0_rv_pars,
                              method='BFGS', jac=True, options={'disp':True})['x']
@@ -500,19 +526,19 @@ class star(object):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
+    a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)    
     
-    if False: # optimize
+    if True: # optimize
         a.optimize(niter=20)
         a.save_results('../results/hip54287_results.hdf5')
         
     a.load_results('../results/hip54287_results.hdf5')
     
-    if False: # make model plots
+    if True: # make model plots
         for r in range(a.R):
             a.plot_models(r, 0)
         
-    N_epochs = 40
+    N_epochs = 35
     a.soln_star = np.asarray(a.soln_star)[:,:N_epochs] # just in case
     a.ivars_star = np.asarray(a.ivars_star)[:,:N_epochs]
     a.bervs = a.bervs[:N_epochs]
