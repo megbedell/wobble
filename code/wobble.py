@@ -245,15 +245,39 @@ class star(object):
             dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
         if role == 'star':
             lnpost = lnlike + self.rv_lnprior(x0) + self.rv_lnprior(self.x0_t[r])
+            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)
         elif role == 't':
             lnpost = lnlike + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0)
-        dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)            
+            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)            
         return  lnpost,  dlnpost_dv
+        
+    def lnlike_dumb(self, rv, r, n, role):
+        pd, dpd_dv = self.calc_pds(r, n, rv, role)
+        lnlike = -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
+        dlnlike_dv = np.asarray([np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv), ])
+        if role == 'star':
+            x0 = 1. * self.x0_star[r]
+            x0[n] = rv
+            lnpost = lnlike + self.rv_lnprior(x0) + self.rv_lnprior(self.x0_t[r])
+            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)[n] # HACK
+        elif role == 't':
+            x0 = 1. * self.x0_t[r]
+            x0[n] = rv
+            lnpost = lnlike + self.rv_lnprior(self.x0_star[r]) + self.rv_lnprior(x0)
+            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(x0)[n] # HACK
+        return lnpost, dlnpost_dv
         
     def opposite_lnlike(self, x0, r, role):
         # for scipy.optimize
         lnpost, dlnpost_dv = self.lnlike(x0, r, role)
         return -1.* lnpost, -1.* dlnpost_dv
+        
+    def opposite_lnlike_dumb(self, rv, r, n, role):
+        # for scipy.optimize
+        lnpost, dlnpost_dv = self.lnlike_dumb(rv, r, n, role)
+        return -1.* lnpost, -1.* dlnpost_dv
+        
+    
                
     def d2lnlike_dv2(self, r, role):
         # returns an N-vector corresponding to the second derivative of lnlike w.r.t v_n (of "star" or of "t")
@@ -373,34 +397,78 @@ class star(object):
         previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            self.soln_star[r] =  minimize(self.opposite_lnlike, self.x0_star[r], args=(r, 'star'),
-                             method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
-            print "Improving models..."
-            self.model_ys_t[r] = self.improve_model(r, 't')
-            self.model_ys_star[r] = self.improve_model(r, 'star')
-            print "Fitting telluric RVs..."
-            self.soln_t[r] =  minimize(self.opposite_lnlike, self.x0_t[r], args=(r, 't'),
-                             method='BFGS', jac=True, options={'disp':True, 'gtol':1.e-2, 'eps':1.5e-5})['x']
-            print "Improving models..."
-            self.model_ys_t[r] = self.improve_model(r, 't')
-            self.model_ys_star[r] = self.improve_model(r, 'star')
-
+            print self.x0_star[r]
+            for n in range(self.N):
+                self.soln_star[r][n] = minimize(self.opposite_lnlike_dumb, self.x0_star[r][n], args=(r, n, 'star'),
+                             method='BFGS', jac=True, options={'disp':True})['x']
             self.x0_star[r] = self.soln_star[r]
-            self.x0_t[r] = self.soln_t[r]
-
-            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] + self.bervs), np.std(self.soln_t[r]))
-            if plot == True:
-                plt.plot(np.arange(self.N), self.soln_star[r] + self.bervs - np.mean(self.soln_star[r] + self.bervs), color='k')
-                plt.plot(np.arange(self.N), self.soln_t[r] - np.mean(self.soln_t[r]), color='red')
-                plt.show()
-                
+            print self.x0_star[r]
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
-
             if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration. Step-size issues?"
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                print self.lnlike(self.x0_star[r], r, 'star')
                 assert False
             previous_lnlike = new_lnlike 
-            if True:
+                
+            print "Improving telluric template spectra..."
+            self.model_ys_t[r] = self.improve_model(r, 't')
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike < previous_lnlike:
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                assert False
+            previous_lnlike = new_lnlike 
+                
+            print "Improving stellar template spectra..."
+            self.model_ys_star[r] = self.improve_model(r, 'star')
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike < previous_lnlike:
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                assert False
+            previous_lnlike = new_lnlike 
+                
+            print "Fitting telluric RVs..."
+            print self.x0_t[r]
+            self.soln_t[r] =  minimize(self.opposite_lnlike, self.x0_t[r], args=(r, 't'),
+                             method='BFGS', jac=True, tol=1.e-40, options={'disp':True, 'gtol':1.e-40})['x']
+            self.x0_t[r] = self.soln_t[r]
+            print self.x0_t[r]
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike < previous_lnlike:
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                print self.lnlike(self.x0_t[r], r, 't')
+                assert False
+            previous_lnlike = new_lnlike 
+                
+            print "Improving telluric template spectra..."
+            self.model_ys_t[r] = self.improve_model(r, 't')
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike < previous_lnlike:
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                assert False
+            previous_lnlike = new_lnlike 
+                
+            print "Improving stellar template spectra..."
+            self.model_ys_star[r] = self.improve_model(r, 'star')
+            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
+            if new_lnlike < previous_lnlike:
+                print "likelihood got worse this iteration."
+                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                assert False
+            previous_lnlike = new_lnlike 
+    
+            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] + self.bervs), np.std(self.soln_t[r]))
+            print "                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.soln_star[r] + self.drs_rvs))
+            if plot:
+                plt.plot(np.arange(self.N), self.x0_star[r] + self.bervs - np.mean(self.x0_star[r] + self.bervs), color='k')
+                plt.plot(np.arange(self.N), self.x0_t[r] - np.mean(self.x0_t[r]), color='red')
+                plt.show()
+
+            if plot:
                 self.plot_models(r,0, filename='order{0}_iter{1}.png'.format(r, iteration))
         self.ivars_star[r] = self.d2lnlike_dv2(r, 'star')   
         self.ivars_t[r] = self.d2lnlike_dv2(r, 't') 
@@ -526,13 +594,15 @@ class star(object):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    a = star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)    
+    starid = 'hip30037'
+    a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if True: # optimize
-        a.optimize(niter=20)
-        a.save_results('../results/hip54287_results.hdf5')
+        #a.optimize_order(7, niter=10) # just to test
+        a.optimize(niter=20, plot=True)
+        a.save_results('../results/'+starid+'_results.hdf5')
         
-    a.load_results('../results/hip54287_results.hdf5')
+    a.load_results('../results/'+starid+'_results.hdf5')
     
     if True: # make model plots
         for r in range(a.R):
