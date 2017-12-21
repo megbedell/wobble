@@ -314,22 +314,22 @@ class star(object):
                 pd_t = self.airms[n] * self.Pdot(state_t, model)
                 state = state_t # for derivative
             pd = pd_star + pd_t
-            dp_star = self.dotP(state, (self.data[r][n,:] - pd)*self.ivars[r][n,:]) 
+            dp_star = self.dotP(state, (self.data[r][n,:] - pd) * self.ivars[r][n,:]) 
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dw += dp_star
         lnprior = self.model_ys_lnprior(model)
-        dlnprior = self.dmodel_ys_lnprior_dw(model)
-        return lnlike + lnprior, dlnlike_dw + dlnprior                
+        dlnprior_dw = self.dmodel_ys_lnprior_dw(model)
+        return lnlike + lnprior, dlnlike_dw + dlnprior_dw
 
     def improve_model(self, r, role, step_scale=5e-7, maxniter=100):
         if role == 'star':
             w = np.copy(self.model_ys_star[r])
         elif role == 't':
             w = np.copy(self.model_ys_t[r])
-        lnlike_o = -1e10
-        quitc = +1e10
+        lnlike_o = -np.Inf
+        quitc = np.Inf
         i = 0
-        while ((quitc > 1) and (i < maxniter)):
+        while ((quitc > 0.001) and (i < maxniter)):
             i += 1 
             lnlike, dlnlike_dw = self.dlnlike_dw(r, w, role)
             stepsize = step_scale * dlnlike_dw
@@ -341,7 +341,7 @@ class star(object):
                 lnlike_o = lnlike + 0.0
             else:
                 step_scale *= 0.5
-                print "improve_model: reducing step size to", step_scale
+                #print "improve_model: reducing step size to", step_scale
         return w
        
     def optimize(self, restart = False, **kwargs):
@@ -397,12 +397,12 @@ class star(object):
         previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            #print self.x0_star[r]
+            print self.x0_star[r]
             for n in range(self.N):
                 self.soln_star[r][n] = minimize(self.opposite_lnlike_dumb, self.x0_star[r][n], args=(r, n, 'star'),
                              method='BFGS', jac=True, options={'disp':False})['x']
             self.x0_star[r] = self.soln_star[r]
-            #print self.x0_star[r]
+            print self.x0_star[r]
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -410,15 +410,7 @@ class star(object):
                 print self.lnlike(self.x0_star[r], r, 'star')
                 assert False
             previous_lnlike = new_lnlike 
-                
-            print "Improving telluric template spectra..."
-            self.model_ys_t[r] = self.improve_model(r, 't')
-            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
-            if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                assert False
-            previous_lnlike = new_lnlike 
+
                 
             print "Improving stellar template spectra..."
             self.model_ys_star[r] = self.improve_model(r, 'star')
@@ -430,12 +422,12 @@ class star(object):
             previous_lnlike = new_lnlike 
                 
             print "Fitting telluric RVs..."
-            #print self.x0_t[r]
+            print self.x0_t[r]
             for n in range(self.N):
                 self.soln_t[r][n] = minimize(self.opposite_lnlike_dumb, self.x0_t[r][n], args=(r, n, 't'),
                              method='BFGS', jac=True, options={'disp':False})['x']
             self.x0_t[r] = self.soln_t[r]
-            #print self.x0_t[r]
+            print self.x0_t[r]
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -453,14 +445,6 @@ class star(object):
                 assert False
             previous_lnlike = new_lnlike 
                 
-            print "Improving stellar template spectra..."
-            self.model_ys_star[r] = self.improve_model(r, 'star')
-            new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
-            if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                assert False
-            previous_lnlike = new_lnlike 
     
             print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.soln_star[r] + self.bervs), np.std(self.soln_t[r]))
             print "                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.soln_star[r] + self.drs_rvs))
@@ -595,11 +579,11 @@ class star(object):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip30037'
+    starid = 'hip54287'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if True: # optimize
-        #a.optimize_order(7, niter=10) # just to test
+        a.optimize_order(1, niter=20) # just to test
         a.optimize(niter=20, plot=True)
         a.save_results('../results/'+starid+'_results.hdf5')
         
