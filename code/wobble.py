@@ -397,12 +397,12 @@ class star(object):
         previous_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            print self.x0_star[r]
+            #print self.x0_star[r]
             for n in range(self.N):
                 self.soln_star[r][n] = minimize(self.opposite_lnlike_dumb, self.x0_star[r][n], args=(r, n, 'star'),
-                             method='BFGS', jac=True, options={'disp':True})['x']
+                             method='BFGS', jac=True, options={'disp':False})['x']
             self.x0_star[r] = self.soln_star[r]
-            print self.x0_star[r]
+            #print self.x0_star[r]
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -430,11 +430,12 @@ class star(object):
             previous_lnlike = new_lnlike 
                 
             print "Fitting telluric RVs..."
-            print self.x0_t[r]
-            self.soln_t[r] =  minimize(self.opposite_lnlike, self.x0_t[r], args=(r, 't'),
-                             method='BFGS', jac=True, tol=1.e-40, options={'disp':True, 'gtol':1.e-40})['x']
+            #print self.x0_t[r]
+            for n in range(self.N):
+                self.soln_t[r][n] = minimize(self.opposite_lnlike_dumb, self.x0_t[r][n], args=(r, n, 't'),
+                             method='BFGS', jac=True, options={'disp':False})['x']
             self.x0_t[r] = self.soln_t[r]
-            print self.x0_t[r]
+            #print self.x0_t[r]
             new_lnlike = self.lnlike(self.x0_star[r], r, 'star')[0]
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
