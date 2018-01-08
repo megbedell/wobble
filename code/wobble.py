@@ -236,22 +236,18 @@ class star(object):
         pd = pd_star + pd_t
         return pd, dpd_dv
         
-    def lnlike(self, rvs, r, role):
+    def lnlike(self, r):
+        # lnlike including every prior
         lnlike = 0.
-        dlnlike_dv = np.zeros(self.N)
         for n in range(self.N):
-            pd, dpd_dv = self.calc_pds(r, n, rvs[n], role)
+            pd, dpd_dv = self.calc_pds(r, n, self.rvs_star[r][n], 'star')
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dlnlike_dv[n] = np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv)
-        if role == 'star':
-            lnpost = lnlike + self.rv_lnprior(rvs) + self.rv_lnprior(self.rvs_t[r])
-            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(rvs)
-        elif role == 't':
-            lnpost = lnlike + self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(rvs)
-            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(rvs)            
-        return  lnpost,  dlnpost_dv
+
+        lnpost = lnlike + self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r]) \
+                    + self.model_ys_lnprior(self.model_ys_star[r]) + self.model_ys_lnprior(self.model_ys_t[r])
+        return  lnpost
         
-    def lnlike_dumb(self, rv, r, n, role):
+    def dlnlike_drv(self, rv, r, n, role):
         pd, dpd_dv = self.calc_pds(r, n, rv, role)
         lnlike = -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
         dlnlike_dv = np.asarray([np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv), ])
@@ -267,14 +263,9 @@ class star(object):
             dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(rvs)[n] # HACK
         return lnpost, dlnpost_dv
         
-    def opposite_lnlike(self, rvs, r, role):
+    def opposite_dlnlike_drv(self, rv, r, n, role):
         # for scipy.optimize
-        lnpost, dlnpost_dv = self.lnlike(rvs, r, role)
-        return -1.* lnpost, -1.* dlnpost_dv
-        
-    def opposite_lnlike_dumb(self, rv, r, n, role):
-        # for scipy.optimize
-        lnpost, dlnpost_dv = self.lnlike_dumb(rv, r, n, role)
+        lnpost, dlnpost_dv = self.dlnlike_drv(rv, r, n, role)
         return -1.* lnpost, -1.* dlnpost_dv    
                
     def d2lnlike_dv2(self, r, role):
@@ -312,34 +303,41 @@ class star(object):
                 pd_t = self.airms[n] * self.Pdot(state_t, model)
                 state = state_t # for derivative
             pd = pd_star + pd_t
-            dp_star = self.dotP(state, (self.data[r][n,:] - pd) * self.ivars[r][n,:]) 
+            dp_star = self.dotP(state, (self.data[r][n,:] - pd) * self.ivars[r][n,:])
             lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
             dlnlike_dw += dp_star
         lnprior = self.model_ys_lnprior(model)
         dlnprior_dw = self.dmodel_ys_lnprior_dw(model)
         return lnlike + lnprior, dlnlike_dw + dlnprior_dw
 
-    def improve_model(self, r, role, step_scale=5e-7, maxniter=100):
+    def improve_model(self, r, role, step_scale=1., maxniter=64, tol=0.001):
+        """
+        This function could be written to be much more computationally efficient.
+        """
         if role == 'star':
             w = np.copy(self.model_ys_star[r])
         elif role == 't':
             w = np.copy(self.model_ys_t[r])
-        lnlike_o = -np.Inf
         quitc = np.Inf
         i = 0
-        while ((quitc > 0.001) and (i < maxniter)):
-            i += 1 
-            lnlike, dlnlike_dw = self.dlnlike_dw(r, w, role)
-            stepsize = step_scale * dlnlike_dw
-            dlnlike = lnlike - lnlike_o
-            if dlnlike > 0.0:
-                w += stepsize   
-                step_scale *= 1.1
-                quitc = lnlike - lnlike_o
-                lnlike_o = lnlike + 0.0
-            else:
-                step_scale *= 0.5
-                #print "improve_model: reducing step size to", step_scale
+        while ((quitc > tol) and (i < maxniter)):
+            i += 1
+            lnlike_o, dlnlike_dw = self.dlnlike_dw(r, w, role)
+            stepped = False
+            j = 0
+            while((not stepped) and (j < 64)): # could go forever in theory
+                j += 1
+                step = step_scale * dlnlike_dw
+                lnlike = self.dlnlike_dw(r, w + step, role)[0]
+                dlnlike = lnlike - lnlike_o
+                if dlnlike >= 0.0:
+                    w += step
+                    stepped = True   
+                    step_scale *= 2.
+                    quitc = lnlike - lnlike_o
+                else:
+                    step_scale *= 0.5
+                    #print "improve_model: reducing step size to", step_scale
         return w
        
     def optimize(self, restart = False, **kwargs):
@@ -390,45 +388,65 @@ class star(object):
             self.initialize_model(r, 'star')
             self.initialize_model(r, 't')
         
-        previous_lnlike = self.lnlike(self.rvs_star[r], r, 'star')[0]
+        previous_lnlike = self.lnlike(r)
         for iteration in range(niter):
             print "Fitting stellar RVs..."
             print self.rvs_star[r]
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
+            print "lnlike: {0}".format(self.lnlike(r))
             for n in range(self.N):
-                self.rvs_star[r][n] = minimize(self.opposite_lnlike_dumb, self.rvs_star[r][n], args=(r, n, 'star'),
-                             method='BFGS', jac=True, options={'disp':False})['x']
+                soln = minimize(self.opposite_dlnlike_drv, self.rvs_star[r][n], args=(r, n, 'star'),
+                             method='BFGS', jac=True, options={'disp':False})
+                self.rvs_star[r][n] = soln['x']
             print self.rvs_star[r]
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
-            new_lnlike = self.lnlike(self.rvs_star[r], r, 'star')[0]
+            print "lnlike: {0}".format(self.lnlike(r))
+            new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
                 print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                print self.lnlike(self.rvs_star[r], r, 'star')
+                print "self.lnlike = ", self.lnlike(r)
+                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
+                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
+                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
+                foo = 0.
+                for n in range(self.N):
+                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
+                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
+                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
+                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
                 assert False
             previous_lnlike = new_lnlike 
 
                 
             print "Improving stellar template spectra..."
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
+            print "lnlike: {0}".format(self.lnlike(r))
             self.model_ys_star[r] = self.improve_model(r, 'star')
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
-            new_lnlike = self.lnlike(self.rvs_star[r], r, 'star')[0]
+            print "lnlike: {0}".format(self.lnlike(r))
+            new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
                 print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                print "self.lnlike = ", self.lnlike(r)
+                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
+                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
+                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
+                foo = 0.
+                for n in range(self.N):
+                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
+                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
+                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
+                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
                 assert False
             previous_lnlike = new_lnlike 
                 
             print "Fitting telluric RVs..."
             print self.rvs_t[r]
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
+            print "lnlike: {0}".format(self.lnlike(r))
             for n in range(self.N):
-                self.rvs_t[r][n] = minimize(self.opposite_lnlike_dumb, self.rvs_t[r][n], args=(r, n, 't'),
+                self.rvs_t[r][n] = minimize(self.opposite_dlnlike_drv, self.rvs_t[r][n], args=(r, n, 't'),
                              method='BFGS', jac=True, options={'disp':False})['x']
             print self.rvs_t[r]
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
-            new_lnlike = self.lnlike(self.rvs_star[r], r, 'star')[0]
+            print "lnlike: {0}".format(self.lnlike(r))
+            new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
                 print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
@@ -437,13 +455,23 @@ class star(object):
             previous_lnlike = new_lnlike 
                 
             print "Improving telluric template spectra..."
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
+            print "lnlike: {0}".format(self.lnlike(r))
             self.model_ys_t[r] = self.improve_model(r, 't')
-            print "lnlike star: {0}, lnlike t: {1}".format(self.lnlike(self.rvs_star[r], r, 'star')[0], self.lnlike(self.rvs_t[r], r, 't')[0])
-            new_lnlike = self.lnlike(self.rvs_star[r], r, 'star')[0]
+            print "lnlike: {0}".format(self.lnlike(r))
+            new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
                 print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
+                print "self.lnlike = ", self.lnlike(r)
+                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
+                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
+                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
+                foo = 0.
+                for n in range(self.N):
+                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
+                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
+                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
+                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
                 assert False
             previous_lnlike = new_lnlike 
                 
@@ -566,8 +594,8 @@ if __name__ == "__main__":
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if True: # optimize
-        a.optimize_order(1, niter=20) # just to test
-        a.optimize(niter=20, plot=True)
+        #a.optimize_order(1, niter=20) # just to test
+        a.optimize(niter=20, plot=False)
         a.save_results('../results/'+starid+'_results.hdf5')
         
     a.load_results('../results/'+starid+'_results.hdf5')
