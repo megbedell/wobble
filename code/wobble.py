@@ -39,13 +39,16 @@ class star(object):
     """
     
     def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, 
-                    N = 16, e2ds = True, orders = [30], min_flux = 1.):
+                    N = 0, e2ds = True, orders = [30], min_flux = 1.):
         filename = filepath + filename
-        self.N = N
         self.R = len(orders) # number of orders to be analyzed
         if e2ds:
             self.orders = orders
             with h5py.File(filename) as f:
+                if N < 1:
+                    self.N = len(f['date']) # all epochs
+                else:
+                    self.N = N
                 self.data = [f['data'][i][:self.N,:] for i in orders]
                 self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
                 self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
@@ -94,6 +97,8 @@ class star(object):
         #self.soln_t = [np.zeros(self.N) for r in range(self.R)]
         self.ivars_star = [np.zeros(self.N) for r in range(self.R)]
         self.ivars_t = [np.zeros(self.N) for r in range(self.R)]
+        
+        self.M = None
         
     def continuum_normalize(self):
         for r in range(self.R):
@@ -391,14 +396,10 @@ class star(object):
         previous_lnlike = self.lnlike(r)
         for iteration in range(niter):
             print "Fitting stellar RVs..."
-            print self.rvs_star[r]
-            print "lnlike: {0}".format(self.lnlike(r))
             for n in range(self.N):
                 soln = minimize(self.opposite_dlnlike_drv, self.rvs_star[r][n], args=(r, n, 'star'),
                              method='BFGS', jac=True, options={'disp':False})
                 self.rvs_star[r][n] = soln['x']
-            print self.rvs_star[r]
-            print "lnlike: {0}".format(self.lnlike(r))
             new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -418,9 +419,7 @@ class star(object):
 
                 
             print "Improving stellar template spectra..."
-            print "lnlike: {0}".format(self.lnlike(r))
             self.model_ys_star[r] = self.improve_model(r, 'star')
-            print "lnlike: {0}".format(self.lnlike(r))
             new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -439,13 +438,9 @@ class star(object):
             previous_lnlike = new_lnlike 
                 
             print "Fitting telluric RVs..."
-            print self.rvs_t[r]
-            print "lnlike: {0}".format(self.lnlike(r))
             for n in range(self.N):
                 self.rvs_t[r][n] = minimize(self.opposite_dlnlike_drv, self.rvs_t[r][n], args=(r, n, 't'),
                              method='BFGS', jac=True, options={'disp':False})['x']
-            print self.rvs_t[r]
-            print "lnlike: {0}".format(self.lnlike(r))
             new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -455,9 +450,7 @@ class star(object):
             previous_lnlike = new_lnlike 
                 
             print "Improving telluric template spectra..."
-            print "lnlike: {0}".format(self.lnlike(r))
             self.model_ys_t[r] = self.improve_model(r, 't')
-            print "lnlike: {0}".format(self.lnlike(r))
             new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
                 print "likelihood got worse this iteration."
@@ -552,65 +545,93 @@ class star(object):
             self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
             self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
             
+    def pack_rv_pars(self, time_rvs, order_rvs, order_sigmas):
+        rv_pars = np.append(time_rvs, order_rvs)
+        rv_pars = np.append(rv_pars, order_sigmas)
+        return rv_pars
+    
     def unpack_rv_pars(self, rv_pars):
-        self.order_rvs = np.copy(rv_pars[:self.R])
-        self.time_rvs = np.copy(rv_pars[self.R:self.R + self.N])
-        self.order_vars = np.exp(rv_pars[self.R + self.N:])
-                
-    def lnlike_rvs(self, rv_pars):
-        self.unpack_rv_pars(rv_pars)
-        rv_predictions = np.tile(self.order_rvs[:,None], (1,self.N)) + np.tile(self.time_rvs, (self.R,1))
-        resids = self.rvs_star - rv_predictions
-        all_vars = 1./self.ivars_star**2 + np.tile(self.order_vars[:,None], (1,self.N))
-        lnlike = -0.5 * np.sum(resids**2 / all_vars + np.log(2. * np.pi * all_vars))
-        dlnlike_drv_pars = np.zeros_like(rv_pars)
-        dlnlike_drv_pars[:self.R] = np.sum(resids / all_vars, axis=1)
-        dlnlike_drv_pars[self.R:self.R + self.N] = np.sum(resids / all_vars, axis=0)
-        dlnlike_drv_pars[self.R + self.N:] = np.sum((0.5 * resids**2 / all_vars**2 - 0.5 / all_vars), axis=1)
-        return lnlike, dlnlike_drv_pars
-                
-    def opposite_lnlike_rvs(self, rv_pars):
-        lnlike, dlnlike_drv_pars = self.lnlike_rvs(rv_pars)
-        return -1. * lnlike, -1. * dlnlike_drv_pars
+        self.time_rvs = np.copy(rv_pars[:self.N])
+        self.order_rvs = np.copy(rv_pars[self.N:self.R + self.N])
+        self.order_sigmas = np.copy(rv_pars[self.R + self.N:])
+        return self.time_rvs, self.order_rvs, self.order_sigmas
         
-    def combine_rvs(self):
-        # first guesses:
+    def lnlike_sigmas(self, sigmas, return_rvs=False):
+        assert len(sigmas) == self.R
+        M = self.get_design_matrix()
+        Rs, Ns = self.get_index_lists()
+        ivars = 1. / ((1. / self.ivars_star) + sigmas[Rs]**2) # not zero-safe
+        ivars = ivars.flatten()
+        MTM = np.dot(M.T, ivars[:, None] * M)
+        ys = self.rvs_star.flatten()
+        MTy = np.dot(M.T, ivars * ys)
+        xs = np.linalg.solve(MTM, MTy)
+        resids = ys - np.dot(M, xs)
+        lnlike = -0.5 * np.sum(resids * ivars * resids - np.log(2. * np.pi * ivars))
+        if return_rvs:
+            return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix()
+        return lnlike
+        
+    def opposite_lnlike_sigmas(self, pars):
+        return -1. * self.lnlike_sigmas(pars)    
+
+    def get_index_lists(self):
+        return np.mgrid[:self.R, :self.N]
+
+    def get_design_matrix(self):
+        if self.M is None:
+            Rs, Ns = self.get_index_lists()
+            ndata = self.R * self.N
+            self.M = np.zeros((ndata, self.N + self.R)) # note design choices
+            self.M[range(ndata), Ns.flatten()] = 1.
+            self.M[range(ndata), self.N + Rs.flatten()] = 1.
+            return self.M
+        else:
+            return self.M
+        
+    def optimize_sigmas(self):
+        # initial guess
         x0_order_rvs = np.median(self.rvs_star, axis=1)
         x0_time_rvs = np.median(self.rvs_star - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
-        x0_rvs = np.append(x0_order_rvs, x0_time_rvs)
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
-        x0_rv_pars = np.append(x0_rvs, np.log(np.var(self.rvs_star - rv_predictions, axis=1)))
-        self.unpack_rv_pars(x0_rv_pars)
-        if self.R < 2:
-            return
-        # optimize:
-        soln_rv_pars = minimize(self.opposite_lnlike_rvs, x0_rv_pars,
-                             method='BFGS', jac=True, options={'disp':True})['x']
-        self.unpack_rv_pars(soln_rv_pars) # this is extraneous but just to be clear...
+        x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
+        # optimize
+        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS', options={'disp':True})['x'] # HACK
+        # save results
+        lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
+        rv_pars = np.append(rvs_N, rvs_R)
+        rv_pars = np.append(rv_pars, soln_sigmas)
+        rv_pars = self.pack_rv_pars(rvs_N, rvs_R, soln_sigmas)
+        rvs_N, rvs_R, soln_sigmas = self.unpack_rv_pars(rv_pars) # this is really setting the parameters in self
+        
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip54287'
+    starid = 'hip545287'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
-    if True: # optimize
-        #a.optimize_order(1, niter=20) # just to test
+    if False: # optimize
         a.optimize(niter=20, plot=False)
         a.save_results('../results/'+starid+'_results.hdf5')
         
     a.load_results('../results/'+starid+'_results.hdf5')
     
-    if True: # make model plots
+    if False: # make model plots
         for r in range(a.R):
             a.plot_models(r, 0)
         
-    N_epochs = 35
+    N_epochs = 25
     a.rvs_star = np.asarray(a.rvs_star)[:,:N_epochs] # just in case
     a.ivars_star = np.asarray(a.ivars_star)[:,:N_epochs]
     a.bervs = a.bervs[:N_epochs]
     a.N = N_epochs
-    a.combine_rvs()
+    
+    a.optimize_sigmas()
     print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
+    print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.drs_rvs - a.bervs))
+    print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs + a.drs_rvs))
+    
+    
     
     order_stds = np.std(a.rvs_star + np.tile(a.bervs, (a.R,1)), axis=1)
     
@@ -622,57 +643,91 @@ if __name__ == "__main__":
     plt.savefig('../results/plots/order_stds.png')
     plt.close(fig)
     
-    
-    cmap = matplotlib.cm.get_cmap(name='jet')
-    colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
-    colors_by_order = [cmap(1.*i/a.R) for i in range(a.R)]
-    
     fig = plt.figure()
     ax = plt.subplot(111)
-    ax.loglog([2.,1.e3],[2.,1.e3], c='red')
-    ax.loglog(order_stds, np.sqrt(a.order_vars), marker='o', ls=' ')
-    ax.set_ylabel(r'best-fit $\sigma_{order}$ (m s$^{-1}$)')
-    ax.set_xlabel(r'empirical std per order (m s$^{-1}$)')    
-    plt.savefig('../results/plots/order_stds_against_bestfit.png')
-    plt.close(fig)
-    
-    orders_in_order = np.argsort(order_stds) # order inds from lowest to highest emp. variance
-    order_counts = np.arange(1,72)
-    time_rvs = np.zeros((len(order_counts), a.N))
-    rv_stds = np.zeros(len(order_counts))
-    for i,j in enumerate(order_counts):
-        print "fitting orders", orders_in_order[:j]
-        b = copy.deepcopy(a)
-        b.R = j
-        b.rvs_star = b.rvs_star[orders_in_order[:j]] # take only the j best orders
-        b.ivars_star = b.ivars_star[orders_in_order[:j]]
-        b.combine_rvs()
-        time_rvs[i,:] = b.time_rvs + b.bervs
-        rv_stds[i] = np.std(b.time_rvs + b.bervs)
-        print "RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs))
-        
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.axhline(np.std(a.drs_rvs[:a.N] - a.bervs), color='k', alpha=0.5)
-    ax.scatter(order_counts, rv_stds, marker='o')
-    ax.set_xlabel('Number of orders used')
-    ax.set_ylabel('stdev of time-series RVs')
-    plt.savefig('../results/plots/stdev_by_orders_used.png')
+    ax.errorbar(np.arange(a.R), a.order_rvs, a.order_sigmas, fmt='o')
+    ax.set_xlabel('Order #')
+    ax.set_ylabel(r'RV (m s$^{-1}$)')
+    plt.savefig('../results/plots/order_rvs.png')
     plt.close(fig)
     
     fig = plt.figure()
     ax = plt.subplot(111)
-    for i in range(len(order_counts)):
-        ax.plot(np.arange(a.N), time_rvs[i], color=colors_by_order[i], alpha=0.5)
+    ax.plot(np.arange(a.N), a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', label='wobble RVs')
+    ax.plot(np.arange(a.N), -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', label='HARPS DRS RVs')
+    ax.legend()
     ax.set_xlabel('Epoch #')
-    ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
-    plt.savefig('../results/plots/rvs_by_orders_used.png')
+    ax.set_ylabel(r'RV (m s$^{-1}$)')
+    plt.savefig('../results/plots/time_rvs.png')
     plt.close(fig)
     
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
+    resids = a.rvs_star - rv_predictions
+    all_vars = 1./a.ivars_star**2 + np.tile((a.order_sigmas[:,None])**2, (1,a.N))
+    chis = resids / np.median(np.sqrt(all_vars))
+    pos = resids >= 0.
+    neg = resids < 0.
+    sizes = np.abs(chis) * 4.
+    ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[pos], np.tile(np.arange(a.N), (a.R,1))[pos], marker='o', c='k', s=sizes[pos])
+    ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[neg], np.tile(np.arange(a.N), (a.R,1))[neg], marker='o', c='r', s=sizes[neg])
+    ax.set_xlabel('Order #')
+    ax.set_ylabel('Epoch #')
+    plt.savefig('../results/plots/outlier_check.png')
+    plt.close(fig)
     
+    if False:
+        # tests on separating RVs by time and by order
+        cmap = matplotlib.cm.get_cmap(name='jet')
+        colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
+        colors_by_order = [cmap(1.*i/a.R) for i in range(a.R)]
+    
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.loglog([2.,1.e3],[2.,1.e3], c='red')
+        ax.loglog(order_stds, a.order_sigmas, marker='o', ls=' ')
+        ax.set_ylabel(r'best-fit $\sigma_{order}$ (m s$^{-1}$)')
+        ax.set_xlabel(r'empirical std per order (m s$^{-1}$)')    
+        plt.savefig('../results/plots/order_stds_against_bestfit.png')
+        plt.close(fig)
+    
+        orders_in_order = np.argsort(order_stds) # order inds from lowest to highest emp. variance
+        order_counts = np.arange(1,72)
+        time_rvs = np.zeros((len(order_counts), a.N))
+        rv_stds = np.zeros(len(order_counts))
+        for i,j in enumerate(order_counts):
+            print "fitting orders", orders_in_order[:j]
+            b = copy.deepcopy(a)
+            b.R = j
+            b.rvs_star = b.rvs_star[orders_in_order[:j]] # take only the j best orders
+            b.ivars_star = b.ivars_star[orders_in_order[:j]]
+            b.combine_rvs()
+            time_rvs[i,:] = b.time_rvs + b.bervs
+            rv_stds[i] = np.std(b.time_rvs + b.bervs)
+            print "RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs))
+        
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.axhline(np.std(a.drs_rvs[:a.N] - a.bervs), color='k', alpha=0.5)
+        ax.scatter(order_counts, rv_stds, marker='o')
+        ax.set_xlabel('Number of orders used')
+        ax.set_ylabel('stdev of time-series RVs')
+        plt.savefig('../results/plots/stdev_by_orders_used.png')
+        plt.close(fig)
+    
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        for i in range(len(order_counts)):
+            ax.plot(np.arange(a.N), time_rvs[i], color=colors_by_order[i], alpha=0.5)
+        ax.set_xlabel('Epoch #')
+        ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
+        plt.savefig('../results/plots/rvs_by_orders_used.png')
+        plt.close(fig)
     
         
     if False:
+        # tests on time-series RVs
         fig = plt.figure()
         ax = plt.subplot(111) 
         for n in range(a.N): 
