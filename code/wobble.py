@@ -559,17 +559,22 @@ class star(object):
     def lnlike_sigmas(self, sigmas, return_rvs=False):
         assert len(sigmas) == self.R
         M = self.get_design_matrix()
+        something = np.zeros_like(M[0,:])
+        something[self.N:] = 1. / self.R # last datum will be mean of order velocities is zero
+        M = np.append(M, something[None, :], axis=0) # last datum
         Rs, Ns = self.get_index_lists()
         ivars = 1. / ((1. / self.ivars_star) + sigmas[Rs]**2) # not zero-safe
         ivars = ivars.flatten()
+        ivars = np.append(ivars, 1.) # last datum: MAGIC
         MTM = np.dot(M.T, ivars[:, None] * M)
         ys = self.rvs_star.flatten()
+        ys = np.append(ys, 0.) # last datum
         MTy = np.dot(M.T, ivars * ys)
         xs = np.linalg.solve(MTM, MTy)
         resids = ys - np.dot(M, xs)
         lnlike = -0.5 * np.sum(resids * ivars * resids - np.log(2. * np.pi * ivars))
         if return_rvs:
-            return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix()
+            return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix(), and last datum removal
         return lnlike
         
     def opposite_lnlike_sigmas(self, pars):
@@ -596,18 +601,17 @@ class star(object):
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
         x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
         # optimize
+        print "optimizing..."
         soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS', options={'disp':True})['x'] # HACK
         # save results
         lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
-        rv_pars = np.append(rvs_N, rvs_R)
-        rv_pars = np.append(rv_pars, soln_sigmas)
-        rv_pars = self.pack_rv_pars(rvs_N, rvs_R, soln_sigmas)
-        rvs_N, rvs_R, soln_sigmas = self.unpack_rv_pars(rv_pars) # this is really setting the parameters in self
-        
+        self.order_rvs = rvs_R
+        self.time_rvs = rvs_N
+        self.order_sigmas = soln_sigmas
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip545287'
+    starid = 'hip30037'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if False: # optimize
