@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.gridspec as gridspec
 
 from scipy.optimize import fmin_cg, minimize
 import h5py
@@ -556,9 +557,9 @@ class star(object):
         self.order_sigmas = np.copy(rv_pars[self.R + self.N:])
         return self.time_rvs, self.order_rvs, self.order_sigmas
         
-    def lnlike_sigmas(self, sigmas, return_rvs=False):
+    def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
         assert len(sigmas) == self.R
-        M = self.get_design_matrix()
+        M = self.get_design_matrix(restart = restart)
         something = np.zeros_like(M[0,:])
         something[self.N:] = 1. / self.R # last datum will be mean of order velocities is zero
         M = np.append(M, something[None, :], axis=0) # last datum
@@ -577,14 +578,14 @@ class star(object):
             return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix(), and last datum removal
         return lnlike
         
-    def opposite_lnlike_sigmas(self, pars):
-        return -1. * self.lnlike_sigmas(pars)    
+    def opposite_lnlike_sigmas(self, pars, restart = False):
+        return -1. * self.lnlike_sigmas(pars, restart = restart)    
 
     def get_index_lists(self):
         return np.mgrid[:self.R, :self.N]
 
-    def get_design_matrix(self):
-        if self.M is None:
+    def get_design_matrix(self, restart = False):
+        if (self.M is None) or restart:
             Rs, Ns = self.get_index_lists()
             ndata = self.R * self.N
             self.M = np.zeros((ndata, self.N + self.R)) # note design choices
@@ -594,7 +595,7 @@ class star(object):
         else:
             return self.M
         
-    def optimize_sigmas(self):
+    def optimize_sigmas(self, restart = False):
         # initial guess
         x0_order_rvs = np.median(self.rvs_star, axis=1)
         x0_time_rvs = np.median(self.rvs_star - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
@@ -602,7 +603,7 @@ class star(object):
         x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
         # optimize
         print "optimizing..."
-        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS', options={'disp':True})['x'] # HACK
+        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
         # save results
         lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
         self.order_rvs = rvs_R
@@ -611,7 +612,7 @@ class star(object):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip30037'
+    starid = 'hip54287'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if False: # optimize
@@ -656,12 +657,19 @@ if __name__ == "__main__":
     plt.close(fig)
     
     fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.plot(np.arange(a.N), a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', label='wobble RVs')
-    ax.plot(np.arange(a.N), -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', label='HARPS DRS RVs')
-    ax.legend()
-    ax.set_xlabel('Epoch #')
-    ax.set_ylabel(r'RV (m s$^{-1}$)')
+    gs = gridspec.GridSpec(2,1,height_ratios=[4,1],hspace=0.1)
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1], sharex=ax1)
+    ax2.ticklabel_format(useOffset=False)
+    plt.setp(ax1.get_xticklabels(), visible=False)    
+    ax1.plot(a.dates[:a.N] - 2450000., a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', alpha=0.8, label='wobble')
+    ax1.plot(a.dates[:a.N] - 2450000., -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
+    ax1.legend(loc='upper left',prop={'size':24})
+    ax1.set_ylabel(r'RV (m s$^{-1}$)')
+    diff = a.time_rvs + a.drs_rvs - np.mean(a.drs_rvs + a.time_rvs)
+    ax2.plot(a.dates[:a.N] - 2450000., diff, 'o', color='k', alpha=0.8)
+    ax2.set_ylabel('Diff')
+    ax2.set_xlabel('J.D. - 2450000')
     plt.savefig('../results/plots/time_rvs.png')
     plt.close(fig)
     
@@ -681,7 +689,7 @@ if __name__ == "__main__":
     plt.savefig('../results/plots/outlier_check.png')
     plt.close(fig)
     
-    if False:
+    if True:
         # tests on separating RVs by time and by order
         cmap = matplotlib.cm.get_cmap(name='jet')
         colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
@@ -697,7 +705,7 @@ if __name__ == "__main__":
         plt.close(fig)
     
         orders_in_order = np.argsort(order_stds) # order inds from lowest to highest emp. variance
-        order_counts = np.arange(1,72)
+        order_counts = np.arange(2,72)
         time_rvs = np.zeros((len(order_counts), a.N))
         rv_stds = np.zeros(len(order_counts))
         for i,j in enumerate(order_counts):
@@ -706,7 +714,7 @@ if __name__ == "__main__":
             b.R = j
             b.rvs_star = b.rvs_star[orders_in_order[:j]] # take only the j best orders
             b.ivars_star = b.ivars_star[orders_in_order[:j]]
-            b.combine_rvs()
+            b.optimize_sigmas(restart=True)
             time_rvs[i,:] = b.time_rvs + b.bervs
             rv_stds[i] = np.std(b.time_rvs + b.bervs)
             print "RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs))
