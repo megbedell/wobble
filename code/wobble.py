@@ -7,6 +7,10 @@ from scipy.optimize import fmin_cg, minimize
 import h5py
 from utils import fit_continuum
 import copy
+from twobody.wrap import cy_rv_from_elements
+from twobody import KeplerOrbit
+from astropy.time import Time
+import astropy.units as u
 
 c = 2.99792458e8   # m/s
 
@@ -602,17 +606,42 @@ class star(object):
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
         x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
         # optimize
-        print "optimizing..."
+        print "optimize_sigmas: optimizing..."
         soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
         # save results
         lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
         self.order_rvs = rvs_R
         self.time_rvs = rvs_N
         self.order_sigmas = soln_sigmas
+        
+def pack_keplerian_pars(P, K, e, omega, M0, offset):
+    return [P, K, e, omega, M0, offset]
+    
+def unpack_keplerian_pars(pars):
+    P, K, e, omega, M0, offset = pars
+    return P, K, e, omega, M0, offset
+
+def opposite_lnlike_keplerian(pars, times, rvs, sigs):
+    P, K, e, omega, M0, offset = unpack_keplerian_pars(pars)
+    t0 = np.min(times)
+    ys = cy_rv_from_elements(times, P, K, e, omega, M0, t0, 1e-10, 128)
+    if np.any(np.isnan(ys)):
+        return np.inf
+    ys += offset
+    lnlike = -0.5 * np.sum((rvs - ys)**2 / sigs**2)
+    return -1.0 * lnlike
+
+def fit_keplerian(pars0, times, rvs, sigs):
+    bounds = [(None, None) for par in pars0]
+    bounds[2] = (0.0, 1.0)
+    pars = minimize(opposite_lnlike_keplerian, pars0, args=(times.astype('<f8'), rvs, sigs), method='L-BFGS-B',
+             bounds=bounds, options={'disp':True})['x']
+    return pars
+    
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip54287'
+    starid = 'hip30037'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
     
     if False: # optimize
@@ -636,60 +665,73 @@ if __name__ == "__main__":
     print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.drs_rvs - a.bervs))
     print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs + a.drs_rvs))
     
+    sigs = np.ones_like(a.time_rvs) # HACK
+    P, K, e, omega, M0, offset = 31.6, 4243.8, 0.3, 226. * np.pi / 180., 63. * np.pi / 180., 0.0 # days, m/s, dimensionless, radians, JD
+    t0 = np.min(a.dates)
+    pars0 = pack_keplerian_pars(P, K, e, omega, M0, offset)
+    soln = fit_keplerian(pars0, a.dates, a.time_rvs, sigs)
+    P, K, e, omega, M0, offset = unpack_keplerian_pars(soln)
     
+    orbit = KeplerOrbit(P=P*u.day, e=e, omega=omega*u.rad, 
+                        M0=M0*u.rad, Omega=0*u.deg, i=90*u.deg,
+                        t0=t0_time)
+    plt.plot(t_grid.jd % P, K*orbit.unscaled_radial_velocity(t_grid) + offset)
+    plt.errorbar(a.dates % P, rvs, sigs, marker='o', linestyle='none')
+    plt.show()
     
-    order_stds = np.std(a.rvs_star + np.tile(a.bervs, (a.R,1)), axis=1)
+    if False:
+        order_stds = np.std(a.rvs_star + np.tile(a.bervs, (a.R,1)), axis=1)
     
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.semilogy(np.arange(a.R), order_stds, marker='o', ls=' ')
-    ax.set_ylabel(r'empirical std per order (m s$^{-1}$)')
-    ax.set_xlabel('Order #')    
-    plt.savefig('../results/plots/order_stds.png')
-    plt.close(fig)
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.semilogy(np.arange(a.R), order_stds, marker='o', ls=' ')
+        ax.set_ylabel(r'empirical std per order (m s$^{-1}$)')
+        ax.set_xlabel('Order #')    
+        plt.savefig('../results/plots/order_stds.png')
+        plt.close(fig)
     
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.errorbar(np.arange(a.R), a.order_rvs, a.order_sigmas, fmt='o')
-    ax.set_xlabel('Order #')
-    ax.set_ylabel(r'RV (m s$^{-1}$)')
-    plt.savefig('../results/plots/order_rvs.png')
-    plt.close(fig)
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.errorbar(np.arange(a.R), a.order_rvs, a.order_sigmas, fmt='o')
+        ax.set_xlabel('Order #')
+        ax.set_ylabel(r'RV (m s$^{-1}$)')
+        plt.savefig('../results/plots/order_rvs.png')
+        plt.close(fig)
     
-    fig = plt.figure()
-    gs = gridspec.GridSpec(2,1,height_ratios=[4,1],hspace=0.1)
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1], sharex=ax1)
-    ax2.ticklabel_format(useOffset=False)
-    plt.setp(ax1.get_xticklabels(), visible=False)    
-    ax1.plot(a.dates[:a.N] - 2450000., a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', alpha=0.8, label='wobble')
-    ax1.plot(a.dates[:a.N] - 2450000., -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
-    ax1.legend(loc='upper left',prop={'size':24})
-    ax1.set_ylabel(r'RV (m s$^{-1}$)')
-    diff = a.time_rvs + a.drs_rvs - np.mean(a.drs_rvs + a.time_rvs)
-    ax2.plot(a.dates[:a.N] - 2450000., diff, 'o', color='k', alpha=0.8)
-    ax2.set_ylabel('Diff')
-    ax2.set_xlabel('J.D. - 2450000')
-    plt.savefig('../results/plots/time_rvs.png')
-    plt.close(fig)
+        fig = plt.figure()
+        gs = gridspec.GridSpec(2,1,height_ratios=[4,1],hspace=0.1)
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+        ax2.ticklabel_format(useOffset=False)
+        plt.setp(ax1.get_xticklabels(), visible=False)    
+        ax1.plot(a.dates[:a.N] - 2450000., a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', alpha=0.8, label='wobble')
+        ax1.plot(a.dates[:a.N] - 2450000., -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
+        ax1.legend(loc='upper left',prop={'size':24})
+        ax1.set_ylabel(r'RV (m s$^{-1}$)')
+        diff = a.time_rvs + a.drs_rvs - np.mean(a.drs_rvs + a.time_rvs)
+        ax2.plot(a.dates[:a.N] - 2450000., diff, 'o', color='k', alpha=0.8)
+        ax2.set_ylabel('Diff')
+        ax2.set_xlabel('J.D. - 2450000')
+        plt.savefig('../results/plots/time_rvs.png')
+        plt.close(fig)
     
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
-    resids = a.rvs_star - rv_predictions
-    all_vars = 1./a.ivars_star**2 + np.tile((a.order_sigmas[:,None])**2, (1,a.N))
-    chis = resids / np.median(np.sqrt(all_vars))
-    pos = resids >= 0.
-    neg = resids < 0.
-    sizes = np.abs(chis) * 4.
-    ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[pos], np.tile(np.arange(a.N), (a.R,1))[pos], marker='o', c='k', s=sizes[pos])
-    ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[neg], np.tile(np.arange(a.N), (a.R,1))[neg], marker='o', c='r', s=sizes[neg])
-    ax.set_xlabel('Order #')
-    ax.set_ylabel('Epoch #')
-    plt.savefig('../results/plots/outlier_check.png')
-    plt.close(fig)
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
+        resids = a.rvs_star - rv_predictions
+        all_vars = 1./a.ivars_star**2 + np.tile((a.order_sigmas[:,None])**2, (1,a.N))
+        chis = resids / np.median(np.sqrt(all_vars))
+        pos = resids >= 0.
+        neg = resids < 0.
+        sizes = np.abs(chis) * 4.
+        ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[pos], np.tile(np.arange(a.N), (a.R,1))[pos], marker='o', c='k', s=sizes[pos])
+        ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[neg], np.tile(np.arange(a.N), (a.R,1))[neg], marker='o', c='r', s=sizes[neg])
+        ax.set_xlabel('Order #')
+        ax.set_ylabel('Epoch #')
+        plt.savefig('../results/plots/outlier_check.png')
+        plt.close(fig)
     
-    if True:
+    if False:
         # tests on separating RVs by time and by order
         cmap = matplotlib.cm.get_cmap(name='jet')
         colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
