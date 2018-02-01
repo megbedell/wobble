@@ -57,11 +57,11 @@ class star(object):
                 self.data = [f['data'][i][:self.N,:] for i in orders]
                 self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
                 self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
-                self.drs_rvs = np.copy(f['true_rvs'])[:self.N]
-                self.dates = np.copy(f['date'])[:self.N]
-                self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
-                self.drifts = np.copy(f['drift'])[:self.N]
-                self.airms = np.copy(f['airm'])[:self.N]
+                self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N] * -1.
+                self.dates = np.copy(f['dates'])[:self.N]
+                self.bervs = np.copy(f['bervs'])[:self.N] * -1.
+                self.drifts = np.copy(f['drifts'])[:self.N]
+                self.airms = np.copy(f['airms'])[:self.N]
         else:
             self.wavelength_lower = wl_lower
             self.wavelength_upper = wl_upper
@@ -76,10 +76,10 @@ class star(object):
                 self.data_xs = [np.reshape(data_xs, (N_all, -1))[:self.N,:]]
                 ivars = np.copy(f['ivars'])[inds]
                 self.ivars = [np.reshape(ivars, (N_all, -1))[:self.N,:]]
-                self.drs_rvs = np.copy(f['true_rvs'])[:self.N]
-                self.bervs = np.copy(f['berv'])[:self.N] * -1.e3
-                self.drifts = np.copy(f['drift'])[:self.N]
-                self.airms = np.copy(f['airm'])[:self.N]
+                self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N]
+                self.bervs = np.copy(f['bervs'])[:self.N] * -1.e3
+                self.drifts = np.copy(f['drifts'])[:self.N]
+                self.airms = np.copy(f['airms'])[:self.N]
 
         # mask out bad data:
         for r in range(self.R):
@@ -92,7 +92,7 @@ class star(object):
         self.continuum_normalize() 
         
         # set up attributes for optimization:
-        self.rvs_star = [-np.copy(self.drs_rvs)+np.mean(self.drs_rvs) for r in range(self.R)]
+        self.rvs_star = [-np.copy(self.pipeline_rvs)+np.mean(self.pipeline_rvs) for r in range(self.R)]
         self.rvs_t = [np.zeros(self.N) for r in range(self.R)]
         self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
         self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
@@ -392,7 +392,7 @@ class star(object):
         """
         
         if (self.model_xs_star[r] == 0).all() or (restart == True):
-            self.rvs_star[r] = -np.copy(self.drs_rvs)
+            self.rvs_star[r] = -np.copy(self.pipeline_rvs)
             self.rvs_star[r] -= np.mean(self.rvs_star[r])
             self.rvs_t[r] = np.zeros(self.N)
             self.initialize_model(r, 'star')
@@ -475,7 +475,7 @@ class star(object):
                 
     
             print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.rvs_star[r] + self.bervs), np.std(self.rvs_t[r]))
-            print "                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.rvs_star[r] + self.drs_rvs))
+            print "                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.rvs_star[r] + self.pipeline_rvs))
             if plot:
                 plt.figure()
                 plt.plot(np.arange(self.N), self.rvs_star[r] + self.bervs - np.mean(self.rvs_star[r] + self.bervs), color='k')
@@ -641,43 +641,45 @@ def fit_keplerian(pars0, times, rvs, sigs):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip30037'
-    a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)    
+    starid = 'hip54287'
+    a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)  
     
     if False: # optimize
         a.optimize(niter=20, plot=False)
         a.save_results('../results/'+starid+'_results.hdf5')
         
-    a.load_results('../results/'+starid+'_results.hdf5')
-    
-    if False: # make model plots
-        for r in range(a.R):
-            a.plot_models(r, 0)
+    if False: # load up results        
+        a.load_results('../results/'+starid+'_results.hdf5')
         
-    N_epochs = 25
-    a.rvs_star = np.asarray(a.rvs_star)[:,:N_epochs] # just in case
-    a.ivars_star = np.asarray(a.ivars_star)[:,:N_epochs]
-    a.bervs = a.bervs[:N_epochs]
-    a.N = N_epochs
+        N_epochs = 25
+        a.rvs_star = np.asarray(a.rvs_star)[:,:N_epochs] # just in case
+        a.ivars_star = np.asarray(a.ivars_star)[:,:N_epochs]
+        a.bervs = a.bervs[:N_epochs]
+        a.N = N_epochs
     
-    a.optimize_sigmas()
-    print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
-    print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.drs_rvs - a.bervs))
-    print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs + a.drs_rvs))
+        a.optimize_sigmas()
+        print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
+        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs))
+        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs + a.pipeline_rvs))
     
-    sigs = np.ones_like(a.time_rvs) # HACK
-    P, K, e, omega, M0, offset = 31.6, 4243.8, 0.3, 226. * np.pi / 180., 63. * np.pi / 180., 0.0 # days, m/s, dimensionless, radians, JD
-    t0 = np.min(a.dates)
-    pars0 = pack_keplerian_pars(P, K, e, omega, M0, offset)
-    soln = fit_keplerian(pars0, a.dates, a.time_rvs, sigs)
-    P, K, e, omega, M0, offset = unpack_keplerian_pars(soln)
+        if False: # make model plots
+            for r in range(a.R):
+                a.plot_models(r, 0)
     
-    orbit = KeplerOrbit(P=P*u.day, e=e, omega=omega*u.rad, 
-                        M0=M0*u.rad, Omega=0*u.deg, i=90*u.deg,
-                        t0=t0_time)
-    plt.plot(t_grid.jd % P, K*orbit.unscaled_radial_velocity(t_grid) + offset)
-    plt.errorbar(a.dates % P, rvs, sigs, marker='o', linestyle='none')
-    plt.show()
+    if False: # Keplerian fit
+        sigs = np.ones_like(a.time_rvs) # HACK
+        P, K, e, omega, M0, offset = 31.6, 4243.8, 0.3, 226. * np.pi / 180., 63. * np.pi / 180., 0.0 # days, m/s, dimensionless, radians, JD
+        t0 = np.min(a.dates)
+        pars0 = pack_keplerian_pars(P, K, e, omega, M0, offset)
+        soln = fit_keplerian(pars0, a.dates, a.time_rvs, sigs)
+        P, K, e, omega, M0, offset = unpack_keplerian_pars(soln)
+    
+        orbit = KeplerOrbit(P=P*u.day, e=e, omega=omega*u.rad, 
+                            M0=M0*u.rad, Omega=0*u.deg, i=90*u.deg,
+                            t0=t0_time)
+        plt.plot(t_grid.jd % P, K*orbit.unscaled_radial_velocity(t_grid) + offset)
+        plt.errorbar(a.dates % P, rvs, sigs, marker='o', linestyle='none')
+        plt.show()
     
     if False:
         order_stds = np.std(a.rvs_star + np.tile(a.bervs, (a.R,1)), axis=1)
@@ -705,10 +707,10 @@ if __name__ == "__main__":
         ax2.ticklabel_format(useOffset=False)
         plt.setp(ax1.get_xticklabels(), visible=False)    
         ax1.plot(a.dates[:a.N] - 2450000., a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', alpha=0.8, label='wobble')
-        ax1.plot(a.dates[:a.N] - 2450000., -1. * a.drs_rvs + a.bervs - np.mean(-1. * a.drs_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
+        ax1.plot(a.dates[:a.N] - 2450000., -1. * a.pipeline_rvs + a.bervs - np.mean(-1. * a.pipeline_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
         ax1.legend(loc='upper left',prop={'size':24})
         ax1.set_ylabel(r'RV (m s$^{-1}$)')
-        diff = a.time_rvs + a.drs_rvs - np.mean(a.drs_rvs + a.time_rvs)
+        diff = a.time_rvs + a.pipeline_rvs - np.mean(a.pipeline_rvs + a.time_rvs)
         ax2.plot(a.dates[:a.N] - 2450000., diff, 'o', color='k', alpha=0.8)
         ax2.set_ylabel('Diff')
         ax2.set_xlabel('J.D. - 2450000')
@@ -763,7 +765,7 @@ if __name__ == "__main__":
         
         fig = plt.figure()
         ax = plt.subplot(111)
-        ax.axhline(np.std(a.drs_rvs[:a.N] - a.bervs), color='k', alpha=0.5)
+        ax.axhline(np.std(a.pipeline_rvs[:a.N] - a.bervs), color='k', alpha=0.5)
         ax.scatter(order_counts, rv_stds, marker='o')
         ax.set_xlabel('Number of orders used')
         ax.set_ylabel('stdev of time-series RVs')
