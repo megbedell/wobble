@@ -51,7 +51,7 @@ class star(object):
             self.orders = orders
             with h5py.File(filename) as f:
                 if N < 1:
-                    self.N = len(f['date']) # all epochs
+                    self.N = len(f['dates']) # all epochs
                 else:
                     self.N = N
                 self.data = [f['data'][i][:self.N,:] for i in orders]
@@ -642,7 +642,10 @@ def fit_keplerian(pars0, times, rvs, sigs):
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
     starid = 'hip54287'
-    a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)  
+    #a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)  
+    
+    a = star(starid+'_e2ds.hdf5', orders=[30]) 
+    a.optimize(niter=10, plot=False)
     
     if False: # optimize
         a.optimize(niter=20, plot=False)
