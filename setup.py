@@ -13,8 +13,7 @@ extensions = [
     Extension(
         "wobble.interp.interp_op",
         sources=[
-            "wobble/interp/interp_op.cc",
-            "wobble/interp/interp_grad_op.cc",
+            "wobble/interp/searchsorted_op.cc",
         ],
         language="c++",
         include_dirs=include_dirs,

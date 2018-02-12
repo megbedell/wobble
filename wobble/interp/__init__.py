@@ -2,26 +2,26 @@
 
 from __future__ import division, print_function
 
-__all__ = ["interp"]
+__all__ = ["interp", "searchsorted"]
 
 import tensorflow as tf
 from ..tf_utils import load_op_library
 
 mod = load_op_library(__file__, "interp_op")
-interp = mod.interp
+searchsorted = mod.searchsorted
 
 
-@tf.RegisterGradient("Interp")
-def _interp_grad(op, *grads):
-    t, x, y = op.inputs
-    bf = grads[0]
-    by = mod.interp_grad(t, x, bf)
-    return [None, None, by]
+def interp(t, x, y):
+    inds = searchsorted(x, t)
+    x_ext = tf.concat((x[:1], x, x[-1:]), axis=0)
+    y_ext = tf.concat((y[:1], y, y[-1:]), axis=0)
+    dx = x_ext[1:] - x_ext[:-1]
+    dy = y_ext[1:] - y_ext[:-1]
+    dx = tf.where(tf.greater(tf.abs(dx), tf.zeros_like(dx)),
+                  dx, tf.ones_like(dx))
 
+    x0 = tf.gather(x_ext, inds)
+    y0 = tf.gather(y_ext, inds)
+    slope = tf.gather(dy / dx, inds)
 
-@tf.RegisterGradient("InterpGrad")
-def _interp_grad_grad(op, *grads):
-    t, x, bf = op.inputs
-    bby = grads[0]
-    bbf = mod.interp(t, x, bby)
-    return [None, None, bbf]
+    return slope * (t - x0) + y0

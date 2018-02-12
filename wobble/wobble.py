@@ -529,6 +529,12 @@ class star(object):
             dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
             dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
             dset = f.create_dataset('model_ys_t', data=self.model_ys_t)
+            try:
+                dset = f.create_dataset('time_rvs', data=self.time_rvs)
+                dset = f.create_dataset('order_rvs', data=self.order_rvs)
+                dset = f.create_dataset('order_sigmas', data=self.order_sigmas)
+            except:
+                pass
             
     def load_results(self, filename):
         with h5py.File(filename) as f:
@@ -538,12 +544,14 @@ class star(object):
             self.model_ys_star = np.copy(f['model_ys_star']).tolist()
             self.model_xs_t = np.copy(f['model_xs_t']).tolist()
             self.model_ys_t = np.copy(f['model_ys_t']).tolist()
+            self.ivars_star = np.copy(f['ivars_star'])
+            self.ivars_t = np.copy(f['ivars_t'])
             try:
-                self.ivars_star = np.copy(f['ivars_star'])
-                self.ivars_t = np.copy(f['ivars_t'])
-            except:  # temporary fix for old results files
-                self.ivars_star = np.copy(f['ivars_rv_star'])
-                self.ivars_t = np.copy(f['ivars_rv_t'])                
+                self.time_rvs = np.copy(f['time_rvs'])
+                self.order_rvs = np.copy(f['order_rvs'])
+                self.order_sigmas = np.copy(f['order_sigmas'])
+            except:
+                print "warning: you may need to run optimize_sigmas()"               
         for r in range(self.R): # trim off that padding
             self.model_xs_star[r] = np.trim_zeros(np.asarray(self.model_xs_star[r]), 'b')
             self.model_ys_star[r] = np.trim_zeros(np.asarray(self.model_ys_star[r]), 'b')
@@ -641,29 +649,45 @@ def fit_keplerian(pars0, times, rvs, sigs):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = 'hip54287'
-    #a = star(starid+'_e2ds.hdf5', orders=np.arange(72), N=25)  
+    starid = '51peg'
+    a = star(starid+'_e2ds.hdf5', orders=np.arange(72))  
     
-    a = star(starid+'_e2ds.hdf5', orders=[30]) 
-    a.optimize(niter=10, plot=False)
+    #a = star(starid+'_e2ds.hdf5', orders=[30]) 
+    #a.optimize(niter=10, plot=False)
     
     if False: # optimize
         a.optimize(niter=20, plot=False)
+        a.optimize_sigmas()
         a.save_results('../results/'+starid+'_results.hdf5')
         
-    if False: # load up results        
+    if True: # load up results        
         a.load_results('../results/'+starid+'_results.hdf5')
-        
-        N_epochs = 25
-        a.rvs_star = np.asarray(a.rvs_star)[:,:N_epochs] # just in case
-        a.ivars_star = np.asarray(a.ivars_star)[:,:N_epochs]
-        a.bervs = a.bervs[:N_epochs]
-        a.N = N_epochs
     
-        a.optimize_sigmas()
         print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
         print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs))
-        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs + a.pipeline_rvs))
+        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs - a.pipeline_rvs + 2.*a.bervs))
+        
+        pipeline = a.pipeline_rvs - a.bervs - np.mean(a.pipeline_rvs - a.bervs)
+        us = a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs)
+        mjd = a.dates - 2450000
+        
+        fig = plt.figure(figsize=(12,8))
+        gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1]) 
+        ax1 = fig.add_subplot(gs[0])
+        ax1.scatter(mjd, pipeline, color='r', alpha=0.6, label='HARPS pipeline')
+        ax1.scatter(mjd, us, color='k', alpha=0.6, label='wobble')
+        ax1.legend(fontsize=16)
+        ax1.set_ylabel(r'RV (m s$^{-1}$)')
+        ax1.set_xticklabels('',visible=False)
+        ax2 = fig.add_subplot(gs[1])
+        ax2.scatter(mjd, us - pipeline, color='k', alpha=0.7)
+        ax2.set_xlabel('MJD', fontsize=18)
+        ax2.set_ylabel('(O - C)')
+        fig.subplots_adjust(hspace=.03) 
+        plt.savefig('../results/plots/51peg.png')
+        
+        # save results for systemic:
+        np.savetxt('51peg.vels', np.asarray([a.dates, us, np.ones_like(us)]).T)
     
         if False: # make model plots
             for r in range(a.R):
