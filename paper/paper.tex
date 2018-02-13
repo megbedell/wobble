@@ -1,0 +1,105 @@
+\documentclass[twocolumn]{aastex62}
+
+\usepackage{graphicx}				% Use pdf, png, jpg, or eps§ with pdflatex; use eps in DVI mode
+								% TeX will automatically convert eps --> pdf in pdflatex	
+\usepackage{xcolor}
+\usepackage[sort&compress]{natbib}
+\usepackage[hang,flushmargin]{footmisc}
+\usepackage[counterclockwise]{rotating}
+
+% units macros
+\newcommand{\unit}[1]{\mathrm{#1}}
+\newcommand{\km}{\unit{km}}
+\newcommand{\m}{\unit{m}}
+\newcommand{\s}{\unit{s}}
+\newcommand{\kms}{\km\,\s^{-1}}
+\newcommand{\ms}{\m\,\s^{-1}}
+\newcommand{\ang}{\text{\normalfont\AA}}
+
+% text macros
+\newcommand{\documentname}{\textsl{Article}}
+\newcommand{\sectionname}{Section}
+\newcommand{\todo}[1]{\textcolor{red}{#1}}  % gotta have \usepackage{xcolor} in main doc or this won't work
+\newcommand{\acronym}[1]{{\small{#1}}}
+\newcommand{\project}[1]{\textsl{#1}}
+\newcommand{\foreign}[1]{\textsl{#1}}
+\newcommand{\HARPS}{\project{\acronym{HARPS}}}
+\newcommand{\HIRES}{\project{\acronym{HIRES}}}
+\newcommand{\RV}{\acronym{RV}}
+\newcommand{\CRLB}{\acronym{CRLB}}
+\newcommand{\wobble}{\texttt{wobble}}
+
+
+\begin{document}
+\graphicspath{ {../figures/} }
+\DeclareGraphicsExtensions{.pdf,.eps,.png}
+
+\title{\textsc{\wobble: a data-driven method for precision radial velocities}}
+
+\author[0000-0001-9907-7742]{Megan Bedell}
+\affiliation{Center for Computational Astrophysics, Flatiron Institute, 162 Fifth Ave., New York, NY 10010, USA}
+
+\author[0000-0003-2866-9403]{David W. Hogg}
+\affiliation{Center for Computational Astrophysics, Flatiron Institute, 162 Fifth Ave., New York, NY 10010, USA}
+\affiliation{Center for Cosmology and Particle Physics, Department of Physics, New York University, 726 Broadway, New York, NY 10003, USA}
+\affiliation{Center for Data Science, New York University, 60 Fifth Ave, New York, NY 10011, USA}
+\affiliation{Max-Planck-Institut f\"ur Astronomie, K\"onigstuhl 17, D-69117 Heidelberg}
+
+\author{Daniel Foreman-Mack\'{e}y}
+\affiliation{Center for Computational Astrophysics, Flatiron Institute, 162 Fifth Ave., New York, NY 10010, USA}
+
+\author{Ben Montet}
+\affiliation{Department of Astronomy and Astrophysics, University of Chicago, 5640 S. Ellis Ave, Chicago, IL 60637, USA}
+
+\correspondingauthor{Megan Bedell}
+\email{E-mail: mbedell@flatironinstitute.org}
+
+\begin{abstract}
+blah blah blah [mention high-quality telluric spectrum]
+\end{abstract}
+
+\section{Introduction}
+
+Precise radial velocity (\RV) measurements are critical to the discovery and characterization of exoplanets. Many dedicated instruments exist. However, pipelines for deriving \RV s from spectra are generally not made public. In this work, we present an open-source code for \RV determination. We use a highly flexible linear model to extract \RV s in a fully data-driven way. %Our method simultaneously models the stellar and telluric spectra.
+
+Overview of previous work on \acronym{EPRV}.
+
+Say something about tellurics.
+
+In this work, we focus on the ultra-stabilized spectrograph case, i.e. no absorption cell. We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s) to enable the stellar spectrum to be disentangled from telluric features. In this sense our pipeline is intended as a post-processing step, not a real-time data reduction service. We revisit these assumptions in Section \ref{s:future}.
+
+\section{Method}
+
+Our fundamental assumptions.
+
+Linear model.
+
+We run on each echelle order independently and then combine them.
+
+\section{Code}
+
+Here's how we implemented the method. blah blah TensorFlow blah.
+
+Here's how you can download and play with the code yourself.\footnote{\url{https://www.github.com/megbedell/wobble}}
+
+\section{Tests}
+\subsection{51 Pegasi}
+
+Description of the data, cite ESO archive.
+
+Show our results: we find the planet with the correct mass and orbital parameters. Compare to \HARPS\ pipeline.
+
+Plots of RV vs. time, models of star and tellurics in a few segments of the spectrum.
+
+\subsection{TBD (a quiet M-dwarf?)}
+
+\section{Generalizing \wobble}
+\label{s:future}
+
+Revisit the assumptions: single star, no gas cell, known instrumental wavelength solution, no intrinsic spectral variability, no additive terms, many spectra exist. 
+In what situations are these assumptions violated, and how would we configure \wobble\ to deal with them?
+
+\bibliographystyle{apj}
+\bibliography{}%general,myref,inprep}
+
+\end{document}  
