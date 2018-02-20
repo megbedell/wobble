@@ -97,7 +97,7 @@ This is especially true for M dwarfs, which peak in emitted energy at $\approx 1
 Eliminating large chunks of these spectra will therefore significantly inhibit our ability to detect planets around M dwarfs through RVs.
 
 Secondly, not all telluric features are obvious. 
-The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred RV at the $\sim 1$ \ms\ level (Cunha14). 
+The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred RV at the $\sim 1$ \ms\ level \todo{(Cunha14)}. 
 As the locations of these features are not known \textit{a priori} and may not even be apparent in stacked spectra of many observations, these spectral regions cannot be thrown out. 
 Instead, alternative methods to account for these features must be developed and employed in order to mitigate the effect of the Earth's atmosphere on the measured stellar radial velocities.
 
@@ -153,38 +153,43 @@ $$ P(m|X) = \ln \mathcal{L}  -0.5 * \frac{\sum(v)^2}{(Nl)^2}.
 $$
 \todo{someone should define these variables}
 
-We use the BFGS algorithm %\citep{Broyden70} 
-as packaged in scipy.optimize %citep{Jones01}
-to maximize this likelihood function for our assumed stellar and telluric models iteratively, first calculating the best-fitting stellar \RV shifts holding the telluric shifts constant, then repeating for the telluric spectrum shift holding the stellar \RV s constant.
+We maximize this likelihood function for our assumed stellar and telluric models iteratively, first calculating the best-fitting stellar \RV shifts holding the telluric shifts constant, then repeating for the telluric spectrum shift holding the stellar \RV s constant.
 After each optimization, we use these velocities to improve our models for the telluric and stellar spectra, employing a gradient descent scheme to modify our templates $m'$ at each wavelength $\lambda'$ using the newly calculated velocities.
-We repeat this procedure, calculating velocities for each epoch and in turn using these velocities to infer an improved model spectrum, until the procedure converges.
+We repeat this procedure, calculating velocities for each epoch and in turn using these velocities to infer an improved model spectrum, until the procedure converges. 
+\todo{(say something about model linearity and why this iterative procedure is effective)}
 
-\subsection{Implementation}
+\subsection{Code}
 
-\todo{Here's how we implemented the method. blah blah TensorFlow blah.}
+The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, using the \TF\ package \todo{[terminology?]} in \code{python}. \TF\ is a \todo{[blah blah technical blah]}. While it has primarily been used in machine-learning contexts in the astronomical literature \todo{(cite)}, its auto-differentiation and fast linear algebra capabilities make it valuable for this use case as well.
+
+\todo{(more details of implementation)}
 
 In its current realization, \wobble\ is optimized for use with data products from the High Accuracy Radial Velocity Planet Searcher (\HARPS) spectrograph \todo{(Mayor+2003)}. Like most \EPRV\ instruments, \HARPS\ is an echelle spectrograph spanning many spectral orders. These orders can be considered as independent spectra \todo{for reasons}. \todo{We run on each echelle order independently and then combine them like so:}
 
-Our code is open-source and publicly available.\footnote{\url{https://www.github.com/megbedell/wobble}}
+
+Our code is open-source and publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
+
 
 
 \section{Results}
 \label{s:results}
 \subsection{51 Pegasi}
 
-Description of the data, cite \acronym{ESO} archive.
+\todo{Description of the data, cite \acronym{ESO} archive.}
 
-Show our results: we find the planet with the correct mass and orbital parameters. Compare to \HARPS\ pipeline.
+\todo{Show our results: we find the planet with the correct mass and orbital parameters. Compare to \HARPS\ pipeline.}
 
-Plots of RV vs. time, models of star and tellurics in a few segments of the spectrum.
+\todo{Plots of RV vs. time, models of star and tellurics in a few segments of the spectrum.}
 
 \subsection{TBD (a quiet M-dwarf?)}
+
+\todo{Results \& more plots.}
 
 \section{Generalizing \wobble}
 \label{s:future}
 
-Revisit the assumptions: single star, no gas cell, known instrumental wavelength solution, no intrinsic spectral variability, no additive terms, many spectra exist. 
-In what situations are these assumptions violated, and how would we configure \wobble\ to deal with them?
+\todo{Revisit the assumptions: single star, no gas cell, known instrumental wavelength solution, no intrinsic spectral variability, no additive terms, many spectra exist. 
+In what situations are these assumptions violated, and how would we configure \wobble\ to deal with them?}
 
 \bibliographystyle{apj}
 \bibliography{}%general,myref,inprep}
