@@ -649,14 +649,14 @@ def fit_keplerian(pars0, times, rvs, sigs):
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
-    starid = '51peg'
+    starid = 'hip54287'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72))  
     
     #a = star(starid+'_e2ds.hdf5', orders=[30]) 
     #a.optimize(niter=10, plot=False)
     
     if False: # optimize
-        a.optimize(niter=20, plot=False)
+        a.optimize(niter=10, plot=False)
         a.optimize_sigmas()
         a.save_results('../results/'+starid+'_results.hdf5')
         
@@ -684,10 +684,12 @@ if __name__ == "__main__":
         ax2.set_xlabel('MJD', fontsize=18)
         ax2.set_ylabel('(O - C)')
         fig.subplots_adjust(hspace=.03) 
-        plt.savefig('../results/plots/51peg.png')
+        plt.savefig('../results/plots/{0}.png'.format(starid))
         
         # save results for systemic:
-        np.savetxt('51peg.vels', np.asarray([a.dates, us, np.ones_like(us)]).T)
+        np.savetxt('{0}.vels'.format(starid), np.asarray([a.dates, us, np.ones_like(us)]).T)
+        np.savetxt('{0}_harps.vels'.format(starid), np.asarray([a.dates, pipeline, np.ones_like(us)]).T)
+        
     
         if False: # make model plots
             for r in range(a.R):
