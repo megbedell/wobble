@@ -667,9 +667,19 @@ if __name__ == "__main__":
         print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs))
         print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs - a.pipeline_rvs + 2.*a.bervs))
         
+        
         pipeline = a.pipeline_rvs - a.bervs - np.mean(a.pipeline_rvs - a.bervs)
         us = a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs)
         mjd = a.dates - 2450000
+        
+        pipeline = pipeline[:-5]
+        us = us[:-5]
+        mjd = mjd[:-5]
+        
+        print "RV std = {0:.2f} m/s".format(np.std(us))
+        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(pipeline))
+        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(us - pipeline))
+        
         
         fig = plt.figure(figsize=(12,8))
         gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1]) 
@@ -687,9 +697,15 @@ if __name__ == "__main__":
         plt.savefig('../results/plots/{0}.png'.format(starid))
         
         # save results for systemic:
-        np.savetxt('{0}.vels'.format(starid), np.asarray([a.dates, us, np.ones_like(us)]).T)
-        np.savetxt('{0}_harps.vels'.format(starid), np.asarray([a.dates, pipeline, np.ones_like(us)]).T)
-        
+        np.savetxt('{0}.vels'.format(starid), np.asarray([mjd + 2450000, us, np.ones_like(us)]).T)
+        np.savetxt('{0}_harps.vels'.format(starid), np.asarray([mjd + 2450000, pipeline, np.ones_like(us)]).T)
+    
+        # save results for plotting:
+        f = open('{0}.csv'.format(starid), 'w')
+        f.write("BJD, pipeline, us, BERV\n")
+        for n in range(len(us)):                              
+            f.write("{0:.8f}, {1:.8f}, {2:.8f}, {3:.8f}\n".format(a.dates[n], pipeline[n], us[n], a.bervs[n]))
+        f.close()
     
         if False: # make model plots
             for r in range(a.R):
