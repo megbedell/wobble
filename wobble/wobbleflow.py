@@ -8,12 +8,13 @@ import tensorflow as tf
 T = tf.float64
 
 from utils import fit_continuum
-#from wobble.interp import interp
+from interp import interp
+from wobble import star as star_obj
 
-c = 2.99792458e8   # m/s
+speed_of_light = 2.99792458e8   # m/s
 
 def doppler(v):
-    frac = (1. - v/c) / (1. + v/c)
+    frac = (1. - v/speed_of_light) / (1. + v/speed_of_light)
     return tf.sqrt(frac)
 
 class Data(object):
@@ -22,10 +23,9 @@ class Data(object):
     """
     def __init__(self, filename, filepath='../data/', 
                     N = 0, orders = [30], min_flux = 1.):
-        filename = filepath + filename
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
-        with h5py.File(filename) as f:
+        with h5py.File(filepath+filename) as f:
             if N < 1:
                 self.N = len(f['dates']) # all epochs
             else:
@@ -49,7 +49,8 @@ class Data(object):
         self.ys = np.log(self.ys) 
         self.continuum_normalize() 
         
-        self.M = None
+        # HACK -- for initializing models
+        self.wobble_obj = star_obj(filename, filepath=filepath, orders=orders)
         
     def continuum_normalize(self):
         for r in range(self.R):
@@ -57,9 +58,9 @@ class Data(object):
                 self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n])
                 
     def make_tensors(self):
-        self.ys_tensor = tf.constant(self.ys, dtype=T)
-        self.xs_tensor = tf.constant(self.xs, dtype=T)
-        self.ivars_tensor = tf.constant(self.ivars, dtype=T)
+        self.ys_tensor = [tf.constant(y, dtype=T) for y in self.ys]
+        self.xs_tensor = [tf.constant(x, dtype=T) for x in self.xs]
+        self.ivars_tensor = [tf.constant(i, dtype=T) for i in self.ivars]
         
                 
 class Model(object):
@@ -69,7 +70,6 @@ class Model(object):
     def __init__(self, data):
         self.components = []
         self.data = data
-        self.data.make_tensors() # get ready to optimize with TF
         
     def add_star(self, name):
         name = Star(self.data)
@@ -78,89 +78,121 @@ class Model(object):
     def add_telluric(self, name):
         name = Telluric(self.data)
         self.components.append(name)
-        
-    def optimize_order(self, r, niter=100, learning_rate_models=0.01, learning_rate_rvs=10.):
-        model_xs_tensor = [tf.constant(c.model_xs[r], dtype=T) for c in self.components]
-        model_ys_tensor = [tf.constant(c.model_ys[r], dtype=T) for c in self.components]
-        rvs_tensor = [tf.Variable(c.rvs_block[r], dtype=T) for c in self.components]
-        
-        # likelihood calculation:
-        nll = tf.constant(0.0, dtype=T)
-        for n in range(self.data.N):
-            model = tf.zeros_like(self.data.ys_tensor[r][n])
-            for i in range(len(self.components)):
-                shifted_xs = self.data.xs_tensor[r][n] + tf.log(doppler(rvs_tensor[i][n]))
-                model += interp(shifted_xs, model_xs_tensor[i], model_ys_tensor[i])
-            nll += 0.5*tf.reduce_sum((data.ys_tensor[r][n] - model)**2 * ivars_tensor[r][n])
-            
-        # set up optimizers:    
-        grad_models = tf.gradients(nll, model_ys_tensor)
-        grad_rvs = tf.gradients(nll, rvs_tensor)
-        opt_models = tf.train.AdagradOptimizer(learning_rate_models).minimize(nll, var_list=model_ys_tensor)
-        opt_rvs = tf.train.AdagradOptimizer(learning_rate_rvs).minimize(nll, var_list=rvs_tensor)
-        
-        # optimize:
-        with tf.Session() as session:
-            print "--- ORDER {0} ---".format(r)
-            session.run(tf.global_variables_initializer())    
-            nll_history = []
-            for i in range(niter):
-                session.run(opt_rvs)
-                nll_history.append(session.run(nll))
-                if (i % 10) == 0:
-                    print "iter {0}: optimizing RVs".format(i)
-                    print "nll: {0:.2e}".format(nll_history[-1])
-                session.run(opt_models)
-                nll_history.append(session.run(nll))
-                if (i % 10) == 0:
-                    print "iter {0}: optimizing models".format(i)
-                    print "nll: {0:.2e}".format(nll_history[-1])            
-
-            # save outputs:
-            model_soln = session.run(model_ys_tensor)
-            for m,c in zip(model_soln, self.components):
-                c.model_ys = np.copy(m)
-            rvs_soln = session.run(rvs_tensor)
-            for v,c in zip(rvs_soln, self.components):
-                c.rvs_block[r] = np.copy(v)
                 
-    def optimize_all(self, **kwargs):
-        for r in range(self.data.R):
-            self.optimize_order(r, **kwargs)
-            if (r % 5) == 0:
-                self.save_results('results_order{0}.hdf5'.format(r))
-                
-    def save_results(self, filename):
+    def save(self, filename):
         print "saving..."
         # TODO: write this code
-                
-                
-                
+                                
 class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
     def __init__(self, data):
         self.rvs_block = [np.zeros(data.N) for r in range(data.R)]
+        self.model_xs = [np.zeros(100) for r in range(data.R)]
+        self.model_ys = [np.zeros(100) for r in range(data.R)]
         
-    def initialize_model(self, data):
-        # TODO: write this code!!
-        self.model_xs = [np.zeros(100.) for r in range(data.R)]
-        self.model_ys = [np.zeros(100.) for r in range(data.R)]
-                
+        
+    def make_tensors(self):
+        """
+        Convert attributes to TensorFlow variables in preparation for optimizing.
+        """
+        self.rvs_block_tensor = [tf.Variable(v, dtype=T) for v in self.rvs_block]
+        self.model_ys_tensor = [tf.Variable(m, dtype=T) for m in self.model_ys]
+        self.model_xs_tensor = [tf.Variable(m, dtype=T) for m in self.model_xs]
+        
+    def shift_and_interp(self, r, xs, rv):
+        """
+        Apply a Doppler shift to the model at order r and output interpolated values at xs.
+        """
+        shifted_xs = xs + tf.log(doppler(rv))
+        return interp(shifted_xs, self.model_xs_tensor[r], self.model_ys_tensor[r])        
+        
+
 class Star(Component):
     """
     A star (or generic celestial object)
     """
     def __init__(self, data):
+        Component.__init__(self, data)
         self.rvs_block = [-np.copy(data.pipeline_rvs)+np.mean(data.pipeline_rvs) for r in range(data.R)]
         self.initialize_model(data)
     
+    def initialize_model(self, data):
+        # hackety fucking hack
+        for r in range(data.R):
+            data.wobble_obj.initialize_model(r, 'star')
+        self.model_xs = data.wobble_obj.model_xs_star
+        self.model_ys = data.wobble_obj.model_ys_star
+        
+
 class Telluric(Component):
     """
     Sky absorption
     """
     def __init__(self, data):
+        Component.__init__(self, data)
         self.initialize_model(data)
+        
+    def initialize_model(self, data):
+        # hackety fucking hack
+        for r in range(data.R):
+            data.wobble_obj.initialize_model(r, 't')
+        self.model_xs = data.wobble_obj.model_xs_t
+        self.model_ys = data.wobble_obj.model_ys_t
+        
 
+def optimize_order(model, data, r, niter=100, learning_rate_models=0.01, learning_rate_rvs=10.):
+    if not hasattr(data, 'xs_tensor'):
+        data.make_tensors()
+    for c in model.components:
+        if not hasattr(c, 'model_xs_tensor'):
+            c.make_tensors()
     
+    # likelihood calculation:
+    nll = tf.constant(0.0, dtype=T)
+    for n in range(data.N):
+        synth = tf.zeros_like(data.ys_tensor[r][n])
+        for c in model.components:
+            synth += c.shift_and_interp(r, data.xs_tensor[r][n], c.rvs_block_tensor[r][n])
+        nll += 0.5*tf.reduce_sum((data.ys_tensor[r][n] - synth)**2 * data.ivars_tensor[r][n])
+        
+    # set up optimizers:    
+    model_ys_tensor = [c.model_ys_tensor[r] for c in model.components]
+    rvs_tensor = [c.rvs_block_tensor[r] for c in model.components]
+    grad_models = tf.gradients(nll, model_ys_tensor)
+    grad_rvs = tf.gradients(nll, rvs_tensor)
+    opt_models = tf.train.AdagradOptimizer(learning_rate_models).minimize(nll, var_list=model_ys_tensor)
+    opt_rvs = tf.train.AdagradOptimizer(learning_rate_rvs).minimize(nll, var_list=rvs_tensor)
+    
+    # optimize:
+    with tf.Session() as session:
+        print "--- ORDER {0} ---".format(r)
+        session.run(tf.global_variables_initializer())    
+        nll_history = []
+        for i in range(niter):
+            session.run(opt_rvs)
+            nll_history.append(session.run(nll))
+            if (i % 10) == 0:
+                print "iter {0}: optimizing RVs".format(i)
+                print "nll: {0:.2e}".format(nll_history[-1])
+            session.run(opt_models)
+            nll_history.append(session.run(nll))
+            if (i % 10) == 0:
+                print "iter {0}: optimizing models".format(i)
+                print "nll: {0:.2e}".format(nll_history[-1])            
+
+        # save outputs:
+        model_soln = session.run(model_ys_tensor)
+        for m,c in zip(model_soln, model.components):
+            c.model_ys = np.copy(m)
+        rvs_soln = session.run(rvs_tensor)
+        for v,c in zip(rvs_soln, model.components):
+            c.rvs_block[r] = np.copy(v)
+
+def optimize_orders(model, data, **kwargs):
+    for r in range(data.R):
+        optimize_order(model, data, r, **kwargs)
+        if (r % 5) == 0:
+            model.save('results_order{0}.hdf5'.format(r))
+
