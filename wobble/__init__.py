@@ -1,2 +1,2 @@
-from wobble import *
-from wobbleflow import *
+from .wobble import *
+from .wobbleflow import *

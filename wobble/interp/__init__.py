@@ -4,8 +4,13 @@ from __future__ import division, print_function
 
 __all__ = ["interp", "searchsorted"]
 
+import os, sys
+parentPath = os.path.abspath('..')
+if parentPath not in sys.path:
+    sys.path.insert(0, parentPath)
+
 import tensorflow as tf
-from ..tf_utils import load_op_library
+from tf_utils import load_op_library
 
 mod = load_op_library(__file__, "interp_op")
 searchsorted = mod.searchsorted

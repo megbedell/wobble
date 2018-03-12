@@ -2,14 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import matplotlib.gridspec as gridspec
+from matplotlib import animation
 import h5py
 import copy
 import tensorflow as tf
 T = tf.float64
 
-from utils import fit_continuum
+from .utils import fit_continuum
 from interp import interp
-from wobble import star as star_obj
+from .wobble import star as star_obj
 
 speed_of_light = 2.99792458e8   # m/s
 
@@ -80,7 +81,7 @@ class Model(object):
         self.components.append(name)
                 
     def save(self, filename):
-        print "saving..."
+        print("saving...")
         # TODO: write this code
                                 
 class Component(object):
@@ -123,8 +124,7 @@ class Star(Component):
         for r in range(data.R):
             data.wobble_obj.initialize_model(r, 'star')
         self.model_xs = data.wobble_obj.model_xs_star
-        self.model_ys = data.wobble_obj.model_ys_star
-        
+        self.model_ys = data.wobble_obj.model_ys_star        
 
 class Telluric(Component):
     """
@@ -142,12 +142,17 @@ class Telluric(Component):
         self.model_ys = data.wobble_obj.model_ys_t
         
 
-def optimize_order(model, data, r, niter=100, learning_rate_models=0.01, learning_rate_rvs=10.):
+def optimize_order(model, data, r, niter=100, learning_rate_models=0.01, learning_rate_rvs=10., save_history=False):
     if not hasattr(data, 'xs_tensor'):
         data.make_tensors()
     for c in model.components:
         if not hasattr(c, 'model_xs_tensor'):
             c.make_tensors()
+            
+    if save_history:
+        nll_history = np.empty(niter*2)
+        rvs_history = np.empty((niter, data.N))
+        model_history = np.empty((niter, len(model.components[0].model_ys[r])))
     
     # likelihood calculation:
     nll = tf.constant(0.0, dtype=T)
@@ -163,25 +168,30 @@ def optimize_order(model, data, r, niter=100, learning_rate_models=0.01, learnin
     grad_models = tf.gradients(nll, model_ys_tensor)
     grad_rvs = tf.gradients(nll, rvs_tensor)
     opt_models = tf.train.AdagradOptimizer(learning_rate_models).minimize(nll, var_list=model_ys_tensor)
-    opt_rvs = tf.train.AdagradOptimizer(learning_rate_rvs).minimize(nll, var_list=rvs_tensor)
+    #opt_rvs = tf.train.AdagradOptimizer(learning_rate_rvs).minimize(nll, var_list=rvs_tensor)
     
     # optimize:
     with tf.Session() as session:
-        print "--- ORDER {0} ---".format(r)
+        print("--- ORDER {0} ---".format(r))
         session.run(tf.global_variables_initializer())    
-        nll_history = []
         for i in range(niter):
-            session.run(opt_rvs)
-            nll_history.append(session.run(nll))
-            if (i % 10) == 0:
-                print "iter {0}: optimizing RVs".format(i)
-                print "nll: {0:.2e}".format(nll_history[-1])
+            #session.run(opt_rvs)
+            if save_history: 
+                nll_history[2*i] = session.run(nll)
+                if (i % 10) == 0:
+                    print("iter {0}: optimizing RVs".format(i))
+                    print("nll: {0:.2e}".format(nll_history[2*i]))
             session.run(opt_models)
-            nll_history.append(session.run(nll))
-            if (i % 10) == 0:
-                print "iter {0}: optimizing models".format(i)
-                print "nll: {0:.2e}".format(nll_history[-1])            
-
+            if save_history: 
+                nll_history[2*i+1] = session.run(nll)
+                if (i % 10) == 0:
+                    print("iter {0}: optimizing models".format(i))
+                    print("nll: {0:.2e}".format(nll_history[2*i+1]))
+                model_soln = session.run(model_ys_tensor)
+                rvs_soln = session.run(rvs_tensor)
+                model_history[i,:] = np.copy(model_soln[0])
+                rvs_history[i,:] = np.copy(rvs_soln[0])
+                      
         # save outputs:
         model_soln = session.run(model_ys_tensor)
         for m,c in zip(model_soln, model.components):
@@ -189,10 +199,36 @@ def optimize_order(model, data, r, niter=100, learning_rate_models=0.01, learnin
         rvs_soln = session.run(rvs_tensor)
         for v,c in zip(rvs_soln, model.components):
             c.rvs_block[r] = np.copy(v)
+            
+        return nll_history, rvs_history, model_history # hack
 
 def optimize_orders(model, data, **kwargs):
     for r in range(data.R):
         optimize_order(model, data, r, **kwargs)
         if (r % 5) == 0:
             model.save('results_order{0}.hdf5'.format(r))
-
+            
+'''''
+def init_plot():
+    ln.set_data([], [])
+    return ln,
+            
+def update_plot(i, xs, ys):
+    ln.set_data(xs, ys[i,:])
+    return ln,
+            
+def plot_rv_history(data, nll_history, rvs_history, model_history, niter):
+    fig = plt.figure()
+    ax = plt.axes(xlim=(-20000, 20000), ylim=(-300, 300))
+    ln, = ax.plot([], [], 'ko')
+    xs = data.pipeline_rvs
+    ys = rvs_history + np.repeat([data.pipeline_rvs], 100, axis=0)
+    ani = animation.FuncAnimation(fig, update_plot, init_func=init_plot, frames=range(niter), 
+                fargs=(xs, ys), interval=1, blit=True)
+    plt.show()
+'''
+            
+def plot_rv_history(data, nll_history, rvs_history, model_history, niter):
+    for i in range(niter // 10):
+        plt.scatter(data.pipeline_rvs, rvs_history[i,:] + data.pipeline_rvs, color='blue', alpha=i/10.)
+    plt.show()
