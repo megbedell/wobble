@@ -7,10 +7,6 @@ from scipy.optimize import fmin_cg, minimize
 import h5py
 from utils import fit_continuum
 import copy
-from twobody.wrap import cy_rv_from_elements
-from twobody import KeplerOrbit
-from astropy.time import Time
-import astropy.units as u
 
 c = 2.99792458e8   # m/s
 
@@ -190,13 +186,14 @@ class star(object):
         """
         resids = 1. * self.data[r]            
         if role == 'star':
-            print 'initializing star model...'
+            print('initializing star model...')
             rvs = self.rvs_star[r]
             if self.model_ys_t[r] is not None:
                 for n in range(self.N):
                     pd, dpd_dv = self.calc_pds(r, n, self.rvs_t[r][n], 't')
                     resids[n] -= pd
         elif role == 't':
+            print('initializing tellurics model...')
             rvs = self.rvs_t[r]
             if self.model_ys_star[r] is not None:
                 for n in range(self.N):
@@ -400,82 +397,33 @@ class star(object):
         
         previous_lnlike = self.lnlike(r)
         for iteration in range(niter):
-            print "Fitting stellar RVs..."
+            print("Fitting stellar RVs...")
             for n in range(self.N):
                 soln = minimize(self.opposite_dlnlike_drv, self.rvs_star[r][n], args=(r, n, 'star'),
                              method='BFGS', jac=True, options={'disp':False})
                 self.rvs_star[r][n] = soln['x']
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                print "self.lnlike = ", self.lnlike(r)
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
-                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
-                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
-                assert False
-            previous_lnlike = new_lnlike 
-
-                
-            print "Improving stellar template spectra..."
+                            
+            print("Improving stellar template spectra...")
             self.model_ys_star[r] = self.improve_model(r, 'star')
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                print "self.lnlike = ", self.lnlike(r)
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
-                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
-                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
-                assert False
-            previous_lnlike = new_lnlike 
                 
-            print "Fitting telluric RVs..."
+            print("Fitting telluric RVs...")
             for n in range(self.N):
                 self.rvs_t[r][n] = minimize(self.opposite_dlnlike_drv, self.rvs_t[r][n], args=(r, n, 't'),
                              method='BFGS', jac=True, options={'disp':False})['x']
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                print self.lnlike(self.rvs_t[r], r, 't')
-                assert False
-            previous_lnlike = new_lnlike 
                 
-            print "Improving telluric template spectra..."
+            print("Improving telluric template spectra...")
             self.model_ys_t[r] = self.improve_model(r, 't')
             new_lnlike = self.lnlike(r)
             if new_lnlike < previous_lnlike:
-                print "likelihood got worse this iteration."
-                print new_lnlike, previous_lnlike, previous_lnlike - new_lnlike
-                print "self.lnlike = ", self.lnlike(r)
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print "self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t
-                print "self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t
-                print "self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star
+                print("likelihood got worse this iteration.")
+                print("self.lnlike = ", self.lnlike(r))
                 assert False
             previous_lnlike = new_lnlike 
                 
     
-            print "order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.rvs_star[r] + self.bervs), np.std(self.rvs_t[r]))
-            print "                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.rvs_star[r] + self.pipeline_rvs))
+            print("order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, 
+                    iteration, np.std(self.rvs_star[r] + self.bervs), np.std(self.rvs_t[r])))
+            print("                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.rvs_star[r] + self.pipeline_rvs)))
             if plot:
                 plt.figure()
                 plt.plot(np.arange(self.N), self.rvs_star[r] + self.bervs - np.mean(self.rvs_star[r] + self.bervs), color='k')
@@ -551,7 +499,7 @@ class star(object):
                 self.order_rvs = np.copy(f['order_rvs'])
                 self.order_sigmas = np.copy(f['order_sigmas'])
             except:
-                print "warning: you may need to run optimize_sigmas()"               
+                print("warning: you may need to run optimize_sigmas()")               
         for r in range(self.R): # trim off that padding
             self.model_xs_star[r] = np.trim_zeros(np.asarray(self.model_xs_star[r]), 'b')
             self.model_ys_star[r] = np.trim_zeros(np.asarray(self.model_ys_star[r]), 'b')
@@ -614,14 +562,14 @@ class star(object):
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
         x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
         # optimize
-        print "optimize_sigmas: optimizing..."
+        print("optimize_sigmas: optimizing...")
         soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
         # save results
         lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
         self.order_rvs = rvs_R
         self.time_rvs = rvs_N
         self.order_sigmas = soln_sigmas
-        
+'''''        
 def pack_keplerian_pars(P, K, e, omega, M0, offset):
     return [P, K, e, omega, M0, offset]
     
@@ -645,15 +593,13 @@ def fit_keplerian(pars0, times, rvs, sigs):
     pars = minimize(opposite_lnlike_keplerian, pars0, args=(times.astype('<f8'), rvs, sigs), method='L-BFGS-B',
              bounds=bounds, options={'disp':True})['x']
     return pars
+'''
     
             
 if __name__ == "__main__":
     # temporary code to diagnose issues in results
     starid = 'hip54287'
     a = star(starid+'_e2ds.hdf5', orders=np.arange(72))  
-    
-    #a = star(starid+'_e2ds.hdf5', orders=[30]) 
-    #a.optimize(niter=10, plot=False)
     
     if False: # optimize
         a.optimize(niter=10, plot=False)
@@ -663,9 +609,10 @@ if __name__ == "__main__":
     if True: # load up results        
         a.load_results('../results/'+starid+'_results.hdf5')
     
-        print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
-        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs))
-        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs - a.pipeline_rvs + 2.*a.bervs))
+        print("RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs)))
+        print("HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs)))
+        print("std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs - 
+                        a.pipeline_rvs + 2.*a.bervs)))
         
         
         pipeline = a.pipeline_rvs - a.bervs - np.mean(a.pipeline_rvs - a.bervs)
@@ -676,9 +623,9 @@ if __name__ == "__main__":
         us = us[:-5]
         mjd = mjd[:-5]
         
-        print "RV std = {0:.2f} m/s".format(np.std(us))
-        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(pipeline))
-        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(us - pipeline))
+        print("RV std = {0:.2f} m/s".format(np.std(us)))
+        print("HARPS pipeline std = {0:.2f} m/s".format(np.std(pipeline)))
+        print("std w.r.t HARPS values = {0:.2f} m/s".format(np.std(us - pipeline)))
         
         
         fig = plt.figure(figsize=(12,8))
@@ -798,7 +745,7 @@ if __name__ == "__main__":
         time_rvs = np.zeros((len(order_counts), a.N))
         rv_stds = np.zeros(len(order_counts))
         for i,j in enumerate(order_counts):
-            print "fitting orders", orders_in_order[:j]
+            print("fitting orders", orders_in_order[:j])
             b = copy.deepcopy(a)
             b.R = j
             b.rvs_star = b.rvs_star[orders_in_order[:j]] # take only the j best orders
@@ -806,7 +753,7 @@ if __name__ == "__main__":
             b.optimize_sigmas(restart=True)
             time_rvs[i,:] = b.time_rvs + b.bervs
             rv_stds[i] = np.std(b.time_rvs + b.bervs)
-            print "RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs))
+            print("RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs)))
         
         fig = plt.figure()
         ax = plt.subplot(111)
