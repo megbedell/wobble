@@ -14,7 +14,6 @@ extensions = [
         "wobble.interp.interp_op",
         sources=[
             "wobble/interp/searchsorted_op.cc",
-            "wobble/interp/searchsorted2d_op.cc",
         ],
         language="c++",
         include_dirs=include_dirs,

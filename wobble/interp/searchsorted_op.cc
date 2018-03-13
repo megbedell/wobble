@@ -13,7 +13,7 @@ REGISTER_OP("Searchsorted")
   .SetShapeFn([](shape_inference::InferenceContext* c) {
     shape_inference::ShapeHandle a, v;
     TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &a));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &v));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &v));
     c->set_output(0, c->input(1));
     return Status::OK();
   });
@@ -29,9 +29,9 @@ class SearchsortedOp : public OpKernel {
     const Tensor& v_tensor = context->input(1);
 
     // Dimensions
-    int64 m = 0;
-    const int64 N = a_tensor.NumElements();
-    const int64 M = v_tensor.NumElements();
+    const int64 N  = a_tensor.NumElements();
+    const int64 Nv = v_tensor.dim_size(0);
+    const int64 M  = v_tensor.dim_size(1);
 
     // Output
     Tensor* inds_tensor = NULL;
@@ -39,26 +39,32 @@ class SearchsortedOp : public OpKernel {
 
     // Access the data
     const auto a = a_tensor.template flat<T>();
-    const auto v = v_tensor.template flat<T>();
-    auto inds = inds_tensor->flat<int64>();
+    const auto v = v_tensor.template matrix<T>();
+    auto inds = inds_tensor->matrix<int64>();
 
-    while ((m < M) && (v(m) <= a(0))) {
-      inds(m) = 0;
-      m++;
-    }
-    if (m >= M) return;
+    for (int64 k = 0; k < Nv; ++k) {
+      int64 m = 0;
 
-    for (int64 n = 0; n < N-1; ++n) {
-      while (v(m) <= a(n+1)) {
-        inds(m) = n+1;
+      while ((m < M) && (v(k, m) <= a(0))) {
+        inds(k, m) = 0;
         m++;
-        if (m >= M) return;
       }
-    }
+      if (m >= M) continue;
 
-    while (m < M) {
-      inds(m) = N;
-      m++;
+      for (int64 n = 0; n < N-1; ++n) {
+        while (v(k, m) <= a(n+1)) {
+          inds(k, m) = n+1;
+          m++;
+          if (m >= M) break;
+        }
+        if (m >= M) break;
+      }
+      if (m >= M) continue;
+
+      while (m < M) {
+        inds(k, m) = N;
+        m++;
+      }
     }
   }
 };
