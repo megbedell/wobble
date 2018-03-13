@@ -9,7 +9,7 @@ import tensorflow as tf
 T = tf.float64
 
 from .utils import fit_continuum
-from interp import interp
+from .interp import interp
 from .wobble import star as star_obj
 
 speed_of_light = 2.99792458e8   # m/s
