@@ -97,12 +97,12 @@ class Model(object):
         return "Model consisting of the following components: {0}".format(self.component_names)
         
     def add_star(self, name):
-        c = Star(self.data)
+        c = Star(name, self.data)
         self.components.append(c)
         self.component_names.append(name)
         
     def add_telluric(self, name):
-        c = Telluric(self.data)
+        c = Telluric(name, self.data)
         self.components.append(c)
         self.component_names.append(name)
                 
@@ -114,8 +114,9 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, data):
-        self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T) for r in range(data.R)]
+    def __init__(self, name, data):
+        self.name = name
+        self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
         self.model_xs = [None for r in range(data.R)] # this will be replaced
         self.model_ys = [None for r in range(data.R)] # this will be replaced
         self.learning_rate_rvs = 10. # default
@@ -140,49 +141,54 @@ class Component(object):
         self.opt_model = tf.train.AdamOptimizer(learning_rate_model).minimize(nll, 
                             var_list=[self.model_ys[r]])
         self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
-                            var_list=[self.rvs_block[r]])       
+                            var_list=[self.rvs_block[r]])   
+        self.saver = tf.train.Saver([self.model_xs[r], self.model_ys[r], self.rvs_block[r]])  
         
 
 class Star(Component):
     """
     A star (or generic celestial object)
     """
-    def __init__(self, data):
-        Component.__init__(self, data)
+    def __init__(self, name, data):
+        Component.__init__(self, name, data)
         starting_rvs = -np.copy(data.pipeline_rvs)+np.mean(data.pipeline_rvs)
-        self.rvs_block = [tf.Variable(starting_rvs, dtype=T) for r in range(data.R)]
+        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
     
     def initialize_model(self, r, data):
         # hackety fucking hack
         for r in range(data.R):
             data.wobble_obj.initialize_model(r, 'star')
-        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_star[0], dtype=T)
-        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_star[0], dtype=T)
-        
+        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_star[0], dtype=T, name='model_xs_star')
+        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_star[0], dtype=T, name='model_ys_star')
 
                             
 class Telluric(Component):
     """
     Sky absorption
     """
-    def __init__(self, data):
-        Component.__init__(self, data)
+    def __init__(self, name, data):
+        Component.__init__(self, name, data)
         self.learning_rate_model = 0.1
         
     def initialize_model(self, r, data):
         # hackety fucking hack
         for r in range(data.R):
             data.wobble_obj.initialize_model(r, 't')
-        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_t[0], dtype=T)
-        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_t[0], dtype=T)
+        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_t[0], dtype=T, name='model_xs_t')
+        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_t[0], dtype=T, name='model_ys_t')
+        '''''
+        session = get_session()
+        session.run(tf.variables_initializer([self.model_xs[r], self.model_ys[r]]))
+        session.run(tf.variables_initializer(self.rvs_block))
+        '''
         
 
-def optimize_order(model, data, r, niter=100, save_history=False):
+def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
     for c in model.components:
         if c.model_ys[r] is None:
             c.initialize_model(r, data)
             
-    if save_history:
+    if output_history:
         nll_history = np.empty(niter*2)
         rvs_history = np.empty((niter, data.N))
         model_history = np.empty((niter, int(model.components[0].model_ys[r].shape[0])))
@@ -198,17 +204,19 @@ def optimize_order(model, data, r, niter=100, save_history=False):
         c.make_optimizers(r, nll)
 
     # optimize:
-    session = get_session()
     print("--- ORDER {0} ---".format(r))
+    session = get_session()
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for i in tqdm(range(niter)):
         for c in model.components:            
             session.run(c.opt_rvs)
-        if save_history: 
+        if output_history: 
             nll_history[2*i] = session.run(nll)
         for c in model.components:            
-            session.run(c.opt_rvs)
-        if save_history: 
+            session.run(c.opt_model)
+            if (i+1 % save_every == 0):
+                c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
+        if output_history: 
             nll_history[2*i+1] = session.run(nll)
             model_soln = session.run(model.components[0].model_ys[r])
             rvs_soln = session.run(model.components[0].rvs_block[r])
