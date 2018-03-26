@@ -197,6 +197,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
         nll_history = np.empty(niter*2)
         rvs_history = np.empty((niter, data.N))
         model_history = np.empty((niter, int(model.components[0].model_ys[r].shape[0])))
+        chis_history = np.empty((niter, data.N, 4096)) # HACK
     
     # likelihood calculation:
     synth = tf.zeros_like(data.ys[r])
@@ -206,6 +207,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     for c in model.components:
         synth += c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
         L1_norm += L1_reg_amp * tf.reduce_sum(tf.abs(c.model_ys[r]))
+    chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
     nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm
         
     # set up optimizers: 
@@ -221,18 +223,19 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
             session.run(c.opt_rvs)
         if output_history: 
             nll_history[2*i] = session.run(nll)
-        for c in model.components:            
-            session.run(c.opt_model)
-            if (i+1 % save_every == 0):
-                c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
+        #for c in model.components:            
+        #    session.run(c.opt_model)
+        #    if (i+1 % save_every == 0):
+        #        c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
         if output_history: 
             nll_history[2*i+1] = session.run(nll)
-            model_soln = session.run(model.components[0].model_ys[r])
-            rvs_soln = session.run(model.components[0].rvs_block[r])
-            model_history[i,:] = np.copy(model_soln)
-            rvs_history[i,:] = np.copy(rvs_soln)
+            model_state = session.run(model.components[0].model_ys[r])
+            rvs_state = session.run(model.components[0].rvs_block[r])
+            model_history[i,:] = np.copy(model_state)
+            rvs_history[i,:] = np.copy(rvs_state)
+            chis_history[i,:,:] = np.copy(session.run(chis))
         
-    return nll_history, rvs_history, model_history # hack
+    return nll_history, rvs_history, model_history, chis_history # hack
 
 def optimize_orders(model, data, **kwargs):
     for r in range(data.R):
@@ -263,6 +266,17 @@ def plot_model_history(model_xs, model_history, niter, nframes, ylims=[0.2, 1.1]
     xs = np.exp(model_xs)
     xlims = (np.min(xs), np.max(xs))
     ys = np.exp(model_history)
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
+    plt.close(fig)
+    return ani
+    
+def plot_chis_history(epoch, data_xs, chis_history, niter, nframes, ylims=None):
+    fig = plt.figure()
+    ax = plt.subplot()
+    xs = np.exp(data_xs[epoch,:])
+    xlims = (np.min(xs), np.max(xs))
+    ys = chis_history[:,epoch,:]
     ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
                 fargs=(xs, ys, xlims, ylims, ax, ax.plot))
     plt.close(fig)
