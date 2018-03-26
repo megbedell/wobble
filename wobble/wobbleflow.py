@@ -26,7 +26,7 @@ def get_session():
   """
   global _SESSION
   if tf.get_default_session() is None:
-    _SESSION = tf.Session()
+    _SESSION = tf.InteractiveSession()
   else:
     _SESSION = tf.get_default_session()
 
@@ -184,6 +184,11 @@ class Telluric(Component):
         
 
 def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
+    '''
+    NOTE: regularization is "dumb ass" - DWH
+    consider L1 vs. L2
+    set regularization amplitude in a sensible way
+    '''
     for c in model.components:
         if c.model_ys[r] is None:
             c.initialize_model(r, data)
@@ -195,9 +200,13 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     
     # likelihood calculation:
     synth = tf.zeros_like(data.ys[r])
+    L1_norm = 0.
+    #L1_reg_amp = 1.e6 # magic number
+    L1_reg_amp = 0.
     for c in model.components:
         synth += c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
-    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r])
+        L1_norm += L1_reg_amp * tf.reduce_sum(tf.abs(c.model_ys[r]))
+    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm
         
     # set up optimizers: 
     for c in model.components:
@@ -230,28 +239,31 @@ def optimize_orders(model, data, **kwargs):
         optimize_order(model, data, r, **kwargs)
         if (r % 5) == 0:
             model.save('results_order{0}.hdf5'.format(r))
+
+def animfunc(i, xs, ys, xlims, ylims, ax, driver):
+    ax.cla()
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
+    ax.set_title('Optimization step #{0}'.format(i))
+    s = driver(xs, ys[i,:])
             
-'''''
-def init_plot():
-    ln.set_data([], [])
-    return ln,
-            
-def update_plot(i, xs, ys):
-    ln.set_data(xs, ys[i,:])
-    return ln,
-            
-def plot_rv_history(data, nll_history, rvs_history, model_history, niter):
+def plot_rv_history(data, rvs_history, niter, nframes, xlims=[-20000, 20000], ylims=[-300, 300]):
     fig = plt.figure()
-    ax = plt.axes(xlim=(-20000, 20000), ylim=(-300, 300))
-    ln, = ax.plot([], [], 'ko')
+    ax = plt.subplot()
     xs = data.pipeline_rvs
-    ys = rvs_history + np.repeat([data.pipeline_rvs], 100, axis=0)
-    ani = animation.FuncAnimation(fig, update_plot, init_func=init_plot, frames=range(niter), 
-                fargs=(xs, ys), interval=1, blit=True)
-    plt.show()
-'''
-            
-def plot_rv_history(data, nll_history, rvs_history, model_history, niter):
-    for i in range(niter // 10):
-        plt.scatter(data.pipeline_rvs, rvs_history[i,:] + data.pipeline_rvs, color='blue', alpha=i/10.)
-    plt.show()
+    ys = rvs_history + np.repeat([data.pipeline_rvs], niter, axis=0)
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
+    plt.close(fig)
+    return ani  
+    
+def plot_model_history(model_xs, model_history, niter, nframes, ylims=[0.2, 1.1]):
+    fig = plt.figure()
+    ax = plt.subplot()
+    xs = np.exp(model_xs)
+    xlims = (np.min(xs), np.max(xs))
+    ys = np.exp(model_history)
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
+    plt.close(fig)
+    return ani
