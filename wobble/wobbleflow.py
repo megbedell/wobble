@@ -151,15 +151,14 @@ class Star(Component):
     """
     def __init__(self, name, data):
         Component.__init__(self, name, data)
-        starting_rvs = np.copy(data.pipeline_rvs) - np.mean(data.pipeline_rvs)
+        starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
         self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
     
     def initialize_model(self, r, data):
         # hackety fucking hack
-        for r in range(data.R):
-            data.wobble_obj.initialize_model(r, 'star')
-        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_star[0], dtype=T, name='model_xs_star')
-        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_star[0], dtype=T, name='model_ys_star')
+        data.wobble_obj.initialize_model(r, 'star')
+        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_star[r], dtype=T, name='model_xs_star')
+        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_star[r], dtype=T, name='model_ys_star')
 
                             
 class Telluric(Component):
@@ -172,15 +171,9 @@ class Telluric(Component):
         
     def initialize_model(self, r, data):
         # hackety fucking hack
-        for r in range(data.R):
-            data.wobble_obj.initialize_model(r, 't')
-        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_t[0], dtype=T, name='model_xs_t')
-        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_t[0], dtype=T, name='model_ys_t')
-        '''''
-        session = get_session()
-        session.run(tf.variables_initializer([self.model_xs[r], self.model_ys[r]]))
-        session.run(tf.variables_initializer(self.rvs_block))
-        '''
+        data.wobble_obj.initialize_model(r, 't')
+        self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_t[r], dtype=T, name='model_xs_t')
+        self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_t[r], dtype=T, name='model_ys_t')
         
 
 def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
@@ -219,30 +212,29 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     session = get_session()
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for i in tqdm(range(niter)):
-        session.run(model.components[0].opt_rvs)
-        #for c in model.components:            
-        #    session.run(c.opt_rvs)
         if output_history: 
             nll_history[2*i] = session.run(nll)
-        #for c in model.components:            
-        #    session.run(c.opt_model)
-        #    if (i+1 % save_every == 0):
-        #        c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
-        if output_history: 
-            nll_history[2*i+1] = session.run(nll)
             model_state = session.run(model.components[0].model_ys[r])
             rvs_state = session.run(model.components[0].rvs_block[r])
             model_history[i,:] = np.copy(model_state)
             rvs_history[i,:] = np.copy(rvs_state)
             chis_history[i,:,:] = np.copy(session.run(chis))
+        for c in model.components:            
+            session.run(c.opt_rvs)
+        if output_history: 
+            nll_history[2*i+1] = session.run(nll)
+        for c in model.components:            
+            session.run(c.opt_model)
+            if (i+1 % save_every == 0):
+                c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
         
     return nll_history, rvs_history, model_history, chis_history # hack
 
 def optimize_orders(model, data, **kwargs):
     for r in range(data.R):
         optimize_order(model, data, r, **kwargs)
-        if (r % 5) == 0:
-            model.save('results_order{0}.hdf5'.format(r))
+        #if (r % 5) == 0:
+        #    model.save('results_order{0}.hdf5'.format(r))
 
 def animfunc(i, xs, ys, xlims, ylims, ax, driver):
     ax.cla()
@@ -255,7 +247,7 @@ def plot_rv_history(data, rvs_history, niter, nframes, xlims=[-20000, 20000], yl
     fig = plt.figure()
     ax = plt.subplot()
     xs = data.pipeline_rvs
-    ys = rvs_history - np.repeat([data.pipeline_rvs], niter, axis=0)
+    ys = rvs_history - np.repeat([xs], niter, axis=0)
     ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
                 fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
     plt.close(fig)
@@ -282,3 +274,4 @@ def plot_chis_history(epoch, data_xs, chis_history, niter, nframes, ylims=None):
                 fargs=(xs, ys, xlims, ylims, ax, ax.plot))
     plt.close(fig)
     return ani
+        
