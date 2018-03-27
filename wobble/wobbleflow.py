@@ -151,7 +151,7 @@ class Star(Component):
     """
     def __init__(self, name, data):
         Component.__init__(self, name, data)
-        starting_rvs = -np.copy(data.pipeline_rvs)+np.mean(data.pipeline_rvs)
+        starting_rvs = np.copy(data.pipeline_rvs) - np.mean(data.pipeline_rvs)
         self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
     
     def initialize_model(self, r, data):
@@ -219,8 +219,9 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     session = get_session()
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for i in tqdm(range(niter)):
-        for c in model.components:            
-            session.run(c.opt_rvs)
+        session.run(model.components[0].opt_rvs)
+        #for c in model.components:            
+        #    session.run(c.opt_rvs)
         if output_history: 
             nll_history[2*i] = session.run(nll)
         #for c in model.components:            
@@ -254,7 +255,7 @@ def plot_rv_history(data, rvs_history, niter, nframes, xlims=[-20000, 20000], yl
     fig = plt.figure()
     ax = plt.subplot()
     xs = data.pipeline_rvs
-    ys = rvs_history + np.repeat([data.pipeline_rvs], niter, axis=0)
+    ys = rvs_history - np.repeat([data.pipeline_rvs], niter, axis=0)
     ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
                 fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
     plt.close(fig)
