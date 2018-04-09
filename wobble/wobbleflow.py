@@ -27,6 +27,7 @@ def get_session():
   global _SESSION
   if tf.get_default_session() is None:
     _SESSION = tf.InteractiveSession()
+    
   else:
     _SESSION = tf.get_default_session()
 
@@ -91,20 +92,30 @@ class Model(object):
     def __init__(self, data):
         self.components = []
         self.component_names = []
+        self.components_rvs_fixed = []
         self.data = data
         
     def __str__(self):
-        return "Model consisting of the following components: {0}".format(self.component_names)
+        rvs_fixed_names = []
+        for i in range(len(self.components)):
+            if self.components[i] in self.components_rvs_fixed:
+                rvs_fixed_names.append(self.component_names[i])
+        return "Model consisting of the following components: {0}\n(RVs fixed for {1})".format(self.component_names, 
+                rvs_fixed_names)
         
-    def add_star(self, name):
+    def add_star(self, name, rvs_fixed=False):
         c = Star(name, self.data)
         self.components.append(c)
         self.component_names.append(name)
+        if rvs_fixed:
+            self.components_rvs_fixed.append(c)
         
-    def add_telluric(self, name):
+    def add_telluric(self, name, rvs_fixed=False):
         c = Telluric(name, self.data)
         self.components.append(c)
         self.component_names.append(name)
+        if rvs_fixed:
+            self.components_rvs_fixed.append(c)
                 
     def save(self, filename):
         print("saving...")
@@ -152,7 +163,7 @@ class Star(Component):
     def __init__(self, name, data):
         Component.__init__(self, name, data)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
-        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
+        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]        
     
     def initialize_model(self, r, data):
         # hackety fucking hack
@@ -175,17 +186,18 @@ class Telluric(Component):
         self.model_xs[r] = tf.Variable(data.wobble_obj.model_xs_t[r], dtype=T, name='model_xs_t')
         self.model_ys[r] = tf.Variable(data.wobble_obj.model_ys_t[r], dtype=T, name='model_ys_t')
         
+        
 
 def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
     '''
     NOTE: regularization is "dumb ass" - DWH
     consider L1 vs. L2
     set regularization amplitude in a sensible way
-    '''
+    '''    
     for c in model.components:
         if c.model_ys[r] is None:
-            c.initialize_model(r, data)
-            
+            c.initialize_model(r, data)         
+                     
     if output_history:
         nll_history = np.empty(niter*2)
         rvs_history = np.empty((niter, data.N))
@@ -207,10 +219,13 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     for c in model.components:
         c.make_optimizers(r, nll)
 
+    session = get_session()
+    #new_vars = session.run(tf.report_uninitialized_variables())
+    #init_op = tf.variables_initializer(list(new_vars))
+    #session.run(init_op)
+    session.run(tf.global_variables_initializer())
     # optimize:
     print("--- ORDER {0} ---".format(r))
-    session = get_session()
-    session.run(tf.global_variables_initializer())    # should this be in get_session?
     for i in tqdm(range(niter)):
         if output_history: 
             nll_history[2*i] = session.run(nll)
@@ -219,20 +234,26 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
             model_history[i,:] = np.copy(model_state)
             rvs_history[i,:] = np.copy(rvs_state)
             chis_history[i,:,:] = np.copy(session.run(chis))
-        for c in model.components:            
-            session.run(c.opt_rvs)
+        for c in model.components:
+            if not c in model.components_rvs_fixed:            
+                session.run(c.opt_rvs)
         if output_history: 
             nll_history[2*i+1] = session.run(nll)
         for c in model.components:            
             session.run(c.opt_model)
-            if (i+1 % save_every == 0):
-                c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
+        if (i+1 % save_every == 0):
+            c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
         
-    return nll_history, rvs_history, model_history, chis_history # hack
+    if output_history:
+        return nll_history, rvs_history, model_history, chis_history # hack
+    else:
+        return
 
 def optimize_orders(model, data, **kwargs):
+    session = get_session()
+    session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
-        optimize_order(model, data, r, **kwargs)
+        optimize_order(session, model, data, r, **kwargs)
         #if (r % 5) == 0:
         #    model.save('results_order{0}.hdf5'.format(r))
 
@@ -243,22 +264,29 @@ def animfunc(i, xs, ys, xlims, ylims, ax, driver):
     ax.set_title('Optimization step #{0}'.format(i))
     s = driver(xs, ys[i,:])
             
-def plot_rv_history(data, rvs_history, niter, nframes, xlims=[-20000, 20000], ylims=[-300, 300]):
+def plot_rv_history(data, rvs_history, niter, nframes, ylims=None):
     fig = plt.figure()
     ax = plt.subplot()
-    xs = data.pipeline_rvs
-    ys = rvs_history - np.repeat([xs], niter, axis=0)
+    xs = data.dates
+    ys = rvs_history - np.repeat([data.pipeline_rvs], niter, axis=0)
+    x_pad = (np.max(xs) - np.min(xs)) * 0.1
+    xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
+    if ylims is None:
+        ylims = (np.min(ys)-10., np.max(ys)+10.)
     ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
                 fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
     plt.close(fig)
     return ani  
     
-def plot_model_history(model_xs, model_history, niter, nframes, ylims=[0.2, 1.1]):
+def plot_model_history(model_xs, model_history, niter, nframes, ylims=None):
     fig = plt.figure()
     ax = plt.subplot()
     xs = np.exp(model_xs)
     xlims = (np.min(xs), np.max(xs))
     ys = np.exp(model_history)
+    if ylims is None:
+        y_pad = (np.max(ys) - np.min(ys)) * 0.1
+        ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
     ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
                 fargs=(xs, ys, xlims, ylims, ax, ax.plot))
     plt.close(fig)
