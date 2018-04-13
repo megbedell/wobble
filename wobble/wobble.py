@@ -92,7 +92,6 @@ class Model(object):
         self.components = []
         self.component_names = []
         self.components_rvs_fixed = []
-        self.components_shapes_fixed = []
         self.data = data
         
     def __str__(self):
@@ -103,23 +102,19 @@ class Model(object):
         return "Model consisting of the following components: {0}\n(RVs fixed for {1})".format(self.component_names, 
                 rvs_fixed_names)
         
-    def add_star(self, name, rvs_fixed=False, shapes_fixed=True):
-        c = Star(name, self.data)
+    def add_star(self, name, rvs_fixed=False, variable_bases=0):
+        c = Star(name, self.data, variable_bases=variable_bases)
         self.components.append(c)
         self.component_names.append(name)
         if rvs_fixed:
             self.components_rvs_fixed.append(c)
-        if shapes_fixed:
-            self.components_shapes_fixed.append(c)
         
-    def add_telluric(self, name, rvs_fixed=True, shapes_fixed=False):
-        c = Telluric(name, self.data)
+    def add_telluric(self, name, rvs_fixed=True, variable_bases=0):
+        c = Telluric(name, self.data, variable_bases=variable_bases)
         self.components.append(c)
         self.component_names.append(name)
         if rvs_fixed:
             self.components_rvs_fixed.append(c)
-        if shapes_fixed:
-            self.components_shapes_fixed.append(c)
                 
     def load(self, filename):
         print("loading...")
@@ -133,13 +128,16 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, data):
+    def __init__(self, name, data, variable_bases=0):
         self.name = name
+        self.K = variable_bases # number of variable basis vectors
         self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
         self.template_xs = [None for r in range(data.R)] # this will be replaced
         self.template_ys = [None for r in range(data.R)] # this will be replaced
+        self.basis_components = [None for r in range(data.R)] # this will be replaced
+        #self.basis_weights = [tf.Variable(np.zeros(data.N, self.K), dtype=T, name='weights_order{0}'.format(r)) for r in range(data.R)]
         self.learning_rate_rvs = 10. # default
-        self.learning_rate_model = 0.01 # default
+        self.learning_rate_template = 0.01 # default
         
     def shift_and_interp(self, r, xs, rvs):
         """
@@ -169,19 +167,28 @@ class Component(object):
         template_xs, template_ys = bin_data(session.run(shifted_xs), session.run(resids), 
                                             session.run(template_xs)) # hack
         self.template_xs[r] = tf.Variable(template_xs, dtype=T, name='template_xs')
-        self.template_ys[r] = tf.Variable(template_ys, dtype=T, name='template_ys')     
+        self.template_ys[r] = tf.Variable(template_ys, dtype=T, name='template_ys') 
+        '''''
+        if self.K > 0:
+            # initialize basis components
+            Mp = len(template_xs)
+            basis_components = np.zeros((self.K, Mp)) # K_vectors x Mp_pixels
+            resids -= self.shift_and_interp(r, data.xs[r], self.rvs_block[r])
+            # PCA GOES HERE
+            self.basis_components[r] = tf.Variable(basis_components, dtype=T, name='basis_components') 
+        '''   
          
         
     def make_optimizers(self, r, nll, learning_rate_rvs=None, 
-            learning_rate_model=None):
+            learning_rate_template=None):
         # TODO: make each one an R-length list rather than overwriting each order?
         if learning_rate_rvs == None:
             learning_rate_rvs = self.learning_rate_rvs
-        if learning_rate_model == None:
-            learning_rate_model = self.learning_rate_model
+        if learning_rate_template == None:
+            learning_rate_template = self.learning_rate_template
         self.gradients_model = tf.gradients(nll, self.template_ys[r])
         self.gradients_rvs = tf.gradients(nll, self.rvs_block[r])
-        self.opt_model = tf.train.AdamOptimizer(learning_rate_model).minimize(nll, 
+        self.opt_template = tf.train.AdamOptimizer(learning_rate_template).minimize(nll, 
                             var_list=[self.template_ys[r]])
         self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
                             var_list=[self.rvs_block[r]])   
@@ -192,8 +199,8 @@ class Star(Component):
     """
     A star (or generic celestial object)
     """
-    def __init__(self, name, data):
-        Component.__init__(self, name, data)
+    def __init__(self, name, data, variable_bases=0):
+        Component.__init__(self, name, data, variable_bases=variable_bases)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
         self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]        
                             
@@ -201,9 +208,9 @@ class Telluric(Component):
     """
     Sky absorption
     """
-    def __init__(self, name, data):
-        Component.__init__(self, name, data)
-        self.learning_rate_model = 0.1   
+    def __init__(self, name, data, variable_bases=0):
+        Component.__init__(self, name, data, variable_bases=variable_bases)
+        self.learning_rate_template = 0.1   
         
 
 def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
@@ -219,7 +226,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     if output_history:
         nll_history = np.empty(niter*2)
         rvs_history = np.empty((niter, data.N))
-        model_history = np.empty((niter, int(model.components[0].template_ys[r].shape[0])))
+        template_history = np.empty((niter, int(model.components[0].template_ys[r].shape[0])))
         chis_history = np.empty((niter, data.N, 4096)) # HACK
         
     # likelihood calculation:
@@ -230,6 +237,10 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     for c in model.components:
         synth += c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
         L1_norm += L1_reg_amp * tf.reduce_sum(tf.abs(c.template_ys[r]))
+        '''''
+        if c.K > 0:
+            synth += tf.reduce_sum(c.basis_weights * )
+        '''
     chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
     nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm
         
@@ -245,9 +256,9 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     for i in tqdm(range(niter)):
         if output_history: 
             nll_history[2*i] = session.run(nll)
-            model_state = session.run(model.components[0].template_ys[r])
+            template_state = session.run(model.components[0].template_ys[r])
             rvs_state = session.run(model.components[0].rvs_block[r])
-            model_history[i,:] = np.copy(model_state)
+            template_history[i,:] = np.copy(template_state)
             rvs_history[i,:] = np.copy(rvs_state)
             chis_history[i,:,:] = np.copy(session.run(chis))
         for c in model.components:
@@ -256,12 +267,12 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
         if output_history: 
             nll_history[2*i+1] = session.run(nll)
         for c in model.components:            
-            session.run(c.opt_model)
+            session.run(c.opt_template)
         if (i+1 % save_every == 0):
             c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
         
     if output_history:
-        return nll_history, rvs_history, model_history, chis_history # hack
+        return nll_history, rvs_history, template_history, chis_history # hack
     else:
         return
 
@@ -294,12 +305,12 @@ def plot_rv_history(data, rvs_history, niter, nframes, ylims=None):
     plt.close(fig)
     return ani  
     
-def plot_model_history(template_xs, model_history, niter, nframes, ylims=None):
+def plot_template_history(template_xs, template_history, niter, nframes, ylims=None):
     fig = plt.figure()
     ax = plt.subplot()
     xs = np.exp(template_xs)
     xlims = (np.min(xs), np.max(xs))
-    ys = np.exp(model_history)
+    ys = np.exp(template_history)
     if ylims is None:
         y_pad = (np.max(ys) - np.min(ys)) * 0.1
         ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)

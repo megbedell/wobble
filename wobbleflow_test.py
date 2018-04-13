@@ -13,7 +13,7 @@ if __name__ == "__main__":
         model = wobble.Model(data)
         model.add_star(starname)
         model.add_telluric('tellurics', rvs_fixed=True)
-        nll_history, rvs_history, model_history, chis_history = wobble.optimize_order(model, data, 0, 
+        nll_history, rvs_history, template_history, chis_history = wobble.optimize_order(model, data, 0, 
                 niter=50, output_history=True)
                 
         assert False
@@ -39,7 +39,7 @@ if __name__ == "__main__":
             wobble.optimize_order(model, data, r, 
                         niter=niter, output_history=False)
         else: # plots out the wazoo
-            nll_history, rvs_history, model_history, chis_history = wobble.optimize_order(model, data, r, 
+            nll_history, rvs_history, template_history, chis_history = wobble.optimize_order(model, data, r, 
                     niter=niter, output_history=True) 
             plt.scatter(np.arange(len(nll_history)), nll_history)
             ax = plt.gca()
@@ -51,7 +51,7 @@ if __name__ == "__main__":
             print('RVs animation saved')
             session = wobble.get_session()
             template_xs = session.run(model.components[0].template_xs[r])
-            model_ani = wobble.plot_model_history(template_xs, model_history, niter, 50)
+            model_ani = wobble.plot_template_history(template_xs, template_history, niter, 50)
             model_ani.save(plot_dir+'model_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('model animation saved')
             data_xs = session.run(data.xs[r])
