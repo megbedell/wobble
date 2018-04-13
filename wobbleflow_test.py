@@ -5,10 +5,23 @@ import wobble
 from time import time
 
 if __name__ == "__main__":
-    starname = '51peg'
+    starname = 'hip54287'
+    
+    if False:
+        # quick single-order test
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[40])
+        model = wobble.Model(data)
+        model.add_star(starname)
+        model.add_telluric('tellurics', rvs_fixed=True)
+        nll_history, rvs_history, model_history, chis_history = wobble.optimize_order(model, data, 0, 
+                niter=50, output_history=True)
+                
+        assert False
+    
     
     start_time = time()
     data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=np.arange(72))
+    
     print("data loaded")
     print("time elapsed: {0:.2f} s".format(time() - start_time))
     
@@ -22,7 +35,7 @@ if __name__ == "__main__":
     plot_dir = 'results/plots/'
     for r in range(data.R):
         niter = 80
-        if True: # no plots
+        if False: # no plots
             wobble.optimize_order(model, data, r, 
                         niter=niter, output_history=False)
         else: # plots out the wazoo
@@ -37,8 +50,8 @@ if __name__ == "__main__":
             rvs_ani.save(plot_dir+'rvs_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('RVs animation saved')
             session = wobble.get_session()
-            model_xs = session.run(model.components[0].model_xs[r])
-            model_ani = wobble.plot_model_history(model_xs, model_history, niter, 50)
+            template_xs = session.run(model.components[0].template_xs[r])
+            model_ani = wobble.plot_model_history(template_xs, model_history, niter, 50)
             model_ani.save(plot_dir+'model_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('model animation saved')
             data_xs = session.run(data.xs[r])
@@ -51,10 +64,10 @@ if __name__ == "__main__":
         session = wobble.get_session()  
         data.wobble_obj.rvs_star[r] = session.run(model.components[0].rvs_block[r])          
         data.wobble_obj.rvs_t[r] = session.run(model.components[1].rvs_block[r])
-        data.wobble_obj.model_xs_star[r] = session.run(model.components[0].model_xs[r])
-        data.wobble_obj.model_ys_star[r] = session.run(model.components[0].model_ys[r])
-        data.wobble_obj.model_xs_t[r] = session.run(model.components[1].model_xs[r])
-        data.wobble_obj.model_ys_t[r] = session.run(model.components[1].model_ys[r])
+        data.wobble_obj.model_xs_star[r] = session.run(model.components[0].template_xs[r])
+        data.wobble_obj.model_ys_star[r] = session.run(model.components[0].template_ys[r])
+        data.wobble_obj.model_xs_t[r] = session.run(model.components[1].template_xs[r])
+        data.wobble_obj.model_ys_t[r] = session.run(model.components[1].template_ys[r])
         session.close()
         print("order {1} saved. time elapsed: {0:.2f} s".format(time() - start_time, r))
                 
@@ -62,6 +75,8 @@ if __name__ == "__main__":
     data.wobble_obj.rvs_star = np.asarray(data.wobble_obj.rvs_star)
     data.wobble_obj.rvs_t = np.asarray(data.wobble_obj.rvs_t)
     data.wobble_obj.ivars_star = np.ones_like(data.wobble_obj.rvs_star) # HACK
+    data.wobble_obj.ivars_t = np.ones_like(data.wobble_obj.rvs_t) # HACK
+    
     
     data.wobble_obj.optimize_sigmas()
     star_rvs = np.copy(data.wobble_obj.time_rvs)
@@ -72,5 +87,5 @@ if __name__ == "__main__":
         print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs - data.bervs)))
         print("wobble std = {0:.3f} m/s".format(np.std(star_rvs - data.bervs)))
     
-    data.wobble_obj.save_results(starname+'_wobbleflow_fixedt.hdf5')
+    data.wobble_obj.save_results(starname+'_wobbleflow_test.hdf5')
     print("total runtime:{0:.2f} minutes".format((time() - start_time)/60.0))

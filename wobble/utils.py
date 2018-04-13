@@ -2,7 +2,7 @@
 
 from __future__ import division, print_function
 
-__all__ = ["fit_continuum"]
+__all__ = ["fit_continuum", "bin_data"]
 
 import numpy as np
 
@@ -35,3 +35,27 @@ def fit_continuum(x, y, ivars, order=3, nsigma=3.0, maxniter=50):
             break
         m = m_new
     return mu
+
+def bin_data(xs, ys, xps):
+    """
+    Bin data onto a uniform grid using medians.
+    
+    Args:
+        `xs`: `[N, M]` array of xs
+        `ys`: `[N, M]` array of ys
+        `xps`: `M'` grid of x-primes for output template
+    
+    Returns:
+        `yps`: `M'` grid of y-primes
+    
+    """
+    all_ys, all_xs = np.ravel(ys), np.ravel(xs)
+    dx = xps[1] - xps[0] # ASSUMES UNIFORM GRID
+    yps = np.zeros_like(xps)
+    for i,t in enumerate(xps):
+        ind = (all_xs >= t-dx/2.) & (all_xs < t+dx/2.)
+        if np.sum(ind) > 0:
+            yps[i] = np.nanmedian(all_ys[ind])
+    ind_nan = np.isnan(yps)
+    yps.flat[ind_nan] = np.interp(xps[ind_nan], xps[~ind_nan], yps[~ind_nan])
+    return xps, yps

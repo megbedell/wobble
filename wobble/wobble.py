@@ -1,883 +1,321 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-import matplotlib.gridspec as gridspec
-
-from scipy.optimize import fmin_cg, minimize
+from matplotlib import animation
+from tqdm import tqdm
+import sys
 import h5py
-from .utils import fit_continuum
 import copy
-#from twobody.wrap import cy_rv_from_elements
-#from twobody import KeplerOrbit
-from astropy.time import Time
-import astropy.units as u
+import tensorflow as tf
+T = tf.float64
 
-c = 2.99792458e8   # m/s
+from .utils import fit_continuum, bin_data
+from .interp import interp
+from .old_wobble import Results
 
-class star(object):
+speed_of_light = 2.99792458e8   # m/s
+
+def get_session():
+  """Get the globally defined TensorFlow session.
+  If the session is not already defined, then the function will create
+  a global session.
+  Returns:
+    _SESSION: tf.Session.
+  (Code from edward package.)
+  """
+  global _SESSION
+  if tf.get_default_session() is None:
+    _SESSION = tf.InteractiveSession()
+    
+  else:
+    _SESSION = tf.get_default_session()
+
+  save_stderr = sys.stderr
+  return _SESSION
+
+def doppler(v):
+    frac = (1. - v/speed_of_light) / (1. + v/speed_of_light)
+    return tf.sqrt(frac)
+
+class Data(object):
     """
-    The main interface to the wobble package
-    
-    Example use case:
-    import wobble
-    a = wobble.star('hip30037.hdf5', e2ds = False)
-    a.optimize(niter=10)
-    
-    or:
-    import numpy as np
-    import wobble
-    a = wobble.star('hip54287_e2ds.hdf5', orders=np.arange(72), N=40)
-    a.optimize(niter=20)
-    a.save_results('../results/hip54287_results.hdf5')
-
-    Args: 
-        filename: The name of the file which contains your radial velocity data (for now, must be 
-            an HDF5 file containing particular information in HARPS format). 
-        filepath: The directory relative to your current working directory where your 
-            RV data are stored (default: ``../data/``)
-        wl_lower: The lowest wavelength, in angstroms in air, for the region of the spectrum you 
-            would like to analyze (default: ``5900``)
-        wl_upper: The highest wavelength, in angstroms in air, for the region of the spectrum you 
-            would like to analyze (default: ``5900``)
-        N: The number of epochs of RV data to analyze. Will select the first N epochs (default: ``16``).
-
+    The data object: contains the spectra and associated data.
     """
-    
-    def __init__(self, filename, filepath='../data/', wl_lower = 5900, wl_upper = 6000, 
-                    N = 0, e2ds = True, orders = [30], min_flux = 1.):
-        filename = filepath + filename
+    def __init__(self, filename, filepath='../data/', 
+                    N = 0, orders = [30], min_flux = 1.):
         self.R = len(orders) # number of orders to be analyzed
-        if e2ds:
-            self.orders = orders
-            with h5py.File(filename) as f:
-                if N < 1:
-                    self.N = len(f['dates']) # all epochs
-                else:
-                    self.N = N
-                self.data = [f['data'][i][:self.N,:] for i in orders]
-                self.data_xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
-                self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
-                self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N] * -1.
-                self.dates = np.copy(f['dates'])[:self.N]
-                self.bervs = np.copy(f['bervs'])[:self.N] * -1.
-                self.drifts = np.copy(f['drifts'])[:self.N]
-                self.airms = np.copy(f['airms'])[:self.N]
-        else:
-            self.wavelength_lower = wl_lower
-            self.wavelength_upper = wl_upper
-            self.R = 1
-        
-            with h5py.File(filename) as f:
-                inds = (f['xs'][:] > self.wavelength_lower) & (f['xs'][:] < self.wavelength_upper)
-                N_all, M_all = np.shape(inds)
-                data = np.copy(f['data'])[inds]
-                self.data = [np.reshape(data, (N_all, -1))[:self.N,:]]
-                data_xs = np.log(np.copy(f['xs'][inds]))
-                self.data_xs = [np.reshape(data_xs, (N_all, -1))[:self.N,:]]
-                ivars = np.copy(f['ivars'])[inds]
-                self.ivars = [np.reshape(ivars, (N_all, -1))[:self.N,:]]
-                self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N]
-                self.bervs = np.copy(f['bervs'])[:self.N] * -1.e3
-                self.drifts = np.copy(f['drifts'])[:self.N]
-                self.airms = np.copy(f['airms'])[:self.N]
+        self.orders = orders
+        self.origin_file = filepath+filename
+        with h5py.File(self.origin_file) as f:
+            if N < 1:
+                self.N = len(f['dates']) # all epochs
+            else:
+                self.N = N
+            self.ys = [f['data'][i][:self.N,:] for i in orders]
+            self.xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
+            self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
+            self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N] * -1.
+            self.dates = np.copy(f['dates'])[:self.N]
+            self.bervs = np.copy(f['bervs'])[:self.N] * -1.
+            self.drifts = np.copy(f['drifts'])[:self.N]
+            self.airms = np.copy(f['airms'])[:self.N]
 
         # mask out bad data:
         for r in range(self.R):
-            bad = np.where(self.data[r] < min_flux)
-            self.data[r][bad] = min_flux
+            bad = np.where(self.ys[r] < min_flux)
+            self.ys[r][bad] = min_flux
             self.ivars[r][bad] = 0.
             
         # log and normalize:
-        self.data = np.log(self.data) 
+        self.ys = np.log(self.ys) 
         self.continuum_normalize() 
         
-        # set up attributes for optimization:
-        self.rvs_star = [-np.copy(self.pipeline_rvs)+np.mean(self.pipeline_rvs) for r in range(self.R)]
-        self.rvs_t = [np.zeros(self.N) for r in range(self.R)]
-        self.model_ys_star = [np.zeros(self.N) for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
-        self.model_xs_star = [np.zeros(self.N) for r in range(self.R)]
-        self.model_ys_t = [np.zeros(self.N) for r in range(self.R)]
-        self.model_xs_t = [np.zeros(self.N) for r in range(self.R)]
-        #self.soln_star = [np.zeros(self.N) for r in range(self.R)]
-        #self.soln_t = [np.zeros(self.N) for r in range(self.R)]
-        self.ivars_star = [np.zeros(self.N) for r in range(self.R)]
-        self.ivars_t = [np.zeros(self.N) for r in range(self.R)]
+        # HACK -- for storing results
+        self.wobble_obj = Results(R=self.R, N=self.N)
         
-        self.M = None
+        # convert to tensors
+        self.ys = [tf.constant(y, dtype=T) for y in self.ys]
+        self.xs = [tf.constant(x, dtype=T) for x in self.xs]
+        self.ivars = [tf.constant(i, dtype=T) for i in self.ivars]
         
     def continuum_normalize(self):
         for r in range(self.R):
             for n in range(self.N):
-                self.data[r][n] -= fit_continuum(self.data_xs[r][n], self.data[r][n], self.ivars[r][n])
+                self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n])
+        
                 
-       
-    def doppler(self, v):
-        frac = (1. - v/c) / (1. + v/c)
-        return np.sqrt(frac)
-
-    def gamma(self, v):
-        return 1. / np.sqrt(1. - (v/c) ** 2)
-
-    def dlndopplerdv(self, v):
-        dv = self.doppler(v)
-        return -1. * self.gamma(v) / (2. * c) * (1. / dv  + dv)
-
-    def state(self, v, xs, xps):
-        '''
-        outputs: (M, Mp, v, xs, ms, mps, ehs, bees, seas)
-        M and Mp are the lengths of data and model wavelength grids
-        v is the RV
-        xs is the wavelength values of the data grid
-        ms is the data index m at which there is an interpolated model value
-        mps is the model index m' from which we interpolate to ms
-        ehs, bees, and seas go into the coefficients of interpolation
-        '''
-        # every input must be 1-d
-        M = len(xs)
-        Mp = len(xps)
-        xps_shifted = xps + np.log(self.doppler(v))
-        ms = np.arange(M)
-        mps = np.searchsorted(xps_shifted, xs, side='left')
-        good = (mps > 0) * (mps < Mp)
-        ms = ms[good]
-        mps = mps[good]
-        ehs = xps_shifted[mps] - xs[ms]
-        bees = xs[ms] - xps_shifted[mps - 1]
-        seas = ehs + bees
-        return (M, Mp, v, xs, ms, mps, ehs, bees, seas)
-
-    def Pdot(self, state, vec):
-        # takes state and model flux vector, returns (shifted) model interpolated into data space
-        # unpack state
-        M, Mp, v, xs, ms, mps, ehs, bees, seas = state
-        # do shit
-        result = np.zeros(M)
-        result[ms] = vec[mps - 1] * ehs / seas + vec[mps] * bees / seas
-        return result
-
-    def dotP(self, state, vec):
-        # takes state and data flux vector, returns data interpolated into (shifted) model space
-        # unpack state
-        M, Mp, v, xs, ms, mps, ehs, bees, seas = state
-        # do shit
-        result = np.zeros(Mp)
-        result[mps - 1] += vec[ms] * ehs / seas
-        result[mps] += vec[ms] * bees / seas
-        return result
-
-    def dotdPdv(self, state, vec):
-        # unpack state
-        M, Mp, v, xs, ms, mps, ehs, bees, seas = state
-        # do shit
-        result = np.zeros(Mp)
-        foos = vec[ms] / seas * self.dlndopplerdv(v) # * xs[ms] ??
-        result[mps - 1] += foos
-        result[mps] -= foos
-        return result
-
-    def dPdotdv(self, state, vec):
-        # unpack state
-        M, Mp, v, xs, ms, mps, ehs, bees, seas = state
-        # do shit
-        result = np.zeros(M)
-        result[ms] = (vec[mps - 1] - vec[mps]) * self.dlndopplerdv(v) / seas
-        return result
-
-    def initialize_model(self, r, role, dx = np.log(6000.01) - np.log(6000.)):
+class Model(object):
+    """
+    Keeps track of all components in the model.
+    """
+    def __init__(self, data):
+        self.components = []
+        self.component_names = []
+        self.components_rvs_fixed = []
+        self.components_shapes_fixed = []
+        self.data = data
+        
+    def __str__(self):
+        rvs_fixed_names = []
+        for i in range(len(self.components)):
+            if self.components[i] in self.components_rvs_fixed:
+                rvs_fixed_names.append(self.component_names[i])
+        return "Model consisting of the following components: {0}\n(RVs fixed for {1})".format(self.component_names, 
+                rvs_fixed_names)
+        
+    def add_star(self, name, rvs_fixed=False, shapes_fixed=True):
+        c = Star(name, self.data)
+        self.components.append(c)
+        self.component_names.append(name)
+        if rvs_fixed:
+            self.components_rvs_fixed.append(c)
+        if shapes_fixed:
+            self.components_shapes_fixed.append(c)
+        
+    def add_telluric(self, name, rvs_fixed=True, shapes_fixed=False):
+        c = Telluric(name, self.data)
+        self.components.append(c)
+        self.component_names.append(name)
+        if rvs_fixed:
+            self.components_rvs_fixed.append(c)
+        if shapes_fixed:
+            self.components_shapes_fixed.append(c)
+                
+    def load(self, filename):
+        print("loading...")
+        # TODO: write this code
+    
+    def save(self, filename):
+        print("saving...")
+        # TODO: write this code
+                                
+class Component(object):
+    """
+    Generic class for an additive component in the spectral model.
+    """
+    def __init__(self, name, data):
+        self.name = name
+        self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
+        self.template_xs = [None for r in range(data.R)] # this will be replaced
+        self.template_ys = [None for r in range(data.R)] # this will be replaced
+        self.learning_rate_rvs = 10. # default
+        self.learning_rate_model = 0.01 # default
+        
+    def shift_and_interp(self, r, xs, rvs):
         """
-        `all_data`: `[N, M]` array of pixels
-        `rvs`: `[N]` array of RVs
+        Apply Doppler shift of rvs to the model at order r and output interpolated values at xs.
         """
-        resids = 1. * self.data[r]            
-        if role == 'star':
-            print('initializing star model...')
-            rvs = self.rvs_star[r]
-            if self.model_ys_t[r] is not None:
-                for n in range(self.N):
-                    pd, dpd_dv = self.calc_pds(r, n, self.rvs_t[r][n], 't')
-                    resids[n] -= pd
-        elif role == 't':
-            print('initializing tellurics model...')
-            rvs = self.rvs_t[r]
-            if self.model_ys_star[r] is not None:
-                for n in range(self.N):
-                    pd, dpd_dv = self.calc_pds(r, n, self.rvs_star[r][n], 'star')
-                    resids[n] -= pd        
-        all_xs = np.empty_like(self.data[r])
-        for i in range(self.N):
-            all_xs[i,:] = self.data_xs[r][i,:] - np.log(self.doppler(rvs[i])) # shift to rest frame
-        all_resids, all_xs = np.ravel(resids), np.ravel(all_xs)
-        tiny = 10.
-        template_xs = np.arange(min(all_xs)-tiny*dx, max(all_xs)+tiny*dx, dx)
-        template_ys = np.nan + np.zeros_like(template_xs)
-        for i,t in enumerate(template_xs):
-            ind = (all_xs >= t-dx/2.) & (all_xs < t+dx/2.)
-            if np.sum(ind) > 0:
-                template_ys[i] = np.nanmedian(all_resids[ind])
-        ind_nan = np.isnan(template_ys)
-        template_ys.flat[ind_nan] = np.interp(template_xs[ind_nan], template_xs[~ind_nan], template_ys[~ind_nan])
-        if role == 'star':
-            self.model_xs_star[r], self.model_ys_star[r] = template_xs, template_ys
-        elif role == 't':
-            self.model_xs_t[r], self.model_ys_t[r] = template_xs, template_ys
+        shifted_xs = xs + tf.log(doppler(rvs[:, None]))
+        return interp(shifted_xs, self.template_xs[r], self.template_ys[r]) 
+        
+    def initialize_template(self, r, data, other_components=None, template_xs=None):
+        """
+        Doppler-shift data into component rest frame, subtract off other components, 
+        and average to make a composite spectrum.
+        """
+        shifted_xs = data.xs[r] + tf.log(doppler(self.rvs_block[r][:, None])) # component rest frame
+        if template_xs is None:
+            dx = tf.constant(np.log(6000.01) - np.log(6000.), dtype=T) # log-uniform spacing
+            tiny = tf.constant(10., dtype=T)
+            template_xs = tf.range(tf.reduce_min(shifted_xs)-tiny*dx, 
+                                   tf.reduce_max(shifted_xs)+tiny*dx, dx)           
+        resids = 1. * data.ys[r]
+        for c in other_components: # subtract off initialized components
+            if c.template_ys[r] is not None:
+                resids -= c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
+                
+        session = get_session()
+        session.run(tf.global_variables_initializer())
+        template_xs, template_ys = bin_data(session.run(shifted_xs), session.run(resids), 
+                                            session.run(template_xs)) # hack
+        self.template_xs[r] = tf.Variable(template_xs, dtype=T, name='template_xs')
+        self.template_ys[r] = tf.Variable(template_ys, dtype=T, name='template_ys')     
+         
+        
+    def make_optimizers(self, r, nll, learning_rate_rvs=None, 
+            learning_rate_model=None):
+        # TODO: make each one an R-length list rather than overwriting each order?
+        if learning_rate_rvs == None:
+            learning_rate_rvs = self.learning_rate_rvs
+        if learning_rate_model == None:
+            learning_rate_model = self.learning_rate_model
+        self.gradients_model = tf.gradients(nll, self.template_ys[r])
+        self.gradients_rvs = tf.gradients(nll, self.rvs_block[r])
+        self.opt_model = tf.train.AdamOptimizer(learning_rate_model).minimize(nll, 
+                            var_list=[self.template_ys[r]])
+        self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
+                            var_list=[self.rvs_block[r]])   
+        self.saver = tf.train.Saver([self.template_xs[r], self.template_ys[r], self.rvs_block[r]])  
+        
+
+class Star(Component):
+    """
+    A star (or generic celestial object)
+    """
+    def __init__(self, name, data):
+        Component.__init__(self, name, data)
+        starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
+        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]        
+                            
+class Telluric(Component):
+    """
+    Sky absorption
+    """
+    def __init__(self, name, data):
+        Component.__init__(self, name, data)
+        self.learning_rate_model = 0.1   
+        
+
+def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
+    '''
+    NOTE: regularization is "dumb ass" - DWH
+    consider L1 vs. L2
+    set regularization amplitude in a sensible way
+    '''        
+    for c in model.components:
+        if c.template_ys[r] is None:
+            c.initialize_template(r, data, other_components=[x for x in model.components if x!=c])         
+                     
+    if output_history:
+        nll_history = np.empty(niter*2)
+        rvs_history = np.empty((niter, data.N))
+        model_history = np.empty((niter, int(model.components[0].template_ys[r].shape[0])))
+        chis_history = np.empty((niter, data.N, 4096)) # HACK
+        
+    # likelihood calculation:
+    synth = tf.zeros_like(data.ys[r])
+    L1_norm = 0.
+    #L1_reg_amp = 1.e6 # magic number
+    L1_reg_amp = 0.
+    for c in model.components:
+        synth += c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
+        L1_norm += L1_reg_amp * tf.reduce_sum(tf.abs(c.template_ys[r]))
+    chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
+    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm
+        
+    # set up optimizers: 
+    for c in model.components:
+        c.make_optimizers(r, nll)
+
+    session = get_session()
+    session.run(tf.global_variables_initializer())
+        
+    # optimize:
+    print("--- ORDER {0} ---".format(r))
+    for i in tqdm(range(niter)):
+        if output_history: 
+            nll_history[2*i] = session.run(nll)
+            model_state = session.run(model.components[0].template_ys[r])
+            rvs_state = session.run(model.components[0].rvs_block[r])
+            model_history[i,:] = np.copy(model_state)
+            rvs_history[i,:] = np.copy(rvs_state)
+            chis_history[i,:,:] = np.copy(session.run(chis))
+        for c in model.components:
+            if not c in model.components_rvs_fixed:            
+                session.run(c.opt_rvs)
+        if output_history: 
+            nll_history[2*i+1] = session.run(nll)
+        for c in model.components:            
+            session.run(c.opt_model)
+        if (i+1 % save_every == 0):
+            c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
+        
+    if output_history:
+        return nll_history, rvs_history, model_history, chis_history # hack
+    else:
+        return
+
+def optimize_orders(model, data, **kwargs):
+    session = get_session()
+    session.run(tf.global_variables_initializer())    # should this be in get_session?
+    for r in range(data.R):
+        optimize_order(session, model, data, r, **kwargs)
+        #if (r % 5) == 0:
+        #    model.save('results_order{0}.hdf5'.format(r))
+
+def animfunc(i, xs, ys, xlims, ylims, ax, driver):
+    ax.cla()
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
+    ax.set_title('Optimization step #{0}'.format(i))
+    s = driver(xs, ys[i,:])
             
-
-    def rv_lnprior(self, rvs):
-        return -0.5 * np.mean(rvs)**2/1.**2
-
-    def drv_lnprior_dv(self, rvs):
-        return np.zeros_like(rvs) - np.mean(rvs)/1.**2/len(rvs)
-        
-    def d2rv_lnprior_dv2(self, rvs):
-        return np.zeros_like(rvs) - 1./1.**2/len(rvs)**2
+def plot_rv_history(data, rvs_history, niter, nframes, ylims=None):
+    fig = plt.figure()
+    ax = plt.subplot()
+    xs = data.dates
+    ys = rvs_history - np.repeat([data.pipeline_rvs], niter, axis=0)
+    x_pad = (np.max(xs) - np.min(xs)) * 0.1
+    xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
+    if ylims is None:
+        ylims = (np.min(ys)-10., np.max(ys)+10.)
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
+    plt.close(fig)
+    return ani  
     
-    def calc_pds(self, r, n, rv, role):
-        if role == 'star':
-            state_star = self.state(rv, self.data_xs[r][n], self.model_xs_star[r])    
-            state_t = self.state(self.rvs_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            dpd_dv = self.dPdotdv(state_star, self.model_ys_star[r])
-            
-        elif role == 't':
-            state_star = self.state(self.rvs_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            state_t = self.state(rv, self.data_xs[r][n], self.model_xs_t[r])
-            dpd_dv = self.airms[n] * self.dPdotdv(state_t, self.model_ys_t[r])
-            
-        pd_star = self.Pdot(state_star, self.model_ys_star[r])
-        pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
-        pd = pd_star + pd_t
-        return pd, dpd_dv
-        
-    def lnlike(self, r):
-        # lnlike including every prior
-        lnlike = 0.
-        for n in range(self.N):
-            pd, dpd_dv = self.calc_pds(r, n, self.rvs_star[r][n], 'star')
-            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-
-        lnpost = lnlike + self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r]) \
-                    + self.model_ys_lnprior(self.model_ys_star[r]) + self.model_ys_lnprior(self.model_ys_t[r])
-        return  lnpost
-        
-    def dlnlike_drv(self, rv, r, n, role):
-        pd, dpd_dv = self.calc_pds(r, n, rv, role)
-        lnlike = -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-        dlnlike_dv = np.asarray([np.sum((self.data[r][n,:] - pd) * self.ivars[r][n,:] * dpd_dv), ])
-        if role == 'star':
-            rvs = 1. * self.rvs_star[r]
-            rvs[n] = rv
-            lnpost = lnlike + self.rv_lnprior(rvs) + self.rv_lnprior(self.rvs_t[r])
-            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(rvs)[n] # HACK
-        elif role == 't':
-            rvs = 1. * self.rvs_t[r]
-            rvs[n] = rv
-            lnpost = lnlike + self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(rvs)
-            dlnpost_dv = dlnlike_dv + self.drv_lnprior_dv(rvs)[n] # HACK
-        return lnpost, dlnpost_dv
-        
-    def opposite_dlnlike_drv(self, rv, r, n, role):
-        # for scipy.optimize
-        lnpost, dlnpost_dv = self.dlnlike_drv(rv, r, n, role)
-        return -1.* lnpost, -1.* dlnpost_dv    
-               
-    def d2lnlike_dv2(self, r, role):
-        # returns an N-vector corresponding to the second derivative of lnlike w.r.t v_n (of "star" or of "t")
-        if role == 'star':
-            rvs = self.rvs_star[r]
-        elif role == 't':
-            rvs = self.rvs_t[r]
-        d2lnlikes = np.zeros_like(rvs)
-        for n in range(self.N):
-            _, dpd_dv = self.calc_pds(r, n, rvs[n], role)
-            d2lnlikes[n] = np.dot(dpd_dv, self.ivars[r][n] * dpd_dv)
-        d2lnposts = d2lnlikes # + self.d2rv_lnprior_dv2(rvs)
-        return d2lnposts # TODO: do we want d2lnposts or d2lnlikes?
-
-    def model_ys_lnprior(self, w):
-        return -0.5 * np.sum(w**2)/100.**2
-
-    def dmodel_ys_lnprior_dw(self, w):
-        return -1.*w / 100.**2
-        
-    def dlnlike_dw(self, r, model, role):
-        lnlike = 0.
-        Mp = len(model)
-        dlnlike_dw = np.zeros(Mp)
-        for n in range(self.N):
-            state_star = self.state(self.rvs_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-            state_t = self.state(self.rvs_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-            if role =='star':
-                pd_star = self.Pdot(state_star, model)
-                pd_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
-                state = state_star # for derivative
-            elif role == 't':
-                pd_star = self.Pdot(state_star, self.model_ys_star[r])
-                pd_t = self.airms[n] * self.Pdot(state_t, model)
-                state = state_t # for derivative
-            pd = pd_star + pd_t
-            dp_star = self.dotP(state, (self.data[r][n,:] - pd) * self.ivars[r][n,:])
-            lnlike += -0.5 * np.sum((self.data[r][n,:] - pd)**2 * self.ivars[r][n,:])
-            dlnlike_dw += dp_star
-        lnprior = self.model_ys_lnprior(model)
-        dlnprior_dw = self.dmodel_ys_lnprior_dw(model)
-        return lnlike + lnprior, dlnlike_dw + dlnprior_dw
-
-    def improve_model(self, r, role, step_scale=1., maxniter=64, tol=0.001):
-        """
-        This function could be written to be much more computationally efficient.
-        """
-        if role == 'star':
-            w = np.copy(self.model_ys_star[r])
-        elif role == 't':
-            w = np.copy(self.model_ys_t[r])
-        quitc = np.Inf
-        i = 0
-        while ((quitc > tol) and (i < maxniter)):
-            i += 1
-            lnlike_o, dlnlike_dw = self.dlnlike_dw(r, w, role)
-            stepped = False
-            j = 0
-            while((not stepped) and (j < 64)): # could go forever in theory
-                j += 1
-                step = step_scale * dlnlike_dw
-                lnlike = self.dlnlike_dw(r, w + step, role)[0]
-                dlnlike = lnlike - lnlike_o
-                if dlnlike >= 0.0:
-                    w += step
-                    stepped = True   
-                    step_scale *= 2.
-                    quitc = lnlike - lnlike_o
-                else:
-                    step_scale *= 0.5
-                    #print "improve_model: reducing step size to", step_scale
-        return w
-       
-    def optimize(self, restart = False, **kwargs):
-        """
-        Loops over all orders in the e2ds case and optimizes them all as separate spectra.
-        Takes the same kwargs as optimize_order.
-        """
-        if (hasattr(self, 'model_xs_star') == False) or (restart == True):
-            self.rvs_star = [np.zeros(self.N) for r in range(self.R)]
-            self.rvs_t = [np.zeros(self.N) for r in range(self.R)]
-            self.model_ys_star = [None for r in range(self.R)] # not the right shape but whatevs, it's overwritten in the initialization of optimize_order
-            self.model_xs_star = [None for r in range(self.R)]
-            self.model_ys_t = [None for r in range(self.R)]
-            self.model_xs_t = [None for r in range(self.R)]
-        
-            self.ivars_star = [np.zeros(self.N) for r in range(self.R)]
-            self.ivars_t = [np.zeros(self.N) for r in range(self.R)]
-        
-        for r in range(self.R):
-            self.optimize_order(r, restart=restart, **kwargs)
-            if (r % 5) == 0:
-                self.save_results('state_order{0}.hdf5'.format(r))
-                
-        self.rvs_star = np.asarray(self.rvs_star)
-        self.rvs_t = np.asarray(self.rvs_t)
-        self.ivars_star = np.asarray(self.ivars_star)
-        self.ivars_t = np.asarray(self.ivars_t)
-              
-        
-    def optimize_order(self, r, niter=5, restart = False, plot=False):
-        """
-        Optimize the velocities of the telluric spectrum and star as observed from the Earth, as well as
-        the data-driven model for the star and telluric features.
-        
-        Args: 
-            niter: The number of iterations to perform on updating the velocities and model spectra. 
-                (default: ``5``)
-            restart: If an optimization has already been performed, this flag will reject it and start from
-                the initial system defaults, rather than continuing to optimize from the previous best fit
-                (default: ``False``)
-            plot: Display diagnostic plots after each optimization iteration (default: ``False``)
-        """
-        
-        if (self.model_xs_star[r] == 0).all() or (restart == True):
-            self.rvs_star[r] = -np.copy(self.pipeline_rvs)
-            self.rvs_star[r] -= np.mean(self.rvs_star[r])
-            self.rvs_t[r] = np.zeros(self.N)
-            self.initialize_model(r, 'star')
-            self.initialize_model(r, 't')
-        
-        previous_lnlike = self.lnlike(r)
-        for iteration in range(niter):
-            print("Fitting stellar RVs...")
-            for n in range(self.N):
-                soln = minimize(self.opposite_dlnlike_drv, self.rvs_star[r][n], args=(r, n, 'star'),
-                             method='BFGS', jac=True, options={'disp':False})
-                self.rvs_star[r][n] = soln['x']
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print("likelihood got worse this iteration.")
-                print(new_lnlike, previous_lnlike, previous_lnlike - new_lnlike)
-                print("self.lnlike = ", self.lnlike(r))
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print("self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t)
-                print("self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t)
-                print("self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star)
-                assert False
-            previous_lnlike = new_lnlike 
-
-                
-            print("Improving stellar template spectra...")
-            self.model_ys_star[r] = self.improve_model(r, 'star')
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print("likelihood got worse this iteration.")
-                print(new_lnlike, previous_lnlike, previous_lnlike - new_lnlike)
-                print("self.lnlike = ", self.lnlike(r))
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print("self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t)
-                print("self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t)
-                print("self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star)
-                assert False
-            previous_lnlike = new_lnlike 
-                
-            print("Fitting telluric RVs...")
-            for n in range(self.N):
-                self.rvs_t[r][n] = minimize(self.opposite_dlnlike_drv, self.rvs_t[r][n], args=(r, n, 't'),
-                             method='BFGS', jac=True, options={'disp':False})['x']
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print("likelihood got worse this iteration.")
-                print(new_lnlike, previous_lnlike, previous_lnlike - new_lnlike)
-                print(self.lnlike(self.rvs_t[r], r, 't'))
-                assert False
-            previous_lnlike = new_lnlike 
-                
-            print("Improving telluric template spectra...")
-            self.model_ys_t[r] = self.improve_model(r, 't')
-            new_lnlike = self.lnlike(r)
-            if new_lnlike < previous_lnlike:
-                print("likelihood got worse this iteration.")
-                print(new_lnlike, previous_lnlike, previous_lnlike - new_lnlike)
-                print("self.lnlike = ", self.lnlike(r))
-                lnprior_w_star = self.model_ys_lnprior(self.model_ys_star[r])
-                lnprior_w_t = self.model_ys_lnprior(self.model_ys_t[r])
-                lnprior_rv = self.rv_lnprior(self.rvs_star[r]) + self.rv_lnprior(self.rvs_t[r])
-                foo = 0.
-                for n in range(self.N):
-                    foo += self.opposite_dlnlike_drv(self.rvs_star[r][n], r, n, 'star')[0] + lnprior_rv
-                print("self.dlnlike_drv = ", -1. * foo + lnprior_rv + lnprior_w_star + lnprior_w_t)
-                print("self.dlnlike_dw (star) = ", self.dlnlike_dw(r, self.model_ys_star[r], 'star')[0] + lnprior_rv + lnprior_w_t)
-                print("self.dlnlike_dw (t) = ", self.dlnlike_dw(r, self.model_ys_t[r], 't')[0] + lnprior_rv + lnprior_w_star)
-                assert False
-            previous_lnlike = new_lnlike 
-                
+def plot_model_history(template_xs, model_history, niter, nframes, ylims=None):
+    fig = plt.figure()
+    ax = plt.subplot()
+    xs = np.exp(template_xs)
+    xlims = (np.min(xs), np.max(xs))
+    ys = np.exp(model_history)
+    if ylims is None:
+        y_pad = (np.max(ys) - np.min(ys)) * 0.1
+        ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
+    plt.close(fig)
+    return ani
     
-            print("order {0}, iter {1}: star std = {2:.2f}, telluric std = {3:.2f}".format(r, iteration, np.std(self.rvs_star[r] + self.bervs), np.std(self.rvs_t[r])))
-            print("                       RMS of resids w.r.t. HARPS DRS RVs = {0:.2f}".format(np.std(self.rvs_star[r] + self.pipeline_rvs)))
-            if plot:
-                plt.figure()
-                plt.plot(np.arange(self.N), self.rvs_star[r] + self.bervs - np.mean(self.rvs_star[r] + self.bervs), color='k')
-                plt.plot(np.arange(self.N), self.rvs_t[r] - np.mean(self.rvs_t[r]), color='red')
-                plt.show()   
-
-            if plot:
-                self.plot_models(r,0, filename='order{0}_iter{1}.png'.format(r, iteration))
-                
-        self.ivars_star[r] = self.d2lnlike_dv2(r, 'star')   
-        self.ivars_t[r] = self.d2lnlike_dv2(r, 't')
-        
-    def plot_models(self, r, n, filepath='../results/plots/', filename=None):
-        #calculate models
-        state_star = self.state(self.rvs_star[r][n], self.data_xs[r][n], self.model_xs_star[r])
-        model_star = self.Pdot(state_star, self.model_ys_star[r])
-        state_t = self.state(self.rvs_t[r][n], self.data_xs[r][n], self.model_xs_t[r])
-        model_t = self.airms[n] * self.Pdot(state_t, self.model_ys_t[r])
-        #plot
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        ax.plot(np.exp(self.data_xs[r][n]), np.exp(self.data[r][n]), 
-                    color='blue', alpha=0.5, label='data')
-        ax.plot(np.exp(self.data_xs[r][n]), np.exp(model_star), 
-                    color='k', alpha=0.5, label='star model')
-        ax.plot(np.exp(self.data_xs[r][n]), np.exp(model_t), 
-                    color='red', alpha=0.5, label='telluric model')
-        ax.set_xlabel(r'Wavelength ($\AA$)')
-        ax.set_ylabel('Normalized Flux')
-        ax.set_ylim([0.0, 1.3])
-        ax.legend(loc='lower right')
-        ax.set_title('Order #{0}, Epoch #{1}'.format(r,n))
-        if filename is None:
-            filename = 'model_order{0}_epoch{1}.png'.format(r,n)
-        plt.savefig(filepath+filename)
-        plt.close(fig)
-        
-    def save_results(self, filename):
-        max_len = np.max([len(x) for x in self.model_xs_star])
-        for r in range(self.R): # resize to make rectangular arrays bc h5py is infuriating
-            self.model_xs_star[r] = np.append(self.model_xs_star[r], np.zeros(max_len - len(self.model_xs_star[r])))
-            self.model_ys_star[r] = np.append(self.model_ys_star[r], np.zeros(max_len - len(self.model_ys_star[r])))
-            self.model_xs_t[r] = np.append(self.model_xs_t[r], np.zeros(max_len - len(self.model_xs_t[r])))
-            self.model_ys_t[r] = np.append(self.model_ys_t[r], np.zeros(max_len - len(self.model_ys_t[r])))
-        with h5py.File(filename,'w') as f:
-            dset = f.create_dataset('rvs_star', data=self.rvs_star)
-            dset = f.create_dataset('ivars_star', data=self.ivars_star)
-            dset = f.create_dataset('rvs_t', data=self.rvs_t)
-            dset = f.create_dataset('ivars_t', data=self.ivars_t)
-            dset = f.create_dataset('model_xs_star', data=self.model_xs_star)
-            dset = f.create_dataset('model_ys_star', data=self.model_ys_star)
-            dset = f.create_dataset('model_xs_t', data=self.model_xs_t)
-            dset = f.create_dataset('model_ys_t', data=self.model_ys_t)
-            try:
-                dset = f.create_dataset('time_rvs', data=self.time_rvs)
-                dset = f.create_dataset('order_rvs', data=self.order_rvs)
-                dset = f.create_dataset('order_sigmas', data=self.order_sigmas)
-            except:
-                pass
-            
-    def load_results(self, filename):
-        with h5py.File(filename) as f:
-            self.rvs_star = np.copy(f['rvs_star'])
-            self.rvs_t = np.copy(f['rvs_t'])
-            self.model_xs_star = np.copy(f['model_xs_star']).tolist()
-            self.model_ys_star = np.copy(f['model_ys_star']).tolist()
-            self.model_xs_t = np.copy(f['model_xs_t']).tolist()
-            self.model_ys_t = np.copy(f['model_ys_t']).tolist()
-            self.ivars_star = np.copy(f['ivars_star'])
-            self.ivars_t = np.copy(f['ivars_t'])
-            try:
-                self.time_rvs = np.copy(f['time_rvs'])
-                self.order_rvs = np.copy(f['order_rvs'])
-                self.order_sigmas = np.copy(f['order_sigmas'])
-            except:
-                print("warning: you may need to run optimize_sigmas()" )              
-        for r in range(self.R): # trim off that padding
-            self.model_xs_star[r] = np.trim_zeros(np.asarray(self.model_xs_star[r]), 'b')
-            self.model_ys_star[r] = np.trim_zeros(np.asarray(self.model_ys_star[r]), 'b')
-            self.model_xs_t[r] = np.trim_zeros(np.asarray(self.model_xs_t[r]), 'b')
-            self.model_ys_t[r] = np.trim_zeros(np.asarray(self.model_ys_t[r]), 'b')
-            
-    def pack_rv_pars(self, time_rvs, order_rvs, order_sigmas):
-        rv_pars = np.append(time_rvs, order_rvs)
-        rv_pars = np.append(rv_pars, order_sigmas)
-        return rv_pars
-    
-    def unpack_rv_pars(self, rv_pars):
-        self.time_rvs = np.copy(rv_pars[:self.N])
-        self.order_rvs = np.copy(rv_pars[self.N:self.R + self.N])
-        self.order_sigmas = np.copy(rv_pars[self.R + self.N:])
-        return self.time_rvs, self.order_rvs, self.order_sigmas
-        
-    def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
-        assert len(sigmas) == self.R
-        M = self.get_design_matrix(restart = restart)
-        something = np.zeros_like(M[0,:])
-        something[self.N:] = 1. / self.R # last datum will be mean of order velocities is zero
-        M = np.append(M, something[None, :], axis=0) # last datum
-        Rs, Ns = self.get_index_lists()
-        ivars = 1. / ((1. / self.ivars_star) + sigmas[Rs]**2) # not zero-safe
-        ivars = ivars.flatten()
-        ivars = np.append(ivars, 1.) # last datum: MAGIC
-        MTM = np.dot(M.T, ivars[:, None] * M)
-        ys = self.rvs_star.flatten()
-        ys = np.append(ys, 0.) # last datum
-        MTy = np.dot(M.T, ivars * ys)
-        xs = np.linalg.solve(MTM, MTy)
-        resids = ys - np.dot(M, xs)
-        lnlike = -0.5 * np.sum(resids * ivars * resids - np.log(2. * np.pi * ivars))
-        if return_rvs:
-            return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix(), and last datum removal
-        return lnlike
-        
-    def opposite_lnlike_sigmas(self, pars, restart = False):
-        return -1. * self.lnlike_sigmas(pars, restart = restart)    
-
-    def get_index_lists(self):
-        return np.mgrid[:self.R, :self.N]
-
-    def get_design_matrix(self, restart = False):
-        if (self.M is None) or restart:
-            Rs, Ns = self.get_index_lists()
-            ndata = self.R * self.N
-            self.M = np.zeros((ndata, self.N + self.R)) # note design choices
-            self.M[range(ndata), Ns.flatten()] = 1.
-            self.M[range(ndata), self.N + Rs.flatten()] = 1.
-            return self.M
-        else:
-            return self.M
-        
-    def optimize_sigmas(self, restart = False):
-        # initial guess
-        x0_order_rvs = np.median(self.rvs_star, axis=1)
-        x0_time_rvs = np.median(self.rvs_star - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
-        rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.N)) + np.tile(x0_time_rvs, (self.R,1))
-        x0_sigmas = np.log(np.var(self.rvs_star - rv_predictions, axis=1))
-        # optimize
-        print("optimize_sigmas: optimizing...")
-        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
-        # save results
-        lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
-        self.order_rvs = rvs_R
-        self.time_rvs = rvs_N
-        self.order_sigmas = soln_sigmas
-    
-'''''
-        
-def pack_keplerian_pars(P, K, e, omega, M0, offset):
-    return [P, K, e, omega, M0, offset]
-    
-def unpack_keplerian_pars(pars):
-    P, K, e, omega, M0, offset = pars
-    return P, K, e, omega, M0, offset
-
-def opposite_lnlike_keplerian(pars, times, rvs, sigs):
-    P, K, e, omega, M0, offset = unpack_keplerian_pars(pars)
-    t0 = np.min(times)
-    ys = cy_rv_from_elements(times, P, K, e, omega, M0, t0, 1e-10, 128)
-    if np.any(np.isnan(ys)):
-        return np.inf
-    ys += offset
-    lnlike = -0.5 * np.sum((rvs - ys)**2 / sigs**2)
-    return -1.0 * lnlike
-
-def fit_keplerian(pars0, times, rvs, sigs):
-    bounds = [(None, None) for par in pars0]
-    bounds[2] = (0.0, 1.0)
-    pars = minimize(opposite_lnlike_keplerian, pars0, args=(times.astype('<f8'), rvs, sigs), method='L-BFGS-B',
-             bounds=bounds, options={'disp':True})['x']
-    return pars
-'''
-    
-            
-if __name__ == "__main__":
-    # temporary code to diagnose issues in results
-    starid = 'hip54287'
-    a = star(starid+'_e2ds.hdf5', orders=np.arange(72))  
-    
-    #a = star(starid+'_e2ds.hdf5', orders=[30]) 
-    #a.optimize(niter=10, plot=False)
-    
-    if False: # optimize
-        a.optimize(niter=10, plot=False)
-        a.optimize_sigmas()
-        a.save_results('../results/'+starid+'_results.hdf5')
-        
-    '''''
-        
-    if True: # load up results        
-        a.load_results('../results/'+starid+'_results.hdf5')
-    
-        print "RV std = {0:.2f} m/s".format(np.std(a.time_rvs + a.bervs))
-        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(a.pipeline_rvs - a.bervs))
-        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(a.time_rvs - a.pipeline_rvs + 2.*a.bervs))
-        
-        
-        pipeline = a.pipeline_rvs - a.bervs - np.mean(a.pipeline_rvs - a.bervs)
-        us = a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs)
-        mjd = a.dates - 2450000
-        
-        pipeline = pipeline[:-5]
-        us = us[:-5]
-        mjd = mjd[:-5]
-        
-        print "RV std = {0:.2f} m/s".format(np.std(us))
-        print "HARPS pipeline std = {0:.2f} m/s".format(np.std(pipeline))
-        print "std w.r.t HARPS values = {0:.2f} m/s".format(np.std(us - pipeline))
-        
-        
-        fig = plt.figure(figsize=(12,8))
-        gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1]) 
-        ax1 = fig.add_subplot(gs[0])
-        ax1.scatter(mjd, pipeline, color='r', alpha=0.6, label='HARPS pipeline')
-        ax1.scatter(mjd, us, color='k', alpha=0.6, label='wobble')
-        ax1.legend(fontsize=16)
-        ax1.set_ylabel(r'RV (m s$^{-1}$)')
-        ax1.set_xticklabels('',visible=False)
-        ax2 = fig.add_subplot(gs[1])
-        ax2.scatter(mjd, us - pipeline, color='k', alpha=0.7)
-        ax2.set_xlabel('MJD', fontsize=18)
-        ax2.set_ylabel('(O - C)')
-        fig.subplots_adjust(hspace=.03) 
-        plt.savefig('../results/plots/{0}.png'.format(starid))
-        
-        # save results for systemic:
-        np.savetxt('{0}.vels'.format(starid), np.asarray([mjd + 2450000, us, np.ones_like(us)]).T)
-        np.savetxt('{0}_harps.vels'.format(starid), np.asarray([mjd + 2450000, pipeline, np.ones_like(us)]).T)
-    
-        # save results for plotting:
-        f = open('{0}.csv'.format(starid), 'w')
-        f.write("BJD, pipeline, us, BERV\n")
-        for n in range(len(us)):                              
-            f.write("{0:.8f}, {1:.8f}, {2:.8f}, {3:.8f}\n".format(a.dates[n], pipeline[n], us[n], a.bervs[n]))
-        f.close()
-    
-        if False: # make model plots
-            for r in range(a.R):
-                a.plot_models(r, 0)
-    
-    if False: # Keplerian fit
-        sigs = np.ones_like(a.time_rvs) # HACK
-        P, K, e, omega, M0, offset = 31.6, 4243.8, 0.3, 226. * np.pi / 180., 63. * np.pi / 180., 0.0 # days, m/s, dimensionless, radians, JD
-        t0 = np.min(a.dates)
-        pars0 = pack_keplerian_pars(P, K, e, omega, M0, offset)
-        soln = fit_keplerian(pars0, a.dates, a.time_rvs, sigs)
-        P, K, e, omega, M0, offset = unpack_keplerian_pars(soln)
-    
-        orbit = KeplerOrbit(P=P*u.day, e=e, omega=omega*u.rad, 
-                            M0=M0*u.rad, Omega=0*u.deg, i=90*u.deg,
-                            t0=t0_time)
-        plt.plot(t_grid.jd % P, K*orbit.unscaled_radial_velocity(t_grid) + offset)
-        plt.errorbar(a.dates % P, rvs, sigs, marker='o', linestyle='none')
-        plt.show()
-    
-    if False:
-        order_stds = np.std(a.rvs_star + np.tile(a.bervs, (a.R,1)), axis=1)
-    
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        ax.semilogy(np.arange(a.R), order_stds, marker='o', ls=' ')
-        ax.set_ylabel(r'empirical std per order (m s$^{-1}$)')
-        ax.set_xlabel('Order #')    
-        plt.savefig('../results/plots/order_stds.png')
-        plt.close(fig)
-    
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        ax.errorbar(np.arange(a.R), a.order_rvs, a.order_sigmas, fmt='o')
-        ax.set_xlabel('Order #')
-        ax.set_ylabel(r'RV (m s$^{-1}$)')
-        plt.savefig('../results/plots/order_rvs.png')
-        plt.close(fig)
-    
-        fig = plt.figure()
-        gs = gridspec.GridSpec(2,1,height_ratios=[4,1],hspace=0.1)
-        ax1 = fig.add_subplot(gs[0])
-        ax2 = fig.add_subplot(gs[1], sharex=ax1)
-        ax2.ticklabel_format(useOffset=False)
-        plt.setp(ax1.get_xticklabels(), visible=False)    
-        ax1.plot(a.dates[:a.N] - 2450000., a.time_rvs + a.bervs - np.mean(a.time_rvs + a.bervs), 'o', color='k', alpha=0.8, label='wobble')
-        ax1.plot(a.dates[:a.N] - 2450000., -1. * a.pipeline_rvs + a.bervs - np.mean(-1. * a.pipeline_rvs + a.bervs), 'o', color='r', alpha=0.8, label='HARPS DRS')
-        ax1.legend(loc='upper left',prop={'size':24})
-        ax1.set_ylabel(r'RV (m s$^{-1}$)')
-        diff = a.time_rvs + a.pipeline_rvs - np.mean(a.pipeline_rvs + a.time_rvs)
-        ax2.plot(a.dates[:a.N] - 2450000., diff, 'o', color='k', alpha=0.8)
-        ax2.set_ylabel('Diff')
-        ax2.set_xlabel('J.D. - 2450000')
-        plt.savefig('../results/plots/time_rvs.png')
-        plt.close(fig)
-    
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
-        resids = a.rvs_star - rv_predictions
-        all_vars = 1./a.ivars_star**2 + np.tile((a.order_sigmas[:,None])**2, (1,a.N))
-        chis = resids / np.median(np.sqrt(all_vars))
-        pos = resids >= 0.
-        neg = resids < 0.
-        sizes = np.abs(chis) * 4.
-        ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[pos], np.tile(np.arange(a.N), (a.R,1))[pos], marker='o', c='k', s=sizes[pos])
-        ax.scatter(np.tile(np.arange(a.R)[:,None], (1,a.N))[neg], np.tile(np.arange(a.N), (a.R,1))[neg], marker='o', c='r', s=sizes[neg])
-        ax.set_xlabel('Order #')
-        ax.set_ylabel('Epoch #')
-        plt.savefig('../results/plots/outlier_check.png')
-        plt.close(fig)
-    
-    if False:
-        # tests on separating RVs by time and by order
-        cmap = matplotlib.cm.get_cmap(name='jet')
-        colors_by_epoch = [cmap(1.*i/a.N) for i in range(a.N)]
-        colors_by_order = [cmap(1.*i/a.R) for i in range(a.R)]
-    
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        ax.loglog([2.,1.e3],[2.,1.e3], c='red')
-        ax.loglog(order_stds, a.order_sigmas, marker='o', ls=' ')
-        ax.set_ylabel(r'best-fit $\sigma_{order}$ (m s$^{-1}$)')
-        ax.set_xlabel(r'empirical std per order (m s$^{-1}$)')    
-        plt.savefig('../results/plots/order_stds_against_bestfit.png')
-        plt.close(fig)
-    
-        orders_in_order = np.argsort(order_stds) # order inds from lowest to highest emp. variance
-        order_counts = np.arange(2,72)
-        time_rvs = np.zeros((len(order_counts), a.N))
-        rv_stds = np.zeros(len(order_counts))
-        for i,j in enumerate(order_counts):
-            print "fitting orders", orders_in_order[:j]
-            b = copy.deepcopy(a)
-            b.R = j
-            b.rvs_star = b.rvs_star[orders_in_order[:j]] # take only the j best orders
-            b.ivars_star = b.ivars_star[orders_in_order[:j]]
-            b.optimize_sigmas(restart=True)
-            time_rvs[i,:] = b.time_rvs + b.bervs
-            rv_stds[i] = np.std(b.time_rvs + b.bervs)
-            print "RV std = {0:.2f} m/s".format(np.std(b.time_rvs + b.bervs))
-        
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        ax.axhline(np.std(a.pipeline_rvs[:a.N] - a.bervs), color='k', alpha=0.5)
-        ax.scatter(order_counts, rv_stds, marker='o')
-        ax.set_xlabel('Number of orders used')
-        ax.set_ylabel('stdev of time-series RVs')
-        plt.savefig('../results/plots/stdev_by_orders_used.png')
-        plt.close(fig)
-    
-        fig = plt.figure()
-        ax = plt.subplot(111)
-        for i in range(len(order_counts)):
-            ax.plot(np.arange(a.N), time_rvs[i], color=colors_by_order[i], alpha=0.5)
-        ax.set_xlabel('Epoch #')
-        ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
-        plt.savefig('../results/plots/rvs_by_orders_used.png')
-        plt.close(fig)
-    
-        
-    if False:
-        # tests on time-series RVs
-        fig = plt.figure()
-        ax = plt.subplot(111) 
-        for n in range(a.N): 
-            ax.errorbar(np.arange(a.R), a.rvs_star[:,n] + a.bervs[n], 1./np.sqrt(a.ivars_star[:,n]), 
-                color=colors_by_epoch[n], alpha=0.5, fmt='o')
-        ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
-        ax.set_xlabel('Order #')
-        plt.savefig('../results/plots/rv_per_order.png')
-        plt.close(fig) 
-    
-        fig = plt.figure()
-        ax = plt.subplot(111) 
-        for r in range(a.R): 
-            ax.errorbar(np.arange(a.N), a.rvs_star[r,:] + a.bervs, 1./np.sqrt(a.ivars_star[r,:]), 
-                color=colors_by_order[r], alpha=0.5, fmt='o')
-        ax.set_ylabel(r'barycentric RV (m s$^{-1}$)')
-        ax.set_xlabel('Epoch #')
-        plt.savefig('../results/plots/rv_per_epoch.png')
-        plt.close(fig) 
-        
-        rv_predictions = np.tile(a.order_rvs[:,None], (1,a.N)) + np.tile(a.time_rvs, (a.R,1))
-        resids = a.rvs_star - rv_predictions
-    
-        fig = plt.figure()
-        ax = plt.subplot(111) 
-        for n in range(a.N): 
-            ax.errorbar(np.arange(a.R), resids[:,n], 1./np.sqrt(a.ivars_star[:,n]), 
-                color=colors_by_epoch[n], alpha=0.5, fmt='o')
-        ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
-        ax.set_xlabel('Order #')
-        plt.savefig('../results/plots/resids_per_order.png')
-        plt.close(fig) 
-    
-        fig = plt.figure()
-        ax = plt.subplot(111) 
-        for r in range(a.R): 
-            ax.errorbar(np.arange(a.N), resids[r,:], 1./np.sqrt(a.ivars_star[r,:]), 
-                color=colors_by_order[r], alpha=0.5, fmt='o')
-        ax.set_ylabel(r'RV - predicted (m s$^{-1}$)')
-        ax.set_xlabel('Epoch #')
-        plt.savefig('../results/plots/resids_per_epoch.png')
-        plt.close(fig)
-        '''
-    
-    
+def plot_chis_history(epoch, data_xs, chis_history, niter, nframes, ylims=None):
+    fig = plt.figure()
+    ax = plt.subplot()
+    xs = np.exp(data_xs[epoch,:])
+    xlims = (np.min(xs), np.max(xs))
+    ys = chis_history[:,epoch,:]
+    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
+                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
+    plt.close(fig)
+    return ani
         
