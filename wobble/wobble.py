@@ -97,12 +97,14 @@ class Model(object):
         
     def __str__(self):
         string = 'Model consisting of the following components: '
-        rvs_fixed_names = []
-        for i in range(len(self.components)):
-            if self.components[i] in self.components_rvs_fixed:
-                rvs_fixed_names.append(self.component_names[i])
-        return "Model consisting of the following components: {0}\n(RVs fixed for {1})".format(self.component_names, 
-                rvs_fixed_names)
+        for c in self.components:
+            string += '\n{0}: '.format(c.name)
+            if c in self.components_rvs_fixed:
+                string += 'RVs fixed; '
+            else:
+                string += 'RVs variable; '
+            string += '{0} variable basis components'.format(c.K)
+        return string
         
     def add_star(self, name, rvs_fixed=False, variable_bases=0):
         c = Star(name, self.data, variable_bases=variable_bases)
