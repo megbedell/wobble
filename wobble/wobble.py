@@ -43,7 +43,7 @@ class Data(object):
     The data object: contains the spectra and associated data.
     """
     def __init__(self, filename, filepath='../data/', 
-                    N = 0, orders = [30], min_flux = 1.):
+                    N = 0, orders = [30], min_flux = 1., tensors=True):
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
         self.origin_file = filepath+filename
@@ -75,9 +75,10 @@ class Data(object):
         self.wobble_obj = Results(R=self.R, N=self.N)
         
         # convert to tensors
-        self.ys = [tf.constant(y, dtype=T) for y in self.ys]
-        self.xs = [tf.constant(x, dtype=T) for x in self.xs]
-        self.ivars = [tf.constant(i, dtype=T) for i in self.ivars]
+        if tensors:
+            self.ys = [tf.constant(y, dtype=T) for y in self.ys]
+            self.xs = [tf.constant(x, dtype=T) for x in self.xs]
+            self.ivars = [tf.constant(i, dtype=T) for i in self.ivars]
         
     def continuum_normalize(self):
         for r in range(self.R):
