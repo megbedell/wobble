@@ -107,6 +107,12 @@ class Model(object):
             string += '{0} variable basis components'.format(c.K)
         return string
         
+    def synthesize(self, r):
+        synth = tf.zeros_like(self.data.xs[r])
+        for c in self.components:
+            synth += c.synthesize(r, self.data.xs[r], c.rvs_block[r])
+        return synth
+        
     def add_star(self, name, rvs_fixed=False, variable_bases=0):
         c = Star(name, self.data, variable_bases=variable_bases)
         self.components.append(c)
@@ -152,6 +158,15 @@ class Component(object):
         shifted_xs = xs + tf.log(doppler(rvs[:, None]))
         return interp(shifted_xs, self.template_xs[r], self.template_ys[r]) 
         
+    def synthesize(self, r, xs, rvs):
+        """
+        Output synthesized spectrum at log(wave)s xs and order r.
+        """
+        synth = self.shift_and_interp(r, xs, rvs)
+        if self.K > 0:
+            synth += tf.matmul(self.basis_weights[r], self.basis_vectors[r])
+        return synth
+        
     def initialize_template(self, r, data, other_components=None, template_xs=None):
         """
         Doppler-shift data into component rest frame, subtract off other components, 
@@ -159,7 +174,7 @@ class Component(object):
         """
         shifted_xs = data.xs[r] + tf.log(doppler(self.rvs_block[r][:, None])) # component rest frame
         if template_xs is None:
-            dx = tf.constant(np.log(6000.01) - np.log(6000.), dtype=T) # log-uniform spacing
+            dx = tf.constant(2.*(np.log(6000.01) - np.log(6000.)), dtype=T) # log-uniform spacing
             tiny = tf.constant(10., dtype=T)
             template_xs = tf.range(tf.reduce_min(shifted_xs)-tiny*dx, 
                                    tf.reduce_max(shifted_xs)+tiny*dx, dx)           
@@ -224,8 +239,12 @@ class Telluric(Component):
     """
     def __init__(self, name, data, variable_bases=0):
         Component.__init__(self, name, data, variable_bases=variable_bases)
-        self.learning_rate_template = 0.1   
+        self.airms = tf.constant(data.airms, dtype=T)
+        self.learning_rate_template = 0.1 
         
+    def synthesize(self, r, xs, rvs):
+        synth = Component.synthesize(self, r, xs, rvs)
+        return tf.einsum('n,nm->nm', self.airms, synth)        
 
 def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
     '''
@@ -246,22 +265,22 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
         chis_history = np.empty((niter, data.N, 4096)) # HACK
         
     # likelihood calculation:
-    synth = tf.zeros_like(data.ys[r])
+    synth = model.synthesize(r)
+    chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
+    # regularization:
     L1_norm_template = 0.
     L2_norm_basis_vectors = 0.
     L2_norm_basis_weights = 0.
-    #L1_amp_template = 1.e6 # magic number
-    L1_amp_template = 0.
+    L1_amp_template = 1.e4 # magic number set to where it just begins to work
+    #TODO: should make amplitudes separate for two components
     L2_amp_basis_vectors = 1.e4 # magic number
     L2_amp_basis_weights = 1. # magic number
     for c in model.components:
-        synth += c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
         L1_norm_template += L1_amp_template * tf.reduce_sum(tf.abs(c.template_ys[r]))
-        if c.K > 0: # variable components - assumes they're in observatory rest frame
-            synth += tf.matmul(c.basis_weights[r], c.basis_vectors[r])
+        if c.K > 0:
             L2_norm_basis_vectors = L2_amp_basis_vectors * tf.reduce_sum(tf.square(c.basis_vectors[r]))
             L2_norm_basis_weights = L2_amp_basis_weights * tf.reduce_sum(tf.square(c.basis_weights[r]))
-    chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
+
     nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm_template \
             + L2_norm_basis_vectors + L2_norm_basis_weights
         
