@@ -35,6 +35,8 @@
 \newcommand{\TF}{\code{TensorFlow}}
 \newcommand{\python}{\code{python}}
 
+\newcommand{\Mdwarf}{Barnard's Star}
+
 
 
 \begin{document}
@@ -71,47 +73,57 @@ Here we propose a data-driven method to simultaneously extract precise \RV s and
 We implement this method in \wobble, an open-source \python\ package which uses \TF\ in its first non-machine-learning application to astronomical data. 
 In this work, we demonstrate the performance of \wobble\ on archival \HARPS\ spectra.
 % Results
-We recover the canonical exoplanet 51 Pegasi b at improved accuracy relative to the standard \HARPS\ pipeline \RV s, and we achieve a precision of \todo{xx} \cms\ on the \RV\ standard star \todo{yyy}. 
+We recover the canonical exoplanet 51 Pegasi b at \todo{improved accuracy?} relative to the standard \HARPS\ pipeline \RV s, and we achieve a precision of \todo{xx} \cms\ on the \RV\ standard M dwarf \Mdwarf. 
 We also present a detailed telluric spectrum derived from these data. 
 Our method may be of particular interest for future red-optimized spectrographs aiming to detect and characterize M dwarf host stars, where telluric features are considerable at wavelengths corresponding to the peak of the stellar spectral energy distribution.  \end{abstract}
 
 \section{Introduction}
 
 Precise radial velocity (\RV) measurements are critical to the discovery and characterization of exoplanets. 
-On order of one dozen dedicated spectrographs exist for the purpose of \RV\ planet-hunting, with at least as many more currently under construction \todo{(Wright)}. 
+On order of one dozen dedicated spectrographs exist for the purpose of \RV\ planet-hunting, with at least as many more currently under construction \citep{Wright2017}. 
 However, significant challenges exist in deriving precise \RV\ measurements from these spectra. 
 %The current capabilities of extreme-precision radial velocity (\EPRV) instruments do not extend to the 10 \cms\ regime, 
 %In this work, we present an open-source code for \RV\ determination. We use a highly flexible linear model to extract \RV s in a fully data-driven way. %Our method simultaneously models the stellar and telluric spectra.
 
-\todo{Overview of previous work on \acronym{EPRV}.}
-
 One of the primary drivers of the \RV\ noise budget is the incomplete treatment of telluric features in the
-Earth's atmosphere (cite). 
+Earth's atmosphere \citep{Halverson2016}. 
 Often, particular sections of a spectrum that are likely to feature telluric features are identified before the velocity shift of the stellar spectrum is inferred. 
-These regions are then removed from analysis, leaving only telluric-free regions to be analyzed (e.g. cite).
+These regions are then removed from analysis, leaving only telluric-free regions to be analyzed \citep[e.g.][]{AngladaEscude2012}.
 
 Such an approach has two significant issues. 
 The first is that removing sections of the spectrum removes significant regions of the spectrum that can be used to infer the stellar radial velocity. 
-Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are many narrow spectral features that can be used to improve RV precision (cite).
-This is especially true for M dwarfs, which peak in emitted energy at $\approx 1 \mu$m and have many narrow molecular absorption features in their photospheres (cite).
+Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are abundant narrow spectral features that can be used to improve RV precision (cite).
+This is especially true for M dwarfs, which peak in emitted energy at $\approx 1 \mu$m and have many narrow molecular absorption features in their photospheres \citep{Figueira2016}.
 Eliminating large chunks of these spectra will therefore significantly inhibit our ability to detect planets around M dwarfs through RVs.
 
 Secondly, not all telluric features are obvious. 
-The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred RV at the $\sim 1$ \ms\ level \todo{(Cunha14)}. 
+The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred RV at the $\sim 1$ \ms\ level \citep{Cunha2014}. 
 As the locations of these features are not known \textit{a priori} and may not even be apparent in stacked spectra of many observations, these spectral regions cannot be thrown out. 
 Instead, alternative methods to account for these features must be developed and employed in order to mitigate the effect of the Earth's atmosphere on the measured stellar radial velocities.
 
-\todo{Telluric models exist but are bad. Telluric observations can be taken throughout the night but require a large investment of observing time.}
+One such approach is modeling the telluric spectrum using existing line databases like HITRAN \citep{HITRAN2016}. 
+The telluric model may then be divided out from the observations, assuming the line spread function of the instrument is known \citep[e.g.][]{Seifahrt2010}. 
+This method relies on existing physical knowledge about the Earth's atmosphere and can be fine-tuned using local observatory measurements of e.g. atmospheric water vapor content \citep{Baker2017}. 
+However, line databases are incomplete even in significant absorption features when compared to actual observations and certainly do not include microtellurics, making them poorly suited for extreme precision RV applications \citep{Bertaux2014}.
 
-One such alternative approach is the simultaneous modeling of both telluric and spectral features. 
+Another option is the use of telluric standard observations: a spectrum of a rapidly rotating early-type star, which is virtually featureless due to extreme rotational line broadening, may be used as a telluric model and divided out. 
+This approach has the advantage of naturally reproducing the instrumental line profile and current observing conditions if the standard star has a line-of-sight vector sufficiently close to the target and if both observations are taken close together in time. 
+For these conditions to be true, though, requires a significant investment of observing time, which planet search programs often cannot afford. 
+Additionally, artifacts may remain near strong telluric features due to the imperfect correction of unresolved features \citep{Bailey2007}.
+
+An alternative approach is the simultaneous modeling of both telluric and spectral features from the data. 
 As the Earth's motion around the barycenter of the solar system induces a Doppler shift considerably larger than both the motion of telluric features and the size of a single pixel on the detector, these two spectra can be disentangled.
 This process is well-established in the analysis of binary star systems through the development of linear models
-(e.g. Simon94) and in a Gaussian process framework (Czekala17).
+\citep[e.g.][]{Simon1994} and in a Gaussian process framework \citep{Czekala2017}.
 In these cases, both spectra are assumed to be unchanging in time, which is a reasonable approximation of a stellar spectrum but not necessarily of the telluric spectrum.
 A more complicated linear model may be useful for separating the stellar and telluric spectra, enabling a reconstruction of both at each epoch.
+\todo{(say something about Artigau2014 here)} 
 
-Here we develop a linear data-driven model to infer a telluric and stellar spectrum and calculate the RVs for both components at each observed epoch. 
-This model requires no prior knowledge of the star or the Earth's atmosphere. 
+\todo{[Other works that have done similar stuff -- be sure to cite: Artigau2018, Gao2016]}
+
+Here we develop a linear data-driven model to infer a telluric and stellar spectrum and calculate the stellar RV at each observed epoch. 
+The telluric model component may vary with time in a low-dimensional manner, which is also inferred from the data. 
+Our model requires no prior knowledge of the star or the Earth's atmosphere. 
 As such, it does not yield absolute measurements of \RV s, only highly precise relative measurements between epochs.
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. no absorption cell. 
@@ -120,7 +132,7 @@ This assumption is necessary to enable the disentangling of telluric features fr
 In this sense our pipeline is intended as a post-processing step, not a real-time data reduction service. 
 
 In Section \ref{s:methods}, we outline the model and present an open-source implementation in \python\ and \TF\ called \wobble. 
-In Section \ref{s:results}, we apply our method to \HARPS\ archival data for two target stars, the planet-hosting solar analog 51 Peg and the quiet M dwarf \todo{yyy}, as a demonstration of \wobble's capabilities. 
+In Section \ref{s:results}, we apply our method to \HARPS\ archival data for two target stars, the planet-hosting solar analog 51 Peg and the quiet M dwarf \Mdwarf, as a demonstration of \wobble's capabilities. 
 \todo{We find xyz.} 
 We conclude in Section \ref{s:future} with a detailed look at the limitations of the current implementation and outline ways to adapting \wobble\ for such cases as instruments with absorption cells, intrinsic time variability in the stellar spectrum, and multiple-star systems.
 
@@ -160,11 +172,11 @@ We repeat this procedure, calculating velocities for each epoch and in turn usin
 
 \subsection{Code}
 
-The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, using the \TF\ package \todo{[terminology?]} in \code{python}. \TF\ is a \todo{[blah blah technical blah]}. While it has primarily been used in machine-learning contexts in the astronomical literature \todo{(cite)}, its auto-differentiation and fast linear algebra capabilities make it valuable for this use case as well.
+The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, using the \TF\ package \todo{[terminology?]} in \code{python}. \TF\ is a \todo{[blah blah technical blah]}. While it has primarily been used in machine-learning contexts in the astronomical literature \todo{(cite)}, its auto-differentiation and fast linear algebra capabilities make it valuable for this use case as well. In particular, the necessary optimizations can be performed with high efficiency by \TF: the below-described analysis of \todo{x} spectra of 51 Peg runs in \todo{y} hours on a standard Macbook laptop.
 
 \todo{(more details of implementation)}
 
-In its current realization, \wobble\ is optimized for use with data products from the High Accuracy Radial Velocity Planet Searcher (\HARPS) spectrograph \todo{(Mayor+2003)}. Like most \EPRV\ instruments, \HARPS\ is an echelle spectrograph spanning many spectral orders. These orders can be considered as independent spectra \todo{for reasons}. \todo{We run on each echelle order independently and then combine them like so:}
+In its current realization, \wobble\ is optimized for use with data products from the High Accuracy Radial Velocity Planet Searcher (\HARPS) spectrograph \citep{Mayor2003}. Like most \EPRV\ instruments, \HARPS\ is an echelle spectrograph spanning many spectral orders. These orders can be considered as independent spectra \todo{for reasons}. \todo{We run on each echelle order independently and then combine them like so:}
 
 
 Our code is open-source and publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
@@ -181,9 +193,11 @@ Our code is open-source and publicly available on GitHub.\footnote{\url{https://
 
 \todo{Plots of RV vs. time, models of star and tellurics in a few segments of the spectrum.}
 
-\subsection{TBD (a quiet M-dwarf?)}
+\subsection{\Mdwarf}
 
 \todo{Results \& more plots.}
+
+Compare to HARPS-TERRA results for this star \citep{AngladaEscude2012}.
 
 \section{Generalizing \wobble}
 \label{s:future}
@@ -191,7 +205,9 @@ Our code is open-source and publicly available on GitHub.\footnote{\url{https://
 \todo{Revisit the assumptions: single star, no gas cell, known instrumental wavelength solution, no intrinsic spectral variability, no additive terms, many spectra exist. 
 In what situations are these assumptions violated, and how would we configure \wobble\ to deal with them?}
 
+Intrinsic stellar variability: cite \citet{Davis2017} for PCA approach
+
 \bibliographystyle{apj}
-\bibliography{}%general,myref,inprep}
+\bibliography{paper.bib}%general,myref,inprep}
 
 \end{document}  
