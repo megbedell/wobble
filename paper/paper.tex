@@ -92,16 +92,16 @@ These regions are then removed from analysis, leaving only telluric-free regions
 
 Such an approach has two significant issues. 
 The first is that removing sections of the spectrum removes significant regions of the spectrum that can be used to infer the stellar radial velocity. 
-Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are abundant narrow spectral features that can be used to improve RV precision (cite).
+Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are abundant narrow spectral features that can be used to improve \RV\ precision (cite).
 This is especially true for M dwarfs, which peak in emitted energy at $\approx 1 \mu$m and have many narrow molecular absorption features in their photospheres \citep{Figueira2016}.
-Eliminating large chunks of these spectra will therefore significantly inhibit our ability to detect planets around M dwarfs through RVs.
+Eliminating large chunks of these spectra will therefore significantly inhibit our ability to detect planets around M dwarfs through \RV s.
 
 Secondly, not all telluric features are obvious. 
-The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred RV at the $\sim 1$ \ms\ level \citep{Cunha2014}. 
+The Earth's atmosphere induces many small-amplitude features, often referred to as ``microtellurics,'' which are not obvious by eye but can affect the star's inferred \RV\ at the $\sim 1$ \ms\ level \citep{Cunha2014}. 
 As the locations of these features are not known \textit{a priori} and may not even be apparent in stacked spectra of many observations, these spectral regions cannot be thrown out. 
 Instead, alternative methods to account for these features must be developed and employed in order to mitigate the effect of the Earth's atmosphere on the measured stellar radial velocities.
 
-One such approach is modeling the telluric spectrum using existing line databases like HITRAN \citep{HITRAN2016}. 
+One such approach is modeling the telluric spectrum using existing line databases like \acronym{HITRAN} \citep{HITRAN2016}. 
 The telluric model may then be divided out from the observations, assuming the line spread function of the instrument is known \citep[e.g.][]{Seifahrt2010}. 
 This method relies on existing physical knowledge about the Earth's atmosphere and can be fine-tuned using local observatory measurements of e.g. atmospheric water vapor content \citep{Baker2017}. 
 However, line databases are incomplete even in significant absorption features when compared to actual observations and certainly do not include microtellurics, making them poorly suited for extreme precision RV applications \citep{Bertaux2014}.
@@ -148,13 +148,20 @@ Our model is comprised of three major contributions to the observed spectrum: th
 We make the assumption that these variations can be captured in a low-dimensional space.
 
 Each data column $y_n$ is modeled as:
-$$y_n = P(v_{\star, n}) W_{\star} x_n + P(v_{t, n}) W_{t} z_n + W_{c} u_n + noise,$$
-where $P$ is an interpolation operator which applies a Doppler shift $D_v$ and $W$ is a matrix of ``principal components'' which are weighted by $x_n, z_n, u_n$ to form the spectral contribution at epoch $n$. Each $W$ takes the shape $M' \times K$, where $M'$ is the length of a wavelength-space grid $\lambda'$ which may be different from the data wavelength grid $\lambda$ and $K$ is the number of components to be used (where $K_{\star}$, $K_t$, and $K_c$ may be different numbers).
+%$$y_n = P(v_{\star, n}) W_{\star} x_n + P(v_{t, n}) W_{t} z_n + W_{c} u_n + noise,$$
+%where $P$ is an interpolation operator which applies a Doppler shift $D_v$ and $W$ is a matrix of ``principal components'' which are weighted by $x_n, z_n, u_n$ to form the spectral contribution at epoch $n$. Each $W$ takes the shape $M' \times K$, where $M'$ is the length of a wavelength-space grid $\lambda'$ which may be different from the data wavelength grid $\lambda$ and $K$ is the number of components to be used (where $K_{\star}$, $K_t$, and $K_c$ may be different numbers).
+$$y_n = P(v_{\star, n}) \mu_{\star} + P(v_{t, n}) (  \mu_{t} + W_{t} z_n ) + noise,$$
+where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu$ is the mean spectral template for each component.  In addition to its mean spectrum $\mu_t$, the telluric component also takes a time-dependent component assembled from two variables: $W$, a matrix of ``principal components,'' is weighted by $z_n$ to form the spectral contribution at epoch $n$. Each $\mu$ has length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid; these grids may in principle be different lengths for different spectral components, but for simplicity we use the same grid for both $\mu$. Correspondingly, $W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of principle components. 
+
+Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
+$$ \log \lambda(v) = \log \lambda_{0} + \log \left(\frac{1 - v/c}{1 + v/c}\right).
+$$
+This shift is applied to the $M'$-length wavelength grid for the template spectrum before interpolating the template to the data space.
 
 \todo{discuss degeneracies in the model}
 
 We build an initial template for both the stellar and telluric spectra by assuming a Doppler shift for each (equal to the barycentric correction and zero, respectively) and calculating the median flux at each model wavelength $\lambda'$ after that shift is applied.
-With these models in hand, we are then able to infer an RV shift for both model components at each epoch.
+With these models in hand, we are then able to infer an \RV\ shift for both model components at each epoch.
 We evaluate a likelihood for each epoch such that
 $$ \ln \mathcal{L} = \sum_{m} -0.5 (y_m - y_m')^T C^{-1} (y_m-y_m'),
 $$
@@ -165,7 +172,7 @@ $$ P(m|X) = \ln \mathcal{L}  -0.5 * \frac{\sum(v)^2}{(Nl)^2}.
 $$
 \todo{someone should define these variables}
 
-We maximize this likelihood function for our assumed stellar and telluric models iteratively, first calculating the best-fitting stellar \RV shifts holding the telluric shifts constant, then repeating for the telluric spectrum shift holding the stellar \RV s constant.
+We maximize this likelihood function for our assumed stellar and telluric models iteratively, first calculating the best-fitting stellar \RV\ shifts holding the telluric shifts constant, then repeating for the telluric spectrum shift holding the stellar \RV s constant.
 After each optimization, we use these velocities to improve our models for the telluric and stellar spectra, employing a gradient descent scheme to modify our templates $m'$ at each wavelength $\lambda'$ using the newly calculated velocities.
 We repeat this procedure, calculating velocities for each epoch and in turn using these velocities to infer an improved model spectrum, until the procedure converges. 
 \todo{(say something about model linearity and why this iterative procedure is effective)}
