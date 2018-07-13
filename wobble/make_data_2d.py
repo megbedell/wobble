@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.io.idl import readsav
 from scipy.interpolate import interp1d
-from harps_hacks import read_harps, rv_model 
+from harps_hacks import read_harps
 import h5py
 import math
 from astropy.io import fits
@@ -14,7 +14,7 @@ def dimensions(instrument):
         M = 4096 # pixels per order
         R = 72 # orders
     else:
-        print "instrument not recognized. valid options are: HARPS"
+        print("instrument not recognized. valid options are: HARPS")
         return
     return M, R
 
@@ -35,7 +35,8 @@ def read_data_from_fits(filelist):
         airms[n] = sp[0].header['HIERARCH ESO TEL AIRM START']
         drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
         
-        spec_file = str.replace(f, 'ccf_G2', 'e2ds')  
+        spec_file = str.replace(f, 'ccf_G2', 'e2ds') 
+        spec_file = str.replace(f, 'ccf_M2', 'e2ds') 
         try:
             wave, spec = read_harps.read_spec_2d(spec_file)
         except:
@@ -74,7 +75,7 @@ def read_data_from_savfile(savfile):
     empty = np.array([], dtype=int)
     for n,(f,b,snr) in enumerate(zip(s.files, s.berv, s.snr)):
             # read in the spectrum
-            spec_file = str.replace(f, 'ccf_G2', 'e2ds')
+            spec_file = str.replace(f, 'ccf_G2', 'e2ds')            
             try:
                 wave, spec = read_harps.read_spec_2d(spec_file)
             except:
@@ -144,23 +145,37 @@ def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffi
 
 if __name__ == "__main__":
 
-    if False: # HIP54287
+    if False: #HIP54287
         data_dir = "/Users/mbedell/Documents/Research/HARPSTwins/Results/"
         savfile = data_dir+'HIP54287_result.dat'
         ccf_filelist = savfile_to_filelist(savfile)
     
-        if False: # missing wavelength files
+        if False: # check for missing wavelength files
             e2ds_filelist = [str.replace(f, 'ccf_G2', 'e2ds') for f in ccf_filelist]
             missing_files = missing_wavelength_files(e2ds_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
+            print('{0} missing wavelength files for HIP54287'.format(len(missing_files)))
     
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
 
         hdffile = '../data/hip54287_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
         
-    if True: #51 Peg
+    if False: #51 Peg
         ccf_filelist = np.genfromtxt('ccf_filelist.txt', dtype=None)
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
+        
+    if True: #Barnard's Star
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
+        
+        if True: # check for missing wavelength files
+            missing_files = missing_wavelength_files(ccf_filelist)
+            np.savetxt('missing_files.txt', missing_files, fmt='%s')
+            print('{0} missing wavelength files for Barnard\'s Star'.format(len(missing_files)))
+            
+        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+
+        hdffile = '../data/barnards_e2ds.hdf5'
+        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)                  

@@ -6,7 +6,7 @@ from time import time
 import h5py
 
 if __name__ == "__main__":
-    starname = 'hip54287'
+    starname = '51peg'
     
     if False:
         # quick single-order test
@@ -14,9 +14,10 @@ if __name__ == "__main__":
         model = wobble.Model(data)
         model.add_star(starname)
         model.add_telluric('tellurics', rvs_fixed=True)
-        nll_history, rvs_history, template_history, chis_history = wobble.optimize_order(model, data, 0, 
+        histories = wobble.optimize_order(model, data, 0, 
                 niter=50, output_history=True)
-                
+        (nll_history, rvs_history, template_history, chis_history, \
+            basis_vectors_history, basis_weights_history) = histories        
         assert False
     
     
@@ -28,7 +29,7 @@ if __name__ == "__main__":
     
     model = wobble.Model(data)
     model.add_star(starname)
-    K = 3
+    K = 2
     model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
     print(model)
     print("time elapsed: {0:.2f} s".format(time() - start_time))
@@ -39,7 +40,7 @@ if __name__ == "__main__":
     plot_dir = 'results/plots/'
     niter = 80
     for r in range(data.R):
-        if False: # no plots
+        if True: # no plots
             wobble.optimize_order(model, data, r, 
                         niter=niter, output_history=False)
         else: # plots out the wazoo
@@ -80,9 +81,10 @@ if __name__ == "__main__":
         
         # save telluric variability:
         session = wobble.get_session()
-        c = model.components[1]
-        telluric_basis_vectors[r,:,:] = np.copy(session.run(c.basis_vectors[r]))
-        telluric_basis_weights[r,:,:] = np.copy(session.run(c.basis_weights[r]))
+        if K > 0:
+            c = model.components[1]
+            telluric_basis_vectors[r,:,:] = np.copy(session.run(c.basis_vectors[r]))
+            telluric_basis_weights[r,:,:] = np.copy(session.run(c.basis_weights[r]))
                     
         # HACK to save everything else:    
         data.wobble_obj.rvs_star[r] = session.run(model.components[0].rvs_block[r])          
@@ -94,10 +96,11 @@ if __name__ == "__main__":
         session.close()
         print("order {1} saved. time elapsed: {0:.2f} s".format(time() - start_time, r))
                 
-    # save telluric variability:    
-    with h5py.File(starname+'_variable_tellurics.hdf5','w') as f:
-        dset = f.create_dataset('telluric_basis_vectors', data=telluric_basis_vectors)
-        dset = f.create_dataset('telluric_basis_weights', data=telluric_basis_weights)
+    # save telluric variability:
+    if K > 0:    
+        with h5py.File(starname+'_variable_tellurics.hdf5','w') as f:
+            dset = f.create_dataset('telluric_basis_vectors', data=telluric_basis_vectors)
+            dset = f.create_dataset('telluric_basis_weights', data=telluric_basis_weights)
     
     # hackety hack hack
     data.wobble_obj.rvs_star = np.asarray(data.wobble_obj.rvs_star)
