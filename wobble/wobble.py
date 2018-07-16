@@ -127,11 +127,11 @@ class Model(object):
         if rvs_fixed:
             self.components_rvs_fixed.append(c)
                 
-    def load(self, filename):
+    def read(self, filename):
         print("loading...")
         # TODO: write this code
     
-    def save(self, filename):
+    def write(self, filename):
         print("saving...")
         # TODO: write this code
                                 
@@ -214,15 +214,10 @@ class Component(object):
                             var_list=[self.template_ys[r]])
         self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
                             var_list=[self.rvs_block[r]])
-        save = [self.template_xs[r], self.template_ys[r], self.rvs_block[r]]
         if self.K > 0:
             self.gradients_basis = tf.gradients(nll, [self.basis_vectors[r], self.basis_weights[r]])
             self.opt_basis = tf.train.AdamOptimizer(learning_rate_basis).minimize(nll, 
-                            var_list=[self.basis_vectors[r], self.basis_weights[r]]) 
-            save.append(self.basis_vectors[r])
-            save.append(self.basis_weights[r])
-        self.saver = tf.train.Saver(var_list=save)  
-        
+                            var_list=[self.basis_vectors[r], self.basis_weights[r]])         
 
 class Star(Component):
     """
@@ -244,25 +239,132 @@ class Telluric(Component):
         
     def synthesize(self, r, xs, rvs):
         synth = Component.synthesize(self, r, xs, rvs)
-        return tf.einsum('n,nm->nm', self.airms, synth)        
+        return tf.einsum('n,nm->nm', self.airms, synth) 
+        
+class History(object):
+    """
+    Information about optimization history of a single order stored in numpy arrays/lists
+    """   
+    def __init__(self, model, data, r, niter, filename=None):
+        self.nll_history = np.empty(niter)
+        self.rvs_history = [np.empty((niter, data.N)) for c in model.components]
+        self.template_history = [np.empty((niter, int(c.template_ys[r].shape[0]))) for c in model.components]
+        self.basis_vectors_history = [np.empty((niter, c.K, 4096)) for c in model.components] # HACK
+        self.basis_weights_history = [np.empty((niter, data.N, c.K)) for c in model.components]
+        self.chis_history = np.empty((niter, data.N, 4096)) # HACK
+        self.r = r
+        self.niter = niter
+        if filename is not None:
+            self.read(filename)
+        
+    def save_iter(self, model, data, i, nll, chis):
+        """
+        Save all necessary information at optimization step i
+        """
+        session = get_session()
+        self.nll_history[i] = session.run(nll)
+        self.chis_history[i,:,:] = np.copy(session.run(chis))
+        for j,c in enumerate(model.components):
+            template_state = session.run(c.template_ys[self.r])
+            rvs_state = session.run(c.rvs_block[self.r])
+            self.template_history[j][i,:] = np.copy(template_state)
+            self.rvs_history[j][i,:] = np.copy(rvs_state)  
+            if c.K > 0:
+                self.basis_vectors_history[j][i,:,:] = np.copy(session.run(c.basis_vectors[self.r])) 
+                self.basis_weights_history[j][i,:,:] = np.copy(session.run(c.basis_weights[self.r]))
+        
+    def write(self, filename=None):
+        """
+        Write to hdf5
+        """
+        if filename is None:
+            filename = 'order{0}_history.hdf5'.format(self.r)
+        print("saving optimization history to {0}".format(filename))
+        with h5py.File(filename,'w') as f:
+            for attr in ['nll_history', 'chis_history', 'r', 'niter']:
+                f.create_dataset(attr, data=getattr(self, attr))
+            for attr in ['rvs_history', 'template_history', 'basis_vectors_history', 'basis_weights_history']:
+                for i in range(len(self.template_history)):
+                    f.create_dataset(attr+'_{0}'.format(i), data=getattr(self, attr)[i])   
+                    
+    
+    def read(self, filename):
+        """
+        Read from hdf5
+        """         
+        with h5py.File(filename, 'r') as f:
+            for attr in ['nll_history', 'chis_history', 'r', 'niter']:
+                setattr(self, attr, np.copy(f[attr]))
+            for attr in ['rvs_history', 'template_history', 'basis_vectors_history', 'basis_weights_history']:
+                data = []
+                for i in range(len(self.template_history)):
+                    data.append(np.copy(f[attr+'_{0}'.format(i)]))
+                setattr(self, attr, data)
+                
+        
+    def animfunc(self, i, xs, ys, xlims, ylims, ax, driver):
+        ax.cla()
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        ax.set_title('Optimization step #{0}'.format(i))
+        s = driver(xs, ys[i,:])
+        
+    def plot(self, xs, ys, linestyle, nframes=None, ylims=None):
+        if nframes is None:
+            nframes = self.niter
+        fig = plt.figure()
+        ax = plt.subplot() 
+        if linestyle == 'scatter':
+            driver = ax.scatter
+        elif linestyle == 'line':
+            driver = ax.plot
+        else:
+            print("linestyle not recognized.")
+            return
+        x_pad = (np.max(xs) - np.min(xs)) * 0.1
+        xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
+        if ylims is None:
+            ylims = (np.min(ys)-10., np.max(ys)+10.)
+        ani = animation.FuncAnimation(fig, self.animfunc, np.linspace(0, self.niter-1, nframes, dtype=int), 
+                    fargs=(xs, ys, xlims, ylims, ax, driver), interval=150)
+        plt.close(fig)
+        return ani  
+                         
+    def plot_rvs(self, ind, model, data, compare_to_pipeline=True, **kwargs):
+        xs = data.dates
+        ys = self.rvs_history[ind]
+        if compare_to_pipeline:
+            ys -= np.repeat([data.pipeline_rvs], self.niter, axis=0)    
+        return self.plot(xs, ys, 'scatter', **kwargs)     
+    
+    def plot_template(self, ind, model, data, **kwargs):
+        session = get_session()
+        template_xs = session.run(model.components[ind].template_xs[self.r])
+        xs = np.exp(template_xs)
+        ys = np.exp(self.template_history[ind])
+        return self.plot(xs, ys, 'line', **kwargs) 
+    
+    def plot_chis(self, epoch, model, data, **kwargs):
+        session = get_session()
+        data_xs = session.run(data.xs[self.r][epoch,:])
+        xs = np.exp(data_xs)
+        ys = self.chis_history[:,epoch,:]
+        return self.plot(xs, ys, 'line', **kwargs)         
+        
+            
 
-def optimize_order(model, data, r, niter=100, save_every=100, output_history=False):
+def optimize_order(model, data, r, niter=100, save_every=100, save_history=False, basename='wobble'):
     '''
     NOTE: regularization is "dumb ass" - DWH
     consider L1 vs. L2
     set regularization amplitude in a sensible way
-    '''        
+    '''      
     for c in model.components:
         if c.template_ys[r] is None:
             c.initialize_template(r, data, other_components=[x for x in model.components if x!=c])         
                      
-    if output_history:
-        nll_history = np.empty(niter*2)
-        rvs_history = [np.empty((niter, data.N)) for c in model.components]
-        template_history = [np.empty((niter, int(c.template_ys[r].shape[0]))) for c in model.components]
-        basis_vectors_history = [np.empty((niter, c.K, 4096)) for c in model.components] # HACK
-        basis_weights_history = [np.empty((niter, data.N, c.K)) for c in model.components]
-        chis_history = np.empty((niter, data.N, 4096)) # HACK
+    if save_history:
+        history = History(model, data, r, niter)
         
     # likelihood calculation:
     synth = model.synthesize(r)
@@ -292,93 +394,27 @@ def optimize_order(model, data, r, niter=100, save_every=100, output_history=Fal
     session.run(tf.global_variables_initializer())
         
     # optimize:
-    print("--- ORDER {0} ---".format(r))
     for i in tqdm(range(niter)):
-        if output_history: 
-            nll_history[2*i] = session.run(nll)
-            chis_history[i,:,:] = np.copy(session.run(chis))
-            for j,c in enumerate(model.components):
-                template_state = session.run(c.template_ys[r])
-                rvs_state = session.run(c.rvs_block[r])
-                template_history[j][i,:] = np.copy(template_state)
-                rvs_history[j][i,:] = np.copy(rvs_state)  
-                if c.K > 0:
-                    basis_vectors_history[j][i,:,:] = np.copy(session.run(c.basis_vectors[r])) 
-                    basis_weights_history[j][i,:,:] = np.copy(session.run(c.basis_weights[r]))             
+        if save_history:
+            history.save_iter(model, data, i, nll, chis)           
         for c in model.components:
             if not c in model.components_rvs_fixed:            
                 session.run(c.opt_rvs) # optimize RVs
-        if output_history: 
-            nll_history[2*i+1] = session.run(nll)
-        for c in model.components:            
             session.run(c.opt_template) # optimize mean template
             if c.K > 0:
                 session.run(c.opt_basis) # optimize variable components
         if (i+1 % save_every == 0):
-            c.saver.save(session, "tf_checkpoints/{0}_order{1}".format(c.name, r), global_step=i)
-        
-    if output_history:
-        return nll_history, rvs_history, template_history, chis_history, basis_vectors_history, basis_weights_history # hack
-    else:
-        return
+            model.write(basename+'_o{0}_model.hdf5'.format(r))
+            if save_history:
+                history.write(basename+'_o{0}_history.hdf5'.format(r))
+    history.write(basename+'_o{0}_history.hdf5'.format(r))
 
 def optimize_orders(model, data, **kwargs):
     session = get_session()
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
+        print("--- ORDER {0} ---".format(r))
         optimize_order(session, model, data, r, **kwargs)
         #if (r % 5) == 0:
         #    model.save('results_order{0}.hdf5'.format(r))
-
-def animfunc(i, xs, ys, xlims, ylims, ax, driver):
-    ax.cla()
-    ax.set_xlim(xlims)
-    ax.set_ylim(ylims)
-    ax.set_title('Optimization step #{0}'.format(i))
-    s = driver(xs, ys[i,:])
-            
-def plot_rv_history(data, rvs_history, niter, nframes, ylims=None, compare_to_pipeline=True):
-    fig = plt.figure()
-    ax = plt.subplot()
-    xs = data.dates
-    if compare_to_pipeline:
-        ys = rvs_history - np.repeat([data.pipeline_rvs], niter, axis=0)    
-    else:
-        ys = rvs_history        
-    x_pad = (np.max(xs) - np.min(xs)) * 0.1
-    xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
-    if ylims is None:
-        ylims = (np.min(ys)-10., np.max(ys)+10.)
-    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
-                fargs=(xs, ys, xlims, ylims, ax, ax.scatter))
-    plt.close(fig)
-    return ani  
-    
-def plot_template_history(template_xs, template_history, niter, nframes, ylims=None):
-    fig = plt.figure()
-    ax = plt.subplot()
-    xs = np.exp(template_xs)
-    xlims = (np.min(xs), np.max(xs))
-    ys = np.exp(template_history)
-    if ylims is None:
-        y_pad = (np.max(ys) - np.min(ys)) * 0.1
-        ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
-    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
-                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
-    plt.close(fig)
-    return ani
-    
-def plot_chis_history(epoch, data_xs, chis_history, niter, nframes, ylims=None):
-    fig = plt.figure()
-    ax = plt.subplot()
-    xs = np.exp(data_xs[epoch,:])
-    xlims = (np.min(xs), np.max(xs))
-    ys = chis_history[:,epoch,:]
-    if ylims is None:
-        y_pad = (np.max(ys) - np.min(ys)) * 0.1
-        ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
-    ani = animation.FuncAnimation(fig, animfunc, np.linspace(0, niter-1, nframes, dtype=int), 
-                fargs=(xs, ys, xlims, ylims, ax, ax.plot))
-    plt.close(fig)
-    return ani
         
