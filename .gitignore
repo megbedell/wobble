@@ -5,3 +5,20 @@ __pycache__
 build
 dist
 *.egg-info
+*.ipynb_checkpoints
+
+# plots
+*.png
+*.pdf
+
+# paper stuff
+*.aux
+*.bbl
+*.blg
+*.log
+*.synctex.gz
+
+# data
+*.vels
+*.csv
+*.hdf5
