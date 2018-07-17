@@ -150,6 +150,12 @@ class Component(object):
         self.learning_rate_rvs = 10. # default
         self.learning_rate_template = 0.01 # default
         self.learning_rate_basis = 0.01 # default
+        self.L1_template = 0.
+        self.L2_template = 0.
+        self.L1_basis_vectors = 0.
+        self.L2_basis_vectors = 0.
+        self.L1_basis_weights = 0.
+        self.L2_basis_weights = 0.
         
     def shift_and_interp(self, r, xs, rvs):
         """
@@ -226,7 +232,9 @@ class Star(Component):
     def __init__(self, name, data, variable_bases=0):
         Component.__init__(self, name, data, variable_bases=variable_bases)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
-        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]        
+        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)] 
+        self.L1_template = 1.e4 # magic number set to where it just begins to work
+               
                             
 class Telluric(Component):
     """
@@ -236,6 +244,9 @@ class Telluric(Component):
         Component.__init__(self, name, data, variable_bases=variable_bases)
         self.airms = tf.constant(data.airms, dtype=T)
         self.learning_rate_template = 0.1 
+        self.L1_template = 1.e4 # magic number set to where it just begins to work
+        self.L2_basis_vectors = 1.e4 # magic number
+        self.L2_basis_weights = 1. # magic number
         
     def synthesize(self, r, xs, rvs):
         synth = Component.synthesize(self, r, xs, rvs)
@@ -324,7 +335,8 @@ class History(object):
         x_pad = (np.max(xs) - np.min(xs)) * 0.1
         xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
         if ylims is None:
-            ylims = (np.min(ys)-10., np.max(ys)+10.)
+            y_pad = (np.max(ys) - np.min(ys)) * 0.1
+            ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
         ani = animation.FuncAnimation(fig, self.animfunc, np.linspace(0, self.niter-1, nframes, dtype=int), 
                     fargs=(xs, ys, xlims, ylims, ax, driver), interval=150)
         plt.close(fig)
@@ -369,22 +381,20 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     # likelihood calculation:
     synth = model.synthesize(r)
     chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
+    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r])
+    
     # regularization:
     L1_norm_template = 0.
     L2_norm_basis_vectors = 0.
     L2_norm_basis_weights = 0.
-    L1_amp_template = 1.e4 # magic number set to where it just begins to work
-    #TODO: should make amplitudes separate for two components
-    L2_amp_basis_vectors = 1.e4 # magic number
-    L2_amp_basis_weights = 1. # magic number
     for c in model.components:
-        L1_norm_template += L1_amp_template * tf.reduce_sum(tf.abs(c.template_ys[r]))
+        nll += c.L1_template * tf.reduce_sum(tf.abs(c.template_ys[r]))
+        nll += c.L2_template * tf.reduce_sum(tf.square(c.template_ys[r]))
         if c.K > 0:
-            L2_norm_basis_vectors = L2_amp_basis_vectors * tf.reduce_sum(tf.square(c.basis_vectors[r]))
-            L2_norm_basis_weights = L2_amp_basis_weights * tf.reduce_sum(tf.square(c.basis_weights[r]))
-
-    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r]) + L1_norm_template \
-            + L2_norm_basis_vectors + L2_norm_basis_weights
+            nll += c.L1_basis_vectors * tf.reduce_sum(tf.abs(c.basis_vectors[r]))
+            nll += c.L2_basis_vectors * tf.reduce_sum(tf.square(c.basis_vectors[r]))
+            nll += c.L1_basis_weights * tf.reduce_sum(tf.abs(c.basis_weights[r]))
+            nll += c.L2_basis_weights * tf.reduce_sum(tf.square(c.basis_weights[r]))
         
     # set up optimizers: 
     for c in model.components:
@@ -403,11 +413,12 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
             session.run(c.opt_template) # optimize mean template
             if c.K > 0:
                 session.run(c.opt_basis) # optimize variable components
-        if (i+1 % save_every == 0):
+        if (i+1 % save_every == 0): # progress save
             model.write(basename+'_o{0}_model.hdf5'.format(r))
             if save_history:
                 history.write(basename+'_o{0}_history.hdf5'.format(r))
-    history.write(basename+'_o{0}_history.hdf5'.format(r))
+    if save_history: # final post-optimization save
+        history.write(basename+'_o{0}_history.hdf5'.format(r))
 
 def optimize_orders(model, data, **kwargs):
     session = get_session()

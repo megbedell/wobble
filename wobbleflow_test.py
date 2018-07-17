@@ -14,10 +14,9 @@ if __name__ == "__main__":
         model = wobble.Model(data)
         model.add_star(starname)
         model.add_telluric('tellurics', rvs_fixed=True)
-        histories = wobble.optimize_order(model, data, 0, 
-                niter=50, output_history=True)
-        (nll_history, rvs_history, template_history, chis_history, \
-            basis_vectors_history, basis_weights_history) = histories        
+        wobble.optimize_order(model, data, 0, 
+                niter=50, save_history=True, basename=starname) 
+        history = wobble.History(model, data, 0, 50, filename=starname+'_o0_history.hdf5')      
         assert False
     
     
@@ -42,33 +41,35 @@ if __name__ == "__main__":
     for r in range(data.R):
         if True: # no plots
             wobble.optimize_order(model, data, r, 
-                        niter=niter, output_history=False)
+                        niter=niter, save_history=False)
         else: # plots out the wazoo
-            nll_history, rvs_history, template_history, chis_history, \
-                basis_vectors_history, basis_weights_history = wobble.optimize_order(model, 
-                data, r, niter=niter, output_history=True) 
-            plt.scatter(np.arange(len(nll_history)), nll_history)
+            wobble.optimize_order(model, 
+                data, r, niter=niter, save_history=True, basename=starname)
+            history = wobble.History(model, data, 0, 50, filename=starname+'_o{0}_history.hdf5'.format(r))      
+             
+            plt.scatter(np.arange(len(history.nll_history)), history.nll_history)
             ax = plt.gca()
             ax.set_yscale('log')
             plt.savefig(plot_dir+'nll_order{0}.png'.format(r))   
             plt.clf()
-            rvs_ani_star = wobble.plot_rv_history(data, rvs_history[0], niter, 50, compare_to_pipeline=True)
+            
+            rvs_ani_star = history.plot_rvs(0, model, data, compare_to_pipeline=True)
             rvs_ani_star.save(plot_dir+'rvs_star_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
-            rvs_ani_t = wobble.plot_rv_history(data, rvs_history[1], niter, 50, compare_to_pipeline=False)
+            rvs_ani_t = history.plot_rvs(1, model, data)
             rvs_ani_t.save(plot_dir+'rvs_t_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('RVs animations saved')
-            session = wobble.get_session()
-            template_xs = session.run(model.components[0].template_xs[r])
-            template_ani_star = wobble.plot_template_history(template_xs, template_history[0], niter, 50)
+            
+            template_ani_star = history.plot_template(0, model, data, nframes=50)
             template_ani_star.save(plot_dir+'template_star_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
-            template_xs = session.run(model.components[1].template_xs[r])
-            template_ani_t = wobble.plot_template_history(template_xs, template_history[1], niter, 50)
+            template_ani_t = history.plot_template(1, model, data, nframes=50)
             template_ani_t.save(plot_dir+'template_t_order{0}.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('template animations saved')
-            data_xs = session.run(data.xs[r])
-            chis_ani = wobble.plot_chis_history(0, data_xs, chis_history, niter, 50)
+            
+            chis_ani = history.plot_chis(0, model, data, nframes=50)
             chis_ani.save(plot_dir+'chis_order{0}_epoch0.mp4'.format(r), fps=30, extra_args=['-vcodec', 'libx264'])
             print('chis animation saved')
+            
+            session = wobble.get_session()
             epochs = [0, 5, 10, 15, 20] # random epochs to plot
             c = model.components[1]
             t_synth = session.run(tf.matmul(c.basis_weights[r], c.basis_vectors[r]))
