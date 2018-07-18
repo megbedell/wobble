@@ -18,8 +18,7 @@ DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 
 DATA_TF_ATTRS = ['xs', 'ys', 'ivars']
 MODEL_ATTRS = ['component_names'] # not actually used but defined for completeness
 COMPONENT_NP_ATTRS = ['K', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 'L1_template',
-                    'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L1_basis_weights',
-                    'L2_basis_weights']
+                    'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
 
 __all__ = ["get_session", "doppler", "Data", "Model", "History", "Results", "optimize_order", "optimize_orders"]
@@ -153,7 +152,6 @@ class Component(object):
         self.L2_template = 0.
         self.L1_basis_vectors = 0.
         self.L2_basis_vectors = 0.
-        self.L1_basis_weights = 0.
         self.L2_basis_weights = 0.
         
     def shift_and_interp(self, r, xs, rvs):
@@ -246,9 +244,10 @@ class Telluric(Component):
         self.airms = tf.constant(data.airms, dtype=T)
         self.learning_rate_template = 0.1 
         self.L1_template = 1.e5 # magic number set to 10x the threshold where it just begins to affect results
-        self.L2_template = 1.e6 # magic number set to 10x the threshold where it just begins to affect results        
-        self.L2_basis_vectors = 1.e4 # magic number
-        self.L2_basis_weights = 1. # magic number
+        self.L2_template = 1.e6 # magic number set to 10x the threshold where it just begins to affect results 
+        self.L1_basis_vectors = 1.e5 # magic number set to same as mean template      
+        self.L2_basis_vectors = 1.e6 # magic number set to same as mean template
+        self.L2_basis_weights = 1. # by definition
         
     def synthesize(self, r, xs, rvs):
         synth = Component.synthesize(self, r, xs, rvs)
@@ -420,11 +419,27 @@ class Results(object):
                         
     def read(self, filename):
         print("Results: reading from {0}".format(filename))
-        # TODO: WRITE THIS
-    
+        with h5py.File(filename,'r') as f:
+            for attr in np.append(DATA_NP_ATTRS, DATA_TF_ATTRS):
+                setattr(self, attr, np.copy(f[attr]))
+            self.component_names = np.copy(f['component_names'])
+            self.component_names = [a.decode('utf8') for a in self.component_names]
+            self.ys_predicted = np.copy(f['ys_predicted'])
+            for name in self.component_names:
+                basename = name + '_'
+                setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
+                for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
+                    try:
+                        setattr(self, basename+attr, np.copy(f[basename+attr]))
+                    except: # catch when basis vectors are Nones
+                        assert np.copy(f[basename+'K']) == 0, "Results: read() failed on attribute {0}".format(basename+attr)
+                    
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
-        # TODO: WRITE THIS        
+        self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
+        with h5py.File(filename,'w') as f:
+            for attr in vars(self):
+                f.create_dataset(attr, data=getattr(self, attr))         
             
 
 def optimize_order(model, data, r, niter=100, save_every=100, save_history=False, basename='wobble'):
@@ -452,7 +467,6 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
         if c.K > 0:
             nll += c.L1_basis_vectors * tf.reduce_sum(tf.abs(c.basis_vectors[r]))
             nll += c.L2_basis_vectors * tf.reduce_sum(tf.square(c.basis_vectors[r]))
-            nll += c.L1_basis_weights * tf.reduce_sum(tf.abs(c.basis_weights[r]))
             nll += c.L2_basis_weights * tf.reduce_sum(tf.square(c.basis_weights[r]))
         
     # set up optimizers: 
