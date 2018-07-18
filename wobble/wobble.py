@@ -12,7 +12,6 @@ import pdb
 
 from .utils import fit_continuum, bin_data
 from .interp import interp
-from .old_wobble import Results
 
 speed_of_light = 2.99792458e8   # m/s
 DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs']
@@ -23,7 +22,7 @@ COMPONENT_NP_ATTRS = ['K', 'learning_rate_rvs', 'learning_rate_template', 'learn
                     'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
 
-__all__ = ["get_session", "doppler", "Data", "Model", "History", "optimize_order", "optimize_orders"]
+__all__ = ["get_session", "doppler", "Data", "Model", "History", "Results", "optimize_order", "optimize_orders"]
 
 def get_session():
   """Get the globally defined TensorFlow session.
@@ -79,9 +78,6 @@ class Data(object):
         # log and normalize:
         self.ys = np.log(self.ys) 
         self.continuum_normalize() 
-        
-        # HACK -- for storing results
-        self.wobble_obj = Results(R=self.R, N=self.N)
         
         # convert to tensors
         if tensors:
@@ -206,6 +202,7 @@ class Component(object):
             basis_weights = (u * s)[:,:self.K] # weights (N x K)
             self.basis_vectors[r] = tf.Variable(basis_vectors, dtype=T, name='basis_vectors')
             self.basis_weights[r] = tf.Variable(basis_weights, dtype=T, name='basis_weights') 
+        session.run(tf.global_variables_initializer())  # TODO: is it bad to have this twice? am I overwriting?
          
         
     def make_optimizers(self, r, nll, learning_rate_rvs=None, 
@@ -233,28 +230,29 @@ class Star(Component):
     """
     A star (or generic celestial object)
     """
-    def __init__(self, name, data, variable_bases=0):
-        Component.__init__(self, name, data, variable_bases=variable_bases)
+    def __init__(self, name, data, rvs_fixed=False, variable_bases=0):
+        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
         self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)] 
-        self.L1_template = 1.e4 # magic number set to where it just begins to work
-               
+        self.L1_template = 1.e4 # magic number set to 10x the threshold where it just begins to affect results
+        self.L2_template = 1.e5 # magic number set to 10x the threshold where it just begins to affect results
                             
 class Telluric(Component):
     """
     Sky absorption
     """
-    def __init__(self, name, data, variable_bases=0):
-        Component.__init__(self, name, data, variable_bases=variable_bases)
+    def __init__(self, name, data, rvs_fixed=True, variable_bases=0):
+        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
         self.airms = tf.constant(data.airms, dtype=T)
         self.learning_rate_template = 0.1 
-        self.L1_template = 1.e4 # magic number set to where it just begins to work
+        self.L1_template = 1.e5 # magic number set to 10x the threshold where it just begins to affect results
+        self.L2_template = 1.e6 # magic number set to 10x the threshold where it just begins to affect results        
         self.L2_basis_vectors = 1.e4 # magic number
         self.L2_basis_weights = 1. # magic number
         
     def synthesize(self, r, xs, rvs):
         synth = Component.synthesize(self, r, xs, rvs)
-        return tf.einsum('n,nm->nm', self.airms, synth) 
+        return tf.einsum('n,nm->nm', self.airms, synth)
         
 class History(object):
     """
@@ -407,20 +405,26 @@ class Results(object):
     def copy_model(self, model):
         self.component_names = model.component_names
         session = get_session()
+        self.ys_predicted = [session.run(model.synthesize(r)) for r in range(self.R)]
         for c in model.components:
             basename = c.name+'_'
+            ys_predicted = [session.run(c.synthesize(r, model.data.xs[r], c.rvs_block[r])) for r in range(self.R)]
+            setattr(self, basename+'ys_predicted', ys_predicted)
             for attr in COMPONENT_NP_ATTRS:
                 setattr(self, basename+attr, getattr(c,attr))
             for attr in COMPONENT_TF_ATTRS:
-                setattr(self, basename+attr, session.run(getattr(c,attr)))
-    
+                try:
+                    setattr(self, basename+attr, session.run(getattr(c,attr)))
+                except: # catch when basis vectors are Nones
+                    assert c.K == 0, "Results: copy_model() failed on attribute {0}".format(attr)
+                        
     def read(self, filename):
         print("Results: reading from {0}".format(filename))
         # TODO: WRITE THIS
     
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
-        # TODO: WRITE THIS
+        # TODO: WRITE THIS        
             
 
 def optimize_order(model, data, r, niter=100, save_every=100, save_history=False, basename='wobble'):
@@ -434,7 +438,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     if save_history:
         history = History(model, data, r, niter)
         
-    results = Results(model, data) # initialize results
+    results = Results(model=model, data=data) # initialize results
         
     # likelihood calculation:
     synth = model.synthesize(r)
@@ -463,7 +467,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
         if save_history:
             history.save_iter(model, data, i, nll, chis)           
         for c in model.components:
-            if c.rvs_fixed:            
+            if not c.rvs_fixed:            
                 session.run(c.opt_rvs) # optimize RVs
             session.run(c.opt_template) # optimize mean template
             if c.K > 0:
@@ -489,4 +493,4 @@ def optimize_orders(model, data, **kwargs):
         results = optimize_order(session, model, data, r, **kwargs)
         #if (r % 5) == 0:
         #    results.write('results_order{0}.hdf5'.format(r))
-    results.save('results.hdf5')        
+    results.write('results.hdf5')        
