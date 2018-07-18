@@ -1,3 +1,4 @@
+# install and build-related things
 .DS_Store
 *.pyc
 __pycache__
@@ -22,3 +23,6 @@ dist
 *.vels
 *.csv
 *.hdf5
+data
+results
+wobble/missing_files.txt

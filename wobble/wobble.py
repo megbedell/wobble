@@ -15,6 +15,15 @@ from .interp import interp
 from .old_wobble import Results
 
 speed_of_light = 2.99792458e8   # m/s
+DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs']
+DATA_TF_ATTRS = ['xs', 'ys', 'ivars']
+MODEL_ATTRS = ['component_names'] # not actually used but defined for completeness
+COMPONENT_NP_ATTRS = ['K', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 'L1_template',
+                    'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L1_basis_weights',
+                    'L2_basis_weights']
+COMPONENT_TF_ATTRS = ['rvs_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
+
+__all__ = ["get_session", "doppler", "Data", "Model", "History", "optimize_order", "optimize_orders"]
 
 def get_session():
   """Get the globally defined TensorFlow session.
@@ -93,14 +102,13 @@ class Model(object):
     def __init__(self, data):
         self.components = []
         self.component_names = []
-        self.components_rvs_fixed = []
         self.data = data
         
     def __str__(self):
         string = 'Model consisting of the following components: '
         for c in self.components:
             string += '\n{0}: '.format(c.name)
-            if c in self.components_rvs_fixed:
+            if c.rvs_fixed:
                 string += 'RVs fixed; '
             else:
                 string += 'RVs variable; '
@@ -114,35 +122,30 @@ class Model(object):
         return synth
         
     def add_star(self, name, rvs_fixed=False, variable_bases=0):
-        c = Star(name, self.data, variable_bases=variable_bases)
+        if np.isin(name, self.component_names):
+            print("The model already has a component named {0}. Try something else!".format(name))
+            return
+        c = Star(name, self.data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
         self.components.append(c)
         self.component_names.append(name)
-        if rvs_fixed:
-            self.components_rvs_fixed.append(c)
         
     def add_telluric(self, name, rvs_fixed=True, variable_bases=0):
-        c = Telluric(name, self.data, variable_bases=variable_bases)
+        if np.isin(name, self.component_names):
+            print("The model already has a component named {0}. Try something else!".format(name))
+            return
+        c = Telluric(name, self.data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
         self.components.append(c)
         self.component_names.append(name)
-        if rvs_fixed:
-            self.components_rvs_fixed.append(c)
-                
-    def read(self, filename):
-        print("loading...")
-        # TODO: write this code
-    
-    def write(self, filename):
-        print("saving...")
-        # TODO: write this code
                                 
 class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, data, variable_bases=0):
+    def __init__(self, name, data, rvs_fixed=False, variable_bases=0):
         self.name = name
         self.K = variable_bases # number of variable basis vectors
         self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
+        self.rvs_fixed = rvs_fixed
         self.template_xs = [None for r in range(data.R)] # this will be replaced
         self.template_ys = [None for r in range(data.R)] # this will be replaced
         self.basis_vectors = [None for r in range(data.R)] # this will be replaced
@@ -214,11 +217,12 @@ class Component(object):
             learning_rate_template = self.learning_rate_template
         if learning_rate_basis == None:
             learning_rate_basis = self.learning_rate_basis
-        self.gradients_model = tf.gradients(nll, self.template_ys[r])
-        self.gradients_rvs = tf.gradients(nll, self.rvs_block[r])
+        self.gradients_template = tf.gradients(nll, self.template_ys[r])
         self.opt_template = tf.train.AdamOptimizer(learning_rate_template).minimize(nll, 
                             var_list=[self.template_ys[r]])
-        self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
+        if not self.rvs_fixed:
+            self.gradients_rvs = tf.gradients(nll, self.rvs_block[r])
+            self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
                             var_list=[self.rvs_block[r]])
         if self.K > 0:
             self.gradients_basis = tf.gradients(nll, [self.basis_vectors[r], self.basis_weights[r]])
@@ -307,13 +311,16 @@ class History(object):
             for attr in ['nll_history', 'chis_history', 'r', 'niter']:
                 setattr(self, attr, np.copy(f[attr]))
             for attr in ['rvs_history', 'template_history', 'basis_vectors_history', 'basis_weights_history']:
-                data = []
+                d = []
                 for i in range(len(self.template_history)):
-                    data.append(np.copy(f[attr+'_{0}'.format(i)]))
-                setattr(self, attr, data)
+                    d.append(np.copy(f[attr+'_{0}'.format(i)]))
+                setattr(self, attr, d)
                 
         
     def animfunc(self, i, xs, ys, xlims, ylims, ax, driver):
+        """
+        Produces each frame; called by History.plot()
+        """
         ax.cla()
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
@@ -321,6 +328,10 @@ class History(object):
         s = driver(xs, ys[i,:])
         
     def plot(self, xs, ys, linestyle, nframes=None, ylims=None):
+        """
+        Generate a matplotlib animation of xs and ys
+        Linestyle options: 'scatter', 'line'
+        """
         if nframes is None:
             nframes = self.niter
         fig = plt.figure()
@@ -343,6 +354,11 @@ class History(object):
         return ani  
                          
     def plot_rvs(self, ind, model, data, compare_to_pipeline=True, **kwargs):
+        """
+        Generate a matplotlib animation of RVs vs. time
+        ind: index of component in model to be plotted
+        compare_to_pipeline keyword subtracts off the HARPS DRS values (useful for removing BERVs)
+        """
         xs = data.dates
         ys = self.rvs_history[ind]
         if compare_to_pipeline:
@@ -350,6 +366,10 @@ class History(object):
         return self.plot(xs, ys, 'scatter', **kwargs)     
     
     def plot_template(self, ind, model, data, **kwargs):
+        """
+        Generate a matplotlib animation of the template inferred from data
+        ind: index of component in model to be plotted
+        """
         session = get_session()
         template_xs = session.run(model.components[ind].template_xs[self.r])
         xs = np.exp(template_xs)
@@ -357,19 +377,55 @@ class History(object):
         return self.plot(xs, ys, 'line', **kwargs) 
     
     def plot_chis(self, epoch, model, data, **kwargs):
+        """
+        Generate a matplotlib animation of model chis in data space
+        epoch: index of epoch to plot
+        """
         session = get_session()
         data_xs = session.run(data.xs[self.r][epoch,:])
         xs = np.exp(data_xs)
         ys = self.chis_history[:,epoch,:]
-        return self.plot(xs, ys, 'line', **kwargs)         
+        return self.plot(xs, ys, 'line', **kwargs)   
         
+class Results(object):
+    def __init__(self, model=None, data=None, filename=None):
+        if data is not None and model is not None:
+            self.copy_data(data)
+            self.copy_model(model)
+        elif filename is not None:
+            self.read(filename)
+        else:
+            print("Error: Results() object must have model and data keywords OR filename keyword to initialize.")            
+            
+    def copy_data(self, data):
+        for attr in DATA_NP_ATTRS:
+            setattr(self, attr, getattr(data,attr))   
+        session = get_session()
+        for attr in DATA_TF_ATTRS:
+            setattr(self, attr, session.run(getattr(data,attr)))
+            
+    def copy_model(self, model):
+        self.component_names = model.component_names
+        session = get_session()
+        for c in model.components:
+            basename = c.name+'_'
+            for attr in COMPONENT_NP_ATTRS:
+                setattr(self, basename+attr, getattr(c,attr))
+            for attr in COMPONENT_TF_ATTRS:
+                setattr(self, basename+attr, session.run(getattr(c,attr)))
+    
+    def read(self, filename):
+        print("Results: reading from {0}".format(filename))
+        # TODO: WRITE THIS
+    
+    def write(self, filename):
+        print("Results: writing to {0}".format(filename))
+        # TODO: WRITE THIS
             
 
 def optimize_order(model, data, r, niter=100, save_every=100, save_history=False, basename='wobble'):
     '''
-    NOTE: regularization is "dumb ass" - DWH
-    consider L1 vs. L2
-    set regularization amplitude in a sensible way
+    optimize the model for order r in data
     '''      
     for c in model.components:
         if c.template_ys[r] is None:
@@ -378,15 +434,14 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     if save_history:
         history = History(model, data, r, niter)
         
+    results = Results(model, data) # initialize results
+        
     # likelihood calculation:
     synth = model.synthesize(r)
     chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
     nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r])
     
     # regularization:
-    L1_norm_template = 0.
-    L2_norm_basis_vectors = 0.
-    L2_norm_basis_weights = 0.
     for c in model.components:
         nll += c.L1_template * tf.reduce_sum(tf.abs(c.template_ys[r]))
         nll += c.L2_template * tf.reduce_sum(tf.square(c.template_ys[r]))
@@ -408,24 +463,30 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
         if save_history:
             history.save_iter(model, data, i, nll, chis)           
         for c in model.components:
-            if not c in model.components_rvs_fixed:            
+            if c.rvs_fixed:            
                 session.run(c.opt_rvs) # optimize RVs
             session.run(c.opt_template) # optimize mean template
             if c.K > 0:
                 session.run(c.opt_basis) # optimize variable components
         if (i+1 % save_every == 0): # progress save
-            model.write(basename+'_o{0}_model.hdf5'.format(r))
+            results.copy_model(model) # update
+            results.write(basename+'_results.hdf5'.format(r))
             if save_history:
                 history.write(basename+'_o{0}_history.hdf5'.format(r))
     if save_history: # final post-optimization save
         history.write(basename+'_o{0}_history.hdf5'.format(r))
+    results.copy_model(model) # update
+    return results
 
 def optimize_orders(model, data, **kwargs):
+    """
+    optimize model for all orders in data
+    """
     session = get_session()
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
         print("--- ORDER {0} ---".format(r))
-        optimize_order(session, model, data, r, **kwargs)
+        results = optimize_order(session, model, data, r, **kwargs)
         #if (r % 5) == 0:
-        #    model.save('results_order{0}.hdf5'.format(r))
-        
+        #    results.write('results_order{0}.hdf5'.format(r))
+    results.save('results.hdf5')        

@@ -23,7 +23,11 @@ extensions = [
 
 setup(
     name="wobble",
+    version="0.0.1",
     license="MIT",
+    author="Megan Bedell",
+    author_email="mbedell@flatironinstitute.org",
+    description="precise radial velocities with tellurics",
     packages=["wobble", "wobble.interp"],
     ext_modules=extensions,
     zip_safe=True,
