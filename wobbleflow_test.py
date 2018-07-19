@@ -37,7 +37,7 @@ if __name__ == "__main__":
     #telluric_basis_weights = np.zeros((data.R, data.N, K))
 
     plot_dir = 'results/plots/'
-    niter = 50
+    niter = 80
     for r in range(data.R):
         if False: # no plots
             results = wobble.optimize_order(model, data, r, 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         else: # plots out the wazoo
             results = wobble.optimize_order(model, 
                 data, r, niter=niter, save_history=True, basename=starname)
-            history = wobble.History(model, data, 0, 50, filename=starname+'_o{0}_history.hdf5'.format(r))      
+            history = wobble.History(model, data, r, niter, filename=starname+'_o{0}_history.hdf5'.format(r))      
              
             plt.scatter(np.arange(len(history.nll_history)), history.nll_history)
             ax = plt.gca()
@@ -72,12 +72,13 @@ if __name__ == "__main__":
             session = wobble.get_session()
             epochs = [0, 5, 10, 15, 20] # random epochs to plot
             c = model.components[1]
-            t_synth = session.run(tf.matmul(c.basis_weights[r], c.basis_vectors[r]))
-            for e in epochs:
-                plt.plot(np.exp(data_xs[e,:]), np.exp(t_synth[e,:]), label='epoch #{0}'.format(e), alpha=0.8)
-            plt.ylim(0.6, 1.4)
-            plt.legend(fontsize=14)
-            plt.savefig(plot_dir+'variable_tellurics_order{0}.png'.format(r))
+            if c.K > 0:
+                t_synth = session.run(tf.matmul(c.basis_weights[r], c.basis_vectors[r]))
+                for e in epochs:
+                    plt.plot(np.exp(data_xs[e,:]), np.exp(t_synth[e,:]), label='epoch #{0}'.format(e), alpha=0.8)
+                plt.ylim(0.6, 1.4)
+                plt.legend(fontsize=14)
+                plt.savefig(plot_dir+'variable_tellurics_order{0}.png'.format(r))
         print("order {1} optimization finished. time elapsed: {0:.2f} s".format(time() - start_time, r))
     
     '''''

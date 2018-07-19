@@ -17,8 +17,8 @@ speed_of_light = 2.99792458e8   # m/s
 DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs']
 DATA_TF_ATTRS = ['xs', 'ys', 'ivars']
 MODEL_ATTRS = ['component_names'] # not actually used but defined for completeness
-COMPONENT_NP_ATTRS = ['K', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 'L1_template',
-                    'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+COMPONENT_NP_ATTRS = ['K', 'template_exists', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 
+                      'L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
 
 __all__ = ["get_session", "doppler", "Data", "Model", "History", "Results", "optimize_order", "optimize_orders"]
@@ -67,13 +67,13 @@ class Data(object):
             self.bervs = np.copy(f['bervs'])[:self.N] * -1.
             self.drifts = np.copy(f['drifts'])[:self.N]
             self.airms = np.copy(f['airms'])[:self.N]
-
+            
         # mask out bad data:
         for r in range(self.R):
             bad = np.where(self.ys[r] < min_flux)
             self.ys[r][bad] = min_flux
             self.ivars[r][bad] = 0.
-            
+
         # log and normalize:
         self.ys = np.log(self.ys) 
         self.continuum_normalize() 
@@ -113,7 +113,7 @@ class Model(object):
     def synthesize(self, r):
         synth = tf.zeros_like(self.data.xs[r])
         for c in self.components:
-            synth += c.synthesize(r, self.data.xs[r], c.rvs_block[r])
+            synth += c.synthesize(r)
         return synth
         
     def add_star(self, name, rvs_fixed=False, variable_bases=0):
@@ -137,14 +137,16 @@ class Component(object):
     Generic class for an additive component in the spectral model.
     """
     def __init__(self, name, data, rvs_fixed=False, variable_bases=0):
+        self.data = data
         self.name = name
         self.K = variable_bases # number of variable basis vectors
         self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
         self.rvs_fixed = rvs_fixed
-        self.template_xs = [None for r in range(data.R)] # this will be replaced
-        self.template_ys = [None for r in range(data.R)] # this will be replaced
-        self.basis_vectors = [None for r in range(data.R)] # this will be replaced
-        self.basis_weights = [None for r in range(data.R)] # this will be replaced
+        self.template_xs = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
+        self.template_ys = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
+        self.basis_vectors = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
+        self.basis_weights = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
+        self.template_exists = [False for r in range(data.R)] # if True, skip initialization
         self.learning_rate_rvs = 10. # default
         self.learning_rate_template = 0.01 # default
         self.learning_rate_basis = 0.01 # default
@@ -154,20 +156,23 @@ class Component(object):
         self.L2_basis_vectors = 0.
         self.L2_basis_weights = 0.
         
-    def shift_and_interp(self, r, xs, rvs):
+    def shift_and_interp(self, r, rvs):
         """
-        Apply Doppler shift of rvs to the model at order r and output interpolated values at xs.
+        Apply Doppler shift of rvs to the model at order r and output interpolated values at data xs.
         """
-        shifted_xs = xs + tf.log(doppler(rvs[:, None]))
+        shifted_xs = self.data.xs[r] + tf.log(doppler(rvs[:, None]))
         return interp(shifted_xs, self.template_xs[r], self.template_ys[r]) 
         
-    def synthesize(self, r, xs, rvs):
+    def synthesize(self, r):
         """
-        Output synthesized spectrum at log(wave)s xs and order r.
+        Output synthesized spectrum for order r.
         """
-        synth = self.shift_and_interp(r, xs, rvs)
-        if self.K > 0:
-            synth += tf.matmul(self.basis_weights[r], self.basis_vectors[r])
+        if self.template_exists[r]:
+            synth = self.shift_and_interp(r, self.rvs_block[r])
+            if self.K > 0:
+                synth += tf.matmul(self.basis_weights[r], self.basis_vectors[r])
+        else:
+            synth = tf.zeros_like(self.data.xs[r])
         return synth
         
     def initialize_template(self, r, data, other_components=None, template_xs=None):
@@ -183,8 +188,8 @@ class Component(object):
                                    tf.reduce_max(shifted_xs)+tiny*dx, dx)           
         resids = 1. * data.ys[r]
         for c in other_components: # subtract off initialized components
-            if c.template_ys[r] is not None:
-                resids -= c.shift_and_interp(r, data.xs[r], c.rvs_block[r])
+            if c.template_exists[r]:
+                resids -= c.shift_and_interp(r, c.rvs_block[r])
                 
         session = get_session()
         session.run(tf.global_variables_initializer())
@@ -194,13 +199,14 @@ class Component(object):
         self.template_ys[r] = tf.Variable(template_ys, dtype=T, name='template_ys') 
         if self.K > 0:
             # initialize basis components
-            resids -= self.shift_and_interp(r, data.xs[r], self.rvs_block[r])
+            resids -= self.shift_and_interp(r, self.rvs_block[r])
             s,u,v = tf.svd(resids, compute_uv=True)
             basis_vectors = tf.transpose(tf.conj(v[:,:self.K])) # eigenspectra (K x M)
             basis_weights = (u * s)[:,:self.K] # weights (N x K)
             self.basis_vectors[r] = tf.Variable(basis_vectors, dtype=T, name='basis_vectors')
             self.basis_weights[r] = tf.Variable(basis_weights, dtype=T, name='basis_weights') 
         session.run(tf.global_variables_initializer())  # TODO: is it bad to have this twice? am I overwriting?
+        self.template_exists[r] = True
          
         
     def make_optimizers(self, r, nll, learning_rate_rvs=None, 
@@ -249,8 +255,8 @@ class Telluric(Component):
         self.L2_basis_vectors = 1.e6 # magic number set to same as mean template
         self.L2_basis_weights = 1. # by definition
         
-    def synthesize(self, r, xs, rvs):
-        synth = Component.synthesize(self, r, xs, rvs)
+    def synthesize(self, r):
+        synth = Component.synthesize(self, r)
         return tf.einsum('n,nm->nm', self.airms, synth)
         
 class History(object):
@@ -258,6 +264,8 @@ class History(object):
     Information about optimization history of a single order stored in numpy arrays/lists
     """   
     def __init__(self, model, data, r, niter, filename=None):
+        for c in model.components:
+            assert c.template_exists[r], "ERROR: Cannot initialize History() until templates are initialized."
         self.nll_history = np.empty(niter)
         self.rvs_history = [np.empty((niter, data.N)) for c in model.components]
         self.template_history = [np.empty((niter, int(c.template_ys[r].shape[0]))) for c in model.components]
@@ -392,7 +400,7 @@ class Results(object):
         elif filename is not None:
             self.read(filename)
         else:
-            print("Error: Results() object must have model and data keywords OR filename keyword to initialize.")            
+            print("ERROR: Results() object must have model and data keywords OR filename keyword to initialize.")            
             
     def copy_data(self, data):
         for attr in DATA_NP_ATTRS:
@@ -407,7 +415,7 @@ class Results(object):
         self.ys_predicted = [session.run(model.synthesize(r)) for r in range(self.R)]
         for c in model.components:
             basename = c.name+'_'
-            ys_predicted = [session.run(c.synthesize(r, model.data.xs[r], c.rvs_block[r])) for r in range(self.R)]
+            ys_predicted = [session.run(c.synthesize(r)) for r in range(self.R)]
             setattr(self, basename+'ys_predicted', ys_predicted)
             for attr in COMPONENT_NP_ATTRS:
                 setattr(self, basename+attr, getattr(c,attr))
@@ -427,12 +435,12 @@ class Results(object):
             self.ys_predicted = np.copy(f['ys_predicted'])
             for name in self.component_names:
                 basename = name + '_'
-                setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
                 for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
                     try:
                         setattr(self, basename+attr, np.copy(f[basename+attr]))
                     except: # catch when basis vectors are Nones
                         assert np.copy(f[basename+'K']) == 0, "Results: read() failed on attribute {0}".format(basename+attr)
+                setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
                     
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
@@ -447,14 +455,9 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     optimize the model for order r in data
     '''      
     for c in model.components:
-        if c.template_ys[r] is None:
-            c.initialize_template(r, data, other_components=[x for x in model.components if x!=c])         
-                     
-    if save_history:
-        history = History(model, data, r, niter)
-        
-    results = Results(model=model, data=data) # initialize results
-        
+        if ~c.template_exists[r]:
+            c.initialize_template(r, data, other_components=[x for x in model.components if x!=c])
+                
     # likelihood calculation:
     synth = model.synthesize(r)
     chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
@@ -475,6 +478,12 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
 
     session = get_session()
     session.run(tf.global_variables_initializer())
+    
+    # initialize helper classes:
+    if save_history:
+        history = History(model, data, r, niter)
+    
+    results = Results(model=model, data=data)
         
     # optimize:
     for i in tqdm(range(niter)):
@@ -504,7 +513,8 @@ def optimize_orders(model, data, **kwargs):
     session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
         print("--- ORDER {0} ---".format(r))
-        results = optimize_order(session, model, data, r, **kwargs)
+        results = optimize_order(model, data, r, **kwargs)
         #if (r % 5) == 0:
         #    results.write('results_order{0}.hdf5'.format(r))
-    results.write('results.hdf5')        
+    results.write('results.hdf5')    
+    return results    
