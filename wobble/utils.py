@@ -7,14 +7,14 @@ __all__ = ["fit_continuum", "bin_data"]
 import numpy as np
 
 
-def fit_continuum(x, y, ivars, order=3, nsigma=3.0, maxniter=50):
+def fit_continuum(x, y, ivars, order=6, nsigma=[0.3,3.0], maxniter=50):
     """Fit the continuum using sigma clipping
 
     Args:
         x: The wavelengths
         y: The log-fluxes
         order: The polynomial order to use
-        nsigma: The sigma clipping threshold
+        nsigma: The sigma clipping threshold: tuple (low, high)
         maxniter: The maximum number of iterations to do
 
     Returns:
@@ -29,7 +29,8 @@ def fit_continuum(x, y, ivars, order=3, nsigma=3.0, maxniter=50):
         mu = np.dot(A, w)
         resid = y - mu
         sigma = np.sqrt(np.nanmedian(resid**2))
-        m_new = np.abs(resid) < nsigma*sigma
+        #m_new = np.abs(resid) < nsigma*sigma
+        m_new = (resid > -nsigma[0]*sigma) & (resid < nsigma[1]*sigma)
         if m.sum() == m_new.sum():
             m = m_new
             break

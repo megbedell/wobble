@@ -73,9 +73,8 @@ if __name__ == "__main__":
             epochs = [0, 5, 10, 15, 20] # random epochs to plot
             c = model.components[1]
             if c.K > 0:
-                t_synth = session.run(tf.matmul(c.basis_weights[r], c.basis_vectors[r]))
                 for e in epochs:
-                    plt.plot(np.exp(data_xs[e,:]), np.exp(t_synth[e,:]), label='epoch #{0}'.format(e), alpha=0.8)
+                    plt.plot(np.exp(results.xs[r][e,:]), np.exp(results.tellurics_ys_predicted[r][e,:]), label='epoch #{0}'.format(e), alpha=0.8)
                 plt.ylim(0.6, 1.4)
                 plt.legend(fontsize=14)
                 plt.savefig(plot_dir+'variable_tellurics_order{0}.png'.format(r))
