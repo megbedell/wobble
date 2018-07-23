@@ -14,7 +14,7 @@ from .utils import fit_continuum, bin_data
 from .interp import interp
 
 speed_of_light = 2.99792458e8   # m/s
-DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs']
+DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs', 'epoch_mask']
 DATA_TF_ATTRS = ['xs', 'ys', 'ivars']
 MODEL_ATTRS = ['component_names'] # not actually used but defined for completeness
 COMPONENT_NP_ATTRS = ['K', 'template_exists', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 
@@ -50,7 +50,8 @@ class Data(object):
     The data object: contains the spectra and associated data.
     """
     def __init__(self, filename, filepath='../data/', 
-                    N = 0, orders = [30], min_flux = 1., tensors=True):
+                    N = 0, orders = [30], min_flux = 1., tensors=True,
+                    mask_epochs = None):
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
         self.origin_file = filepath+filename
@@ -68,11 +69,17 @@ class Data(object):
             self.drifts = np.copy(f['drifts'])[:self.N]
             self.airms = np.copy(f['airms'])[:self.N]
             
-        # mask out bad data:
+        # mask out bad pixels:
         for r in range(self.R):
             bad = np.where(self.ys[r] < min_flux)
             self.ys[r][bad] = min_flux
             self.ivars[r][bad] = 0.
+            
+        # mask out bad epochs:
+        self.epoch_mask = [True for n in range(self.N)]
+        if mask_epochs is not None:
+            for n in mask_epochs:
+                self.epoch_mask[n] = False
 
         # log and normalize:
         self.ys = np.log(self.ys) 
@@ -461,7 +468,9 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     # likelihood calculation:
     synth = model.synthesize(r)
     chis = (data.ys[r] - synth) * tf.sqrt(data.ivars[r])
-    nll = 0.5*tf.reduce_sum(tf.square(data.ys[r] - synth) * data.ivars[r])
+    nll = 0.5*tf.reduce_sum(tf.square(tf.boolean_mask(data.ys[r], data.epoch_mask) 
+                                      - tf.boolean_mask(synth, data.epoch_mask)) 
+                            * tf.boolean_mask(data.ivars[r], data.epoch_mask))
     
     # regularization:
     for c in model.components:
