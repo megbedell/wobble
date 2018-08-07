@@ -212,7 +212,8 @@ class Component(object):
             basis_weights = (u * s)[:,:self.K] # weights (N x K)
             self.basis_vectors[r] = tf.Variable(basis_vectors, dtype=T, name='basis_vectors')
             self.basis_weights[r] = tf.Variable(basis_weights, dtype=T, name='basis_weights') 
-        session.run(tf.global_variables_initializer())  # TODO: is it bad to have this twice? am I overwriting?
+            session.run(tf.variables_initializer([self.basis_vectors[r], self.basis_weights[r]]))  # TODO: more elegant way to do this?
+        session.run(tf.variables_initializer([self.template_xs[r], self.template_ys[r]]))  # TODO: more elegant way to do this?
         self.template_exists[r] = True
          
         
@@ -438,7 +439,7 @@ class Results(object):
             for attr in np.append(DATA_NP_ATTRS, DATA_TF_ATTRS):
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
-            self.component_names = [a.decode('utf8') for a in self.component_names]
+            self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
             self.ys_predicted = np.copy(f['ys_predicted'])
             for name in self.component_names:
                 basename = name + '_'
@@ -486,12 +487,11 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
         c.make_optimizers(r, nll)
 
     session = get_session()
-    session.run(tf.global_variables_initializer())
+    session.run(tf.global_variables_initializer())  # TODO: is this overwriting anything important?
     
     # initialize helper classes:
     if save_history:
-        history = History(model, data, r, niter)
-    
+        history = History(model, data, r, niter)    
     results = Results(model=model, data=data)
         
     # optimize:
@@ -509,6 +509,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
             results.write(basename+'_results.hdf5'.format(r))
             if save_history:
                 history.write(basename+'_o{0}_history.hdf5'.format(r))
+                
     if save_history: # final post-optimization save
         history.write(basename+'_o{0}_history.hdf5'.format(r))
     results.copy_model(model) # update
@@ -519,7 +520,7 @@ def optimize_orders(model, data, **kwargs):
     optimize model for all orders in data
     """
     session = get_session()
-    session.run(tf.global_variables_initializer())    # should this be in get_session?
+    #session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
         print("--- ORDER {0} ---".format(r))
         results = optimize_order(model, data, r, **kwargs)
