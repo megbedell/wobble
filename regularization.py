@@ -36,7 +36,7 @@ class Parameters(object):
         for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
              getattr(c, attr)[0] = np.copy(getattr(self, attr)[r])       
             
-    def set_order_to_previous(self, r, c):
+    def set_order_to_previous(self, r):
         """
         Set order r parameters to those of order r-1.
         """
@@ -130,10 +130,10 @@ def improve_order_regularization(model, data, r, verbose=True, plot=False, basen
         print('---- ORDER COMPLETE ----')
         print('star component:')
         for attr in ['L1_template', 'L2_template']:
-            print('{0}: {1:.0e}'.format(attr, getattr(model.components[0], attr)))
+            print('{0}: {1:.0e}'.format(attr, getattr(model.components[0], attr)[0]))
         print('tellurics component:')
         for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
-            print('{0}: {1:.0e}'.format(attr, getattr(model.components[1], attr)))
+            print('{0}: {1:.0e}'.format(attr, getattr(model.components[1], attr)[0]))
         print('---------------')      
     
     
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         telluric_parameters.copy_to_model(r, model.components[1])     
     
         improve_order_regularization(model, data, 0, verbose=True, 
-                                    plot=True, basename='regularization/o{0}'.format(r))
+                                    plot=False, basename='regularization/o{0}'.format(r))
         
         time2 = time()
         print('regularization for order {1} completed: time elapsed: {0:.2f} min'.format((time2 - start_time)/60., r))
