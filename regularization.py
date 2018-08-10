@@ -5,12 +5,67 @@ import wobble
 import tensorflow as tf
 from tqdm import tqdm
 from time import time
+import pickle
 
+class Parameters(object):
+    def __init__(self, R, filename=None):
+        if filename is not None:
+            self.load(filename)
+        else:
+            self.L1_template = [0. for r in range(R)]
+            self.L2_template = [0. for r in range(R)]
+            self.L1_basis_vectors = [0. for r in range(R)]
+            self.L2_basis_vectors = [0. for r in range(R)]
+            self.L2_basis_weights = [1. for r in range(R)]  # these will never be changed
+        
+    def update(self, r, c):
+        """
+        Update order r parameters to current values in model component c.
+        **NOTE** r refers ONLY to the order index in Parameters() record; 
+        c is assumed to be single-order!
+        """
+        for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
+            getattr(self, attr)[r] = np.copy(getattr(c, attr)[0])
+            
+    def copy_to_model(self, r, c):
+        """
+        Update regularization parameters in model component c to current values for order r.
+        **NOTE** r refers ONLY to the order index in Parameters() record; 
+        c is assumed to be single-order!
+        """
+        for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
+             getattr(c, attr)[0] = np.copy(getattr(self, attr)[r])       
+            
+    def set_order_to_previous(self, r, c):
+        """
+        Set order r parameters to those of order r-1.
+        """
+        try:
+            for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
+                getattr(self, attr)[r] = np.copy(getattr(self, attr)[r-1]) 
+        except:
+            print('ERROR: cannot access previous order')
+            
+    def save(self, filename):
+        """
+        Save to pickle file.
+        """
+        pickle.dump(self, open(filename, 'wb'))
+        
+    def load(self, filename):
+        """
+        Load from pickle file; will overwrite entire Parameters() object.
+        """
+        self = pickle.load(open(filename, 'rb'))
+             
 def fit_rvs_only(model, data, r, niter=80):
     synth = model.synthesize(r)
     nll = 0.5*tf.reduce_sum(tf.square(tf.boolean_mask(data.ys[r], data.epoch_mask) 
                                       - tf.boolean_mask(synth, data.epoch_mask)) 
                             * tf.boolean_mask(data.ivars[r], data.epoch_mask)) 
+    for c in model.components:
+        if c.K > 0:
+            nll += c.L2_basis_weights[r] * tf.reduce_sum(tf.square(c.basis_weights[r]))
     
     # set up optimizers: 
     session = wobble.get_session()
@@ -42,6 +97,10 @@ def fit_rvs_only(model, data, r, niter=80):
     return results
     
 def improve_order_regularization(model, data, r, verbose=True, plot=False, basename='', L1=True, L2=True): 
+    """
+    Use a validation scheme to determine the best regularization parameters for 
+    all model components in a given order r.
+    """
     validation_epochs = np.random.choice(data.N, data.N//10, replace=False)
     training_epochs = np.delete(np.arange(data.N), validation_epochs)
     
@@ -68,7 +127,7 @@ def improve_order_regularization(model, data, r, verbose=True, plot=False, basen
                             verbose=verbose, plot=plot, basename=basename+'_{0}'.format(c.name))  
     
     if verbose:                       
-        print('---- ORDER #{0} ----'.format(r))
+        print('---- ORDER COMPLETE ----')
         print('star component:')
         for attr in ['L1_template', 'L2_template']:
             print('{0}: {1:.0e}'.format(attr, getattr(model.components[0], attr)))
@@ -84,7 +143,7 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
     Perform a grid search to set the value of regularization parameter `name` in component `c`.
     Requires training data and validation data to evaluate goodness-of-fit for each parameter value.
     """
-    current_value = getattr(c, name)
+    current_value = getattr(c, name)[r]
     grid = np.logspace(-1.0, 1.0, num=3) * current_value
     chisqs_grid = np.zeros_like(grid)
     for i,val in enumerate(grid):
@@ -98,6 +157,8 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
         val = grid[0]/10.
         chisq = test_regularization_value(val, name, c, model, training_data, validation_data, r, 
                                                 verbose=verbose, plot=plot, basename=basename)
+        if np.abs(chisq - chisqs_grid[0]) < 1.:
+            break  # prevent runaway minimization
         grid = np.append(val, grid)
         chisqs_grid = np.append(chisq, chisqs_grid)
         best_ind = np.argmin(chisqs_grid)
@@ -111,7 +172,7 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
         best_ind = np.argmin(chisqs_grid)
         
     # adopt best value:
-    setattr(c, name, grid[best_ind])
+    getattr(c, name)[r] = grid[best_ind]
     
     if plot:
         fig = plt.figure()
@@ -128,7 +189,8 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
     
 def test_regularization_value(val, name, c, model, training_data, validation_data, r, 
                                 verbose=True, plot=False, basename=''):
-    setattr(c, name, val)
+    getattr(c, name)[r] = val
+    
     for co in model.components:
         co.template_exists[r] = False # force reinitialization at each iteration
         
@@ -178,26 +240,60 @@ def test_regularization_value(val, name, c, model, training_data, validation_dat
         
 if __name__ == "__main__":
     starname = '51peg'
-    o = 57
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[o])
-    model = wobble.Model(data)
-    model.add_star('star')
+    R = 72
     K = 3
-    model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
 
-    # from hand-tuning
-    model.components[0].L1_template = 1.e4
-    model.components[0].L2_template = 1.e3
-    model.components[1].L1_template = 1.e3
-    model.components[1].L2_template = 1.e3
-    model.components[1].L1_basis_vectors = 1.e3
-    model.components[1].L2_basis_vectors = 1.e5
+    
+    # initialize star regularization:
+    print("initializing star regularization parameters...")
+    star_parameters = Parameters(R)
+    star_filename = 'wobble/regularization/{0}_star.p'.format(starname)
+
+    
+    # initialize tellurics regularization
+    print("initializing telluric regularization parameters...")
+    telluric_parameters = Parameters(R)
+    telluric_filename = 'wobble/regularization/{0}_t_K{1}.p'.format(starname, K)
+
     
     start_time = time()
     
-    r = 0
-    improve_order_regularization(model, data, r, verbose=True, 
-                                    plot=True, basename='../regularization/o{0}'.format(o))
-    time2 = time()
-    print('regularization for order {1} took {0:.2f} min'.format((time2 - start_time)/60., o))
-
+    for r in range(R):
+        print("starting order {0}...".format(r))
+        # make new data and model objects - this avoids wasting time with a giant results file
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[r])
+        model = wobble.Model(data)
+        model.add_star('star')
+        model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
+        if r==0:
+            star_parameters.L1_template[0] = 1.e1
+            star_parameters.L2_template[0] = 1.e0
+            telluric_parameters.L1_template[0] = 1.e0
+            telluric_parameters.L2_template[0] = 1.e4
+            telluric_parameters.L1_basis_vectors[0] = 1.e0
+            telluric_parameters.L2_basis_vectors[0] = 1.e8
+        else:  # initialize from previous order
+            star_parameters.set_order_to_previous(r)
+            telluric_parameters.set_order_to_previous(r)
+        
+        # initialize model parameters    
+        star_parameters.copy_to_model(r, model.components[0])   
+        telluric_parameters.copy_to_model(r, model.components[1])     
+    
+        improve_order_regularization(model, data, 0, verbose=True, 
+                                    plot=True, basename='regularization/o{0}'.format(r))
+        
+        time2 = time()
+        print('regularization for order {1} completed: time elapsed: {0:.2f} min'.format((time2 - start_time)/60., r))
+        
+        # save results to Parameters() objects
+        star_parameters.update(r, model.components[0])
+        telluric_parameters.update(r, model.components[1])
+        if (r % 10) == 0:
+            print("saving progress to {0} and {1}".format(star_filename, telluric_filename))
+            star_parameters.save(star_filename)
+            telluric_parameters.save(telluric_filename)
+            
+    # final save to disk
+    star_parameters.save(star_filename)
+    telluric_parameters.save(telluric_filename)

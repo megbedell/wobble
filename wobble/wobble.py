@@ -6,6 +6,7 @@ from tqdm import tqdm
 import sys
 import h5py
 import copy
+import pickle
 import tensorflow as tf
 T = tf.float64
 import pdb
@@ -143,7 +144,7 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, data, rvs_fixed=False, variable_bases=0):
+    def __init__(self, name, data, rvs_fixed=False, variable_bases=0, regularization_file='regularization/default.pkl'):
         self.data = data
         self.name = name
         self.K = variable_bases # number of variable basis vectors
@@ -157,11 +158,23 @@ class Component(object):
         self.learning_rate_rvs = 10. # default
         self.learning_rate_template = 0.01 # default
         self.learning_rate_basis = 0.01 # default
-        self.L1_template = 0.
-        self.L2_template = 0.
-        self.L1_basis_vectors = 0.
-        self.L2_basis_vectors = 0.
-        self.L2_basis_weights = 0.
+        try: # load pickle
+            reg_amps = pickle.load(open(regularization_file, 'rb'))
+            self.L1_template = [reg_amps.L1_template[r] for r in data.orders]
+            self.L2_template = [reg_amps.L2_template[r] for r in data.orders]
+            self.L1_basis_vectors = [reg_amps.L1_basis_vectors[r] for r in data.orders]
+            self.L2_basis_vectors = [reg_amps.L2_basis_vectors[r] for r in data.orders]
+            self.L2_basis_weights = [reg_amps.L2_basis_weights[r] for r in data.orders]                 
+        except: # file doesn't work - take defaults
+            if regularization_file == 'regularization/default.pkl':
+                print('no regularization amplitudes specified - taking defaults')
+            else:
+                print('regularization amplitudes in file {0} are not of the correct form - taking defaults'.format(regularization_file))
+            self.L1_template = [0. for r in range(data.R)]
+            self.L2_template = [0. for r in range(data.R)]
+            self.L1_basis_vectors = [0. for r in range(data.R)]
+            self.L2_basis_vectors = [0. for r in range(data.R)]
+            self.L2_basis_weights = [1. for r in range(data.R)]
         
     def shift_and_interp(self, r, rvs):
         """
@@ -242,26 +255,19 @@ class Star(Component):
     """
     A star (or generic celestial object)
     """
-    def __init__(self, name, data, rvs_fixed=False, variable_bases=0):
-        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
+    def __init__(self, name, data, rvs_fixed=False, variable_bases=0, regularization_file='regularization/default.pkl'):
+        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases, regularization_file=regularization_file)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
         self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)] 
-        self.L1_template = 1.e4 # magic number set to 10x the threshold where it just begins to affect results
-        self.L2_template = 1.e5 # magic number set to 10x the threshold where it just begins to affect results
                             
 class Telluric(Component):
     """
     Sky absorption
     """
-    def __init__(self, name, data, rvs_fixed=True, variable_bases=0):
-        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases)
+    def __init__(self, name, data, rvs_fixed=True, variable_bases=0, regularization_file='regularization/default.pkl'):
+        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases, regularization_file=regularization_file)
         self.airms = tf.constant(data.airms, dtype=T)
-        self.learning_rate_template = 0.1 
-        self.L1_template = 1.e5 # magic number set to 10x the threshold where it just begins to affect results
-        self.L2_template = 1.e6 # magic number set to 10x the threshold where it just begins to affect results 
-        self.L1_basis_vectors = 1.e5 # magic number set to same as mean template      
-        self.L2_basis_vectors = 1.e6 # magic number set to same as mean template
-        self.L2_basis_weights = 1. # by definition
+        self.learning_rate_template = 0.1
         
     def synthesize(self, r):
         synth = Component.synthesize(self, r)
@@ -432,6 +438,22 @@ class Results(object):
                     setattr(self, basename+attr, session.run(getattr(c,attr)))
                 except: # catch when basis vectors are Nones
                     assert c.K == 0, "Results: copy_model() failed on attribute {0}".format(attr)
+                    
+    def update_order_model(self, model, r):
+        session = get_session()
+        self.ys_predicted[r] = session.run(model.synthesize(r))
+        for c in model.components:
+            basename = c.name+'_'
+            ys_predicted = session.run(c.synthesize(r))
+            getattr(self, basename+'ys_predicted')[r] = ys_predicted
+            for attr in COMPONENT_NP_ATTRS:
+                if type(getattr(c,attr)) == list: # skip attributes common to all orders
+                    getattr(self, basename+attr)[r] = getattr(c,attr)[r]
+            for attr in COMPONENT_TF_ATTRS:
+                try:
+                    getattr(self, basename+attr)[r] = session.run(getattr(c,attr)[r])
+                except: # catch when basis vectors are Nones
+                    assert c.K == 0, "Results: update_order_model() failed on attribute {0}".format(attr)
                         
     def read(self, filename):
         print("Results: reading from {0}".format(filename))
@@ -458,7 +480,7 @@ class Results(object):
                 f.create_dataset(attr, data=getattr(self, attr))         
             
 
-def optimize_order(model, data, r, niter=100, save_every=100, save_history=False, basename='wobble'):
+def optimize_order(model, data, r, results=None, niter=100, save_every=100, save_history=False, basename='wobble'):
     '''
     optimize the model for order r in data
     '''      
@@ -475,12 +497,12 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     
     # regularization:
     for c in model.components:
-        nll += c.L1_template * tf.reduce_sum(tf.abs(c.template_ys[r]))
-        nll += c.L2_template * tf.reduce_sum(tf.square(c.template_ys[r]))
+        nll += c.L1_template[r] * tf.reduce_sum(tf.abs(c.template_ys[r]))
+        nll += c.L2_template[r] * tf.reduce_sum(tf.square(c.template_ys[r]))
         if c.K > 0:
-            nll += c.L1_basis_vectors * tf.reduce_sum(tf.abs(c.basis_vectors[r]))
-            nll += c.L2_basis_vectors * tf.reduce_sum(tf.square(c.basis_vectors[r]))
-            nll += c.L2_basis_weights * tf.reduce_sum(tf.square(c.basis_weights[r]))
+            nll += c.L1_basis_vectors[r] * tf.reduce_sum(tf.abs(c.basis_vectors[r]))
+            nll += c.L2_basis_vectors[r] * tf.reduce_sum(tf.square(c.basis_vectors[r]))
+            nll += c.L2_basis_weights[r] * tf.reduce_sum(tf.square(c.basis_weights[r]))
         
     # set up optimizers: 
     for c in model.components:
@@ -491,8 +513,9 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
     
     # initialize helper classes:
     if save_history:
-        history = History(model, data, r, niter)    
-    results = Results(model=model, data=data)
+        history = History(model, data, r, niter)   
+    if results is None: 
+        results = Results(model=model, data=data)
         
     # optimize:
     for i in tqdm(range(niter)):
@@ -512,7 +535,7 @@ def optimize_order(model, data, r, niter=100, save_every=100, save_history=False
                 
     if save_history: # final post-optimization save
         history.write(basename+'_o{0}_history.hdf5'.format(r))
-    results.copy_model(model) # update
+    results.update_order_model(model, r) # update
     return results
 
 def optimize_orders(model, data, **kwargs):
@@ -523,7 +546,10 @@ def optimize_orders(model, data, **kwargs):
     #session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
         print("--- ORDER {0} ---".format(r))
-        results = optimize_order(model, data, r, **kwargs)
+        if r == 0: 
+            results = optimize_order(model, data, r, **kwargs)
+        else:
+            results = optimize_order(model, data, r, results=results, **kwargs)
         #if (r % 5) == 0:
         #    results.write('results_order{0}.hdf5'.format(r))
     results.write('results.hdf5')    
