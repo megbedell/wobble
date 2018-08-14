@@ -87,7 +87,7 @@ def fit_rvs_only(model, data, r, niter=80):
     results = wobble.Results(model=model, data=data)
 
     # optimize:
-    for i in tqdm(range(niter)):         
+    for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):         
         for c in model.components:
             if not c.rvs_fixed:            
                 session.run(c.opt_rvs) # optimize RVs

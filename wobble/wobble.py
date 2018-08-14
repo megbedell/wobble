@@ -518,7 +518,7 @@ def optimize_order(model, data, r, results=None, niter=100, save_every=100, save
         results = Results(model=model, data=data)
         
     # optimize:
-    for i in tqdm(range(niter)):
+    for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
         if save_history:
             history.save_iter(model, data, i, nll, chis)           
         for c in model.components:
