@@ -27,14 +27,11 @@ if __name__ == "__main__":
     print("time elapsed: {0:.2f} s".format(time() - start_time))
     
     model = wobble.Model(data)
-    model.add_star(starname)
+    model.add_star('star')
     K = 3
     model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
     print(model)
     print("time elapsed: {0:.2f} s".format(time() - start_time))
-    
-    #telluric_basis_vectors = np.zeros((data.R, K, 4096))
-    #telluric_basis_weights = np.zeros((data.R, data.N, K))
 
     plot_dir = 'results/plots/'
     niter = 80
@@ -80,17 +77,18 @@ if __name__ == "__main__":
                 plt.savefig(plot_dir+'variable_tellurics_order{0}.png'.format(r))
         print("order {1} optimization finished. time elapsed: {0:.2f} s".format(time() - start_time, r))
     
-    '''''
-    data.wobble_obj.optimize_sigmas()
-    star_rvs = np.copy(data.wobble_obj.time_rvs)
-    if starname=='hip54287':  # cut off post-upgrade epochs
-        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs[:-5] - data.bervs[:-5])))
-        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs[:-5] - data.bervs[:-5])))
+    results.compute_final_rvs()
+    if K>0:
+        results.write(starname+'_results_variablet.hdf5')
     else:
-        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs - data.bervs)))
-        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs - data.bervs)))
+        results.write(starname+'_results_fixedt.hdf5')
     
-    data.wobble_obj.save_results(starname+'_wobbleflow.hdf5')
-    '''
-    results.write(starname+'_results_variablet.hdf5')
+    star_rvs = np.copy(results.star_time_rvs)
+    if starname=='hip54287':  # cut off post-upgrade epochs
+        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(results.pipeline_rvs[:-5] - results.bervs[:-5])))
+        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs[:-5] - results.bervs[:-5])))
+    else:
+        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(results.pipeline_rvs - results.bervs)))
+        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs - results.bervs)))
+        
     print("total runtime:{0:.2f} minutes".format((time() - start_time)/60.0))

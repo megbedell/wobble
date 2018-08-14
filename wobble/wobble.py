@@ -18,9 +18,10 @@ speed_of_light = 2.99792458e8   # m/s
 DATA_NP_ATTRS = ['N', 'R', 'origin_file', 'orders', 'dates', 'bervs', 'drifts', 'airms', 'pipeline_rvs', 'epoch_mask']
 DATA_TF_ATTRS = ['xs', 'ys', 'ivars']
 MODEL_ATTRS = ['component_names'] # not actually used but defined for completeness
-COMPONENT_NP_ATTRS = ['K', 'template_exists', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 
-                      'L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
-COMPONENT_TF_ATTRS = ['rvs_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
+COMPONENT_NP_ATTRS = ['K', 'rvs_fixed', 'template_exists', 'learning_rate_rvs', 'learning_rate_template', 'learning_rate_basis', 
+                      'L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights',
+                      'time_rvs', 'order_rvs', 'order_sigmas']
+COMPONENT_TF_ATTRS = ['rvs_block', 'ivars_block', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
 
 __all__ = ["get_session", "doppler", "Data", "Model", "History", "Results", "optimize_order", "optimize_orders"]
 
@@ -149,7 +150,11 @@ class Component(object):
         self.name = name
         self.K = variable_bases # number of variable basis vectors
         self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
+        self.ivars_block = [tf.constant(np.zeros(data.N) + 10., dtype=T, name='ivars_order{0}'.format(r)) for r in range(data.R)] # TODO
         self.rvs_fixed = rvs_fixed
+        self.time_rvs = np.zeros(data.N) # will be replaced in combine_orders()
+        self.order_rvs = np.zeros(data.R) # will be replaced in combine_orders()
+        self.order_sigmas = np.ones(data.R) # will be replaced in combine_orders()
         self.template_xs = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
         self.template_ys = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
         self.basis_vectors = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
@@ -249,7 +254,73 @@ class Component(object):
         if self.K > 0:
             self.gradients_basis = tf.gradients(nll, [self.basis_vectors[r], self.basis_weights[r]])
             self.opt_basis = tf.train.AdamOptimizer(learning_rate_basis).minimize(nll, 
-                            var_list=[self.basis_vectors[r], self.basis_weights[r]])         
+                            var_list=[self.basis_vectors[r], self.basis_weights[r]]) 
+                              
+    def combine_orders(self):
+        self.all_rvs = np.asarray(session.run(self.rvs_block))
+        self.all_ivars = np.asarray(session.run(self.ivars_block))
+        # initial guess
+        x0_order_rvs = np.median(self.all_rvs, axis=1)
+        x0_time_rvs = np.median(self.all_rvs - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
+        rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.data.N)) + np.tile(x0_time_rvs, (self.data.R,1))
+        x0_sigmas = np.log(np.var(self.all_rvs - rv_predictions, axis=1))
+        self.M = None
+        # optimize
+        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
+        # save results
+        lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
+        self.time_rvs = rvs_N
+        self.order_rvs = rvs_R
+        self.order_sigmas = soln_sigmas 
+        
+    def pack_rv_pars(self, time_rvs, order_rvs, order_sigmas):
+        rv_pars = np.append(time_rvs, order_rvs)
+        rv_pars = np.append(rv_pars, order_sigmas)
+        return rv_pars
+    
+    def unpack_rv_pars(self, rv_pars):
+        self.time_rvs = np.copy(rv_pars[:self.N])
+        self.order_rvs = np.copy(rv_pars[self.N:self.R + self.N])
+        self.order_sigmas = np.copy(rv_pars[self.R + self.N:])
+        return self.time_rvs, self.order_rvs, self.order_sigmas
+        
+    def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
+        assert len(sigmas) == self.data.R
+        M = self.get_design_matrix(restart = restart)
+        something = np.zeros_like(M[0,:])
+        something[self.data.N:] = 1. / self.data.R # last datum will be mean of order velocities is zero
+        M = np.append(M, something[None, :], axis=0) # last datum
+        Rs, Ns = self.get_index_lists()
+        ivars = 1. / ((1. / self.all_ivars) + sigmas[Rs]**2) # not zero-safe
+        ivars = ivars.flatten()
+        ivars = np.append(ivars, 1.) # last datum: MAGIC
+        MTM = np.dot(M.T, ivars[:, None] * M)
+        ys = self.all_rvs.flatten()
+        ys = np.append(ys, 0.) # last datum
+        MTy = np.dot(M.T, ivars * ys)
+        xs = np.linalg.solve(MTM, MTy)
+        resids = ys - np.dot(M, xs)
+        lnlike = -0.5 * np.sum(resids * ivars * resids - np.log(2. * np.pi * ivars))
+        if return_rvs:
+            return lnlike, xs[:self.data.N], xs[self.data.N:] # must be synchronized with get_design_matrix(), and last datum removal
+        return lnlike
+        
+    def opposite_lnlike_sigmas(self, pars, **kwargs):
+        return -1. * self.lnlike_sigmas(pars, **kwargs)    
+
+    def get_index_lists(self):
+        return np.mgrid[:self.data.R, :self.data.N]
+
+    def get_design_matrix(self, restart = False):
+        if (self.M is None) or restart:
+            Rs, Ns = self.get_index_lists()
+            ndata = self.data.R * self.data.N
+            self.M = np.zeros((ndata, self.data.N + self.data.R)) # note design choices
+            self.M[range(ndata), Ns.flatten()] = 1.
+            self.M[range(ndata), self.data.N + Rs.flatten()] = 1.
+            return self.M
+        else:
+            return self.M      
 
 class Star(Component):
     """
@@ -454,6 +525,15 @@ class Results(object):
                     getattr(self, basename+attr)[r] = session.run(getattr(c,attr)[r])
                 except: # catch when basis vectors are Nones
                     assert c.K == 0, "Results: update_order_model() failed on attribute {0}".format(attr)
+                    
+    def compute_final_rvs(self):
+        for c in model.components:
+            if not c.rvs_fixed:
+                c.combine_orders()
+                basename = c.name+'_'
+                setattr(self, basename+'time_rvs', c.time_rvs)
+                setattr(self, basename+'order_rvs', c.order_rvs)
+                setattr(self, basename+'order_sigmas', c.order_sigmas)
                         
     def read(self, filename):
         print("Results: reading from {0}".format(filename))
