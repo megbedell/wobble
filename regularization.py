@@ -7,6 +7,8 @@ from tqdm import tqdm
 from time import time
 import pickle
 
+__all__ = ["Parameters", "fit_rvs_only", "improve_order_regularization", "improve_parameter", "test_regularization_value"]
+
 class Parameters(object):
     def __init__(self, R, filename=None):
         if filename is not None:
@@ -57,7 +59,7 @@ class Parameters(object):
         Load from pickle file; will overwrite entire Parameters() object.
         """
         self = pickle.load(open(filename, 'rb'))
-             
+
 def fit_rvs_only(model, data, r, niter=80):
     synth = model.synthesize(r)
     nll = 0.5*tf.reduce_sum(tf.square(tf.boolean_mask(data.ys[r], data.epoch_mask) 
@@ -137,7 +139,6 @@ def improve_order_regularization(model, data, r, verbose=True, plot=False, basen
         print('---------------')      
     
     
-   
 def improve_parameter(name, c, model, training_data, validation_data, r, verbose=True, plot=False, basename=''):
     """
     Perform a grid search to set the value of regularization parameter `name` in component `c`.
@@ -149,7 +150,6 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
     for i,val in enumerate(grid):
         chisqs_grid[i] = test_regularization_value(val, name, c, model, training_data, validation_data, r, 
                                         verbose=verbose, plot=plot, basename=basename)
-        
 
     # ensure that the minimum isn't on a grid edge:
     best_ind = np.argmin(chisqs_grid)
@@ -193,6 +193,9 @@ def test_regularization_value(val, name, c, model, training_data, validation_dat
     
     for co in model.components:
         co.template_exists[r] = False # force reinitialization at each iteration
+    
+    # restart the session
+    session = wobble.get_session(restart=True)
         
     results_train = wobble.optimize_order(model, training_data, r, niter=50)
     
@@ -240,7 +243,7 @@ def test_regularization_value(val, name, c, model, training_data, validation_dat
         
 if __name__ == "__main__":
     starname = '51peg'
-    R = 72
+    R = 1
     K = 3
 
     
@@ -248,14 +251,16 @@ if __name__ == "__main__":
     print("initializing star regularization parameters...")
     star_parameters = Parameters(R)
     star_filename = 'wobble/regularization/{0}_star.p'.format(starname)
+    #star_parameters.save(star_filename)
 
     
     # initialize tellurics regularization
     print("initializing telluric regularization parameters...")
     telluric_parameters = Parameters(R)
     telluric_filename = 'wobble/regularization/{0}_t_K{1}.p'.format(starname, K)
-
     
+    
+
     start_time = time()
     
     for r in range(R):
@@ -267,21 +272,21 @@ if __name__ == "__main__":
         model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
         if r==0:
             star_parameters.L1_template[0] = 1.e1
-            star_parameters.L2_template[0] = 1.e0
-            telluric_parameters.L1_template[0] = 1.e0
-            telluric_parameters.L2_template[0] = 1.e4
-            telluric_parameters.L1_basis_vectors[0] = 1.e0
-            telluric_parameters.L2_basis_vectors[0] = 1.e8
+            star_parameters.L2_template[0] = 1.e1
+            telluric_parameters.L1_template[0] = 1.e1
+            telluric_parameters.L2_template[0] = 1.e5
+            telluric_parameters.L1_basis_vectors[0] = 1.e5
+            telluric_parameters.L2_basis_vectors[0] = 1.e6
         else:  # initialize from previous order
             star_parameters.set_order_to_previous(r)
             telluric_parameters.set_order_to_previous(r)
-        
+            
         # initialize model parameters    
         star_parameters.copy_to_model(r, model.components[0])   
         telluric_parameters.copy_to_model(r, model.components[1])     
     
         improve_order_regularization(model, data, 0, verbose=True, 
-                                    plot=False, basename='regularization/o{0}'.format(r))
+                                    plot=False, basename='regularization/o{0}'.format(r), L2=False)
         
         time2 = time()
         print('regularization for order {1} completed: time elapsed: {0:.2f} min'.format((time2 - start_time)/60., r))
@@ -293,6 +298,9 @@ if __name__ == "__main__":
             print("saving progress to {0} and {1}".format(star_filename, telluric_filename))
             star_parameters.save(star_filename)
             telluric_parameters.save(telluric_filename)
+            
+        # close & reopen wobble session
+        session = wobble.get_session(restart=True)
             
     # final save to disk
     star_parameters.save(star_filename)

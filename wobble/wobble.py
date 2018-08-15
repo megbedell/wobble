@@ -25,7 +25,7 @@ COMPONENT_TF_ATTRS = ['rvs_block', 'ivars_block', 'template_xs', 'template_ys', 
 
 __all__ = ["get_session", "doppler", "Data", "Model", "History", "Results", "optimize_order", "optimize_orders"]
 
-def get_session():
+def get_session(restart=False):
   """Get the globally defined TensorFlow session.
   If the session is not already defined, then the function will create
   a global session.
@@ -39,6 +39,10 @@ def get_session():
     
   else:
     _SESSION = tf.get_default_session()
+
+  if restart:
+      _SESSION.close()
+      _SESSION = tf.InteractiveSession()
 
   save_stderr = sys.stderr
   return _SESSION
@@ -588,7 +592,7 @@ def optimize_order(model, data, r, results=None, niter=100, save_every=100, save
     for c in model.components:
         c.make_optimizers(r, nll)
 
-    session = get_session()
+    session = get_session(restart=True)
     session.run(tf.global_variables_initializer())  # TODO: is this overwriting anything important?
     
     # initialize helper classes:
