@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import tensorflow as tf
 from setuptools import setup, Extension
 
+compile_flags = tf.sysconfig.get_compile_flags()
+link_flags = tf.sysconfig.get_link_flags()
+compile_flags += ["-std=c++11"]
+if sys.platform == "darwin":
+    compile_flags += ["-mmacosx-version-min=10.9"]
 
-include_dirs = [".", tf.sysconfig.get_include()]
-include_dirs.append(os.path.join(
-    include_dirs[1], "external/nsync/public"))
 
 extensions = [
     Extension(
@@ -16,8 +19,8 @@ extensions = [
             "wobble/interp/searchsorted_op.cc",
         ],
         language="c++",
-        include_dirs=include_dirs,
-        extra_compile_args=["-std=c++11", "-stdlib=libc++"],
+        extra_compile_args=compile_flags,
+        extra_link_args=link_flags,
     ),
 ]
 
