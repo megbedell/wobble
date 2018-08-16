@@ -149,20 +149,20 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, data, rvs_fixed=False, variable_bases=0, regularization_file='regularization/default.pkl'):
+    def __init__(self, name, data, starting_rvs, rvs_fixed=False, variable_bases=0, regularization_file='regularization/default.pkl'):
         self.data = data
         self.name = name
         self.K = variable_bases # number of variable basis vectors
-        self.rvs_block = [tf.Variable(np.zeros(data.N), dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
+        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)]
         self.ivars_block = [tf.constant(np.zeros(data.N) + 10., dtype=T, name='ivars_order{0}'.format(r)) for r in range(data.R)] # TODO
         self.rvs_fixed = rvs_fixed
         self.time_rvs = np.zeros(data.N) # will be replaced in combine_orders()
         self.order_rvs = np.zeros(data.R) # will be replaced in combine_orders()
         self.order_sigmas = np.ones(data.R) # will be replaced in combine_orders()
-        self.template_xs = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
-        self.template_ys = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
-        self.basis_vectors = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
-        self.basis_weights = [tf.constant(0., dtype=T) for r in range(data.R)] # this will be replaced
+        self.template_xs = [None for r in range(data.R)] # will be replaced in initialize_template()
+        self.template_ys = [None for r in range(data.R)] # will be replaced in initialize_template()
+        self.basis_vectors = [None for r in range(data.R)] # will be replaced in initialize_template()
+        self.basis_weights = [None for r in range(data.R)] # will be replaced in initialize_template()
         self.template_exists = [False for r in range(data.R)] # if True, skip initialization
         self.learning_rate_rvs = 10. # default
         self.learning_rate_template = 0.01 # default
@@ -176,9 +176,9 @@ class Component(object):
             self.L2_basis_weights = [reg_amps.L2_basis_weights[r] for r in data.orders]                 
         except: # file doesn't work - take defaults
             if regularization_file == 'regularization/default.pkl':
-                print('no regularization amplitudes specified - taking defaults')
+                print('{0}: no regularization amplitudes specified - taking defaults'.format(self.name))
             else:
-                print('regularization amplitudes in file {0} are not of the correct form - taking defaults'.format(regularization_file))
+                print('{0}: regularization amplitudes in file {1} are not of the correct form - taking defaults'.format(self.name, regularization_file))
             self.L1_template = [0. for r in range(data.R)]
             self.L2_template = [0. for r in range(data.R)]
             self.L1_basis_vectors = [0. for r in range(data.R)]
@@ -234,8 +234,6 @@ class Component(object):
             basis_weights = (u * s)[:,:self.K] # weights (N x K)
             self.basis_vectors[r] = tf.Variable(basis_vectors, dtype=T, name='basis_vectors')
             self.basis_weights[r] = tf.Variable(basis_weights, dtype=T, name='basis_weights') 
-            session.run(tf.variables_initializer([self.basis_vectors[r], self.basis_weights[r]]))  # TODO: more elegant way to do this?
-        session.run(tf.variables_initializer([self.template_xs[r], self.template_ys[r]]))  # TODO: more elegant way to do this?
         self.template_exists[r] = True
          
         
@@ -259,13 +257,15 @@ class Component(object):
             self.gradients_basis = tf.gradients(nll, [self.basis_vectors[r], self.basis_weights[r]])
             self.opt_basis = tf.train.AdamOptimizer(learning_rate_basis).minimize(nll, 
                             var_list=[self.basis_vectors[r], self.basis_weights[r]]) 
+        # TODO: put initialization here
                               
     def combine_orders(self):
+        session = get_session()
         self.all_rvs = np.asarray(session.run(self.rvs_block))
         self.all_ivars = np.asarray(session.run(self.ivars_block))
         # initial guess
         x0_order_rvs = np.median(self.all_rvs, axis=1)
-        x0_time_rvs = np.median(self.all_rvs - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
+        x0_time_rvs = np.median(self.all_rvs - np.tile(x0_order_rvs[:,None], (1, self.data.N)), axis=0)
         rv_predictions = np.tile(x0_order_rvs[:,None], (1,self.data.N)) + np.tile(x0_time_rvs, (self.data.R,1))
         x0_sigmas = np.log(np.var(self.all_rvs - rv_predictions, axis=1))
         self.M = None
@@ -283,9 +283,9 @@ class Component(object):
         return rv_pars
     
     def unpack_rv_pars(self, rv_pars):
-        self.time_rvs = np.copy(rv_pars[:self.N])
-        self.order_rvs = np.copy(rv_pars[self.N:self.R + self.N])
-        self.order_sigmas = np.copy(rv_pars[self.R + self.N:])
+        self.time_rvs = np.copy(rv_pars[:self.data.N])
+        self.order_rvs = np.copy(rv_pars[self.data.N:self.data.R + self.data.N])
+        self.order_sigmas = np.copy(rv_pars[self.data.R + self.data.N:])
         return self.time_rvs, self.order_rvs, self.order_sigmas
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
@@ -331,16 +331,18 @@ class Star(Component):
     A star (or generic celestial object)
     """
     def __init__(self, name, data, rvs_fixed=False, variable_bases=0, regularization_file='regularization/default.pkl'):
-        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases, regularization_file=regularization_file)
         starting_rvs = np.copy(data.bervs) - np.mean(data.bervs)
-        self.rvs_block = [tf.Variable(starting_rvs, dtype=T, name='rvs_order{0}'.format(r)) for r in range(data.R)] 
+        Component.__init__(self, name, data, starting_rvs, rvs_fixed=rvs_fixed, 
+                            variable_bases=variable_bases, regularization_file=regularization_file)
                             
 class Telluric(Component):
     """
     Sky absorption
     """
     def __init__(self, name, data, rvs_fixed=True, variable_bases=0, regularization_file='regularization/default.pkl'):
-        Component.__init__(self, name, data, rvs_fixed=rvs_fixed, variable_bases=variable_bases, regularization_file=regularization_file)
+        starting_rvs = np.zeros(data.N)
+        Component.__init__(self, name, data, starting_rvs, rvs_fixed=rvs_fixed, 
+                            variable_bases=variable_bases, regularization_file=regularization_file)
         self.airms = tf.constant(data.airms, dtype=T)
         self.learning_rate_template = 0.1
         
@@ -509,10 +511,14 @@ class Results(object):
             for attr in COMPONENT_NP_ATTRS:
                 setattr(self, basename+attr, getattr(c,attr))
             for attr in COMPONENT_TF_ATTRS:
-                try:
-                    setattr(self, basename+attr, session.run(getattr(c,attr)))
-                except: # catch when basis vectors are Nones
-                    assert c.K == 0, "Results: copy_model() failed on attribute {0}".format(attr)
+                setattr(self, basename+attr, [None for r in range(self.R)]) # will be overwritten
+                for r in range(self.R):
+                    if c.template_exists[r]: # overwrite if order is initialized
+                        try:
+                            getattr(self, basename+attr)[r] = session.run(getattr(c,attr)[r])
+                        except: # catch when basis vectors are Nones
+                            assert c.K == 0, "Results: copy_model() failed on attribute {0}, order {1}".format(attr, r)
+                    
                     
     def update_order_model(self, model, r):
         session = get_session()
@@ -528,9 +534,9 @@ class Results(object):
                 try:
                     getattr(self, basename+attr)[r] = session.run(getattr(c,attr)[r])
                 except: # catch when basis vectors are Nones
-                    assert c.K == 0, "Results: update_order_model() failed on attribute {0}".format(attr)
+                    assert c.K == 0, "Results: update_order_model() failed on attribute {0}, order {1}".format(attr, r)
                     
-    def compute_final_rvs(self):
+    def compute_final_rvs(self, model): # THIS IS SUPER LAZY
         for c in model.components:
             if not c.rvs_fixed:
                 c.combine_orders()
@@ -555,13 +561,26 @@ class Results(object):
                     except: # catch when basis vectors are Nones
                         assert np.copy(f[basename+'K']) == 0, "Results: read() failed on attribute {0}".format(basename+attr)
                 setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
+            for attr in f['attrs_to_resize']: # trim off the padding
+                data = [np.trim_zeros(np.asarray(getattr(self, attr)[r]), 'b') for r in range(self.R)]
+                setattr(self, attr, data)
+                
                     
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
-        self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
+        self.attrs_to_resize = [['{0}_template_xs'.format(n), '{0}_template_ys'.format(n)] for n in self.component_names]
+        self.component_names = [n.encode('utf8') for n in self.component_names] # h5py workaround
         with h5py.File(filename,'w') as f:
             for attr in vars(self):
-                f.create_dataset(attr, data=getattr(self, attr))         
+                print("saving attribute {0}".format(attr))
+                if np.isin(attr, self.attrs_to_resize): # pad with NaNs to make rectangular arrays bc h5py is infuriating
+                    data = getattr(self, attr)
+                    max_len = np.max([len(x) for x in data])
+                    for r in range(self.R):
+                        data[r] = np.append(data[r], np.zeros(max_len - len(data[r])))
+                    f.create_dataset(attr, data=data)   
+                else:
+                    f.create_dataset(attr, data=getattr(self, attr))       
             
 
 def optimize_order(model, data, r, results=None, niter=100, save_every=100, save_history=False, basename='wobble'):
@@ -612,13 +631,13 @@ def optimize_order(model, data, r, results=None, niter=100, save_every=100, save
             if c.K > 0:
                 session.run(c.opt_basis) # optimize variable components
         if (i+1 % save_every == 0): # progress save
-            results.copy_model(model) # update
+            results.update_order_model(model, r) # update
             results.write(basename+'_results.hdf5'.format(r))
             if save_history:
-                history.write(basename+'_o{0}_history.hdf5'.format(r))
+                history.write(basename+'_o{0}_history.hdf5'.format(data.orders[r]))
                 
     if save_history: # final post-optimization save
-        history.write(basename+'_o{0}_history.hdf5'.format(r))
+        history.write(basename+'_o{0}_history.hdf5'.format(data.orders[r]))
     results.update_order_model(model, r) # update
     return results
 
@@ -627,7 +646,6 @@ def optimize_orders(model, data, **kwargs):
     optimize model for all orders in data
     """
     session = get_session()
-    #session.run(tf.global_variables_initializer())    # should this be in get_session?
     for r in range(data.R):
         print("--- ORDER {0} ---".format(r))
         if r == 0: 
@@ -635,6 +653,7 @@ def optimize_orders(model, data, **kwargs):
         else:
             results = optimize_order(model, data, r, results=results, **kwargs)
         #if (r % 5) == 0:
-        #    results.write('results_order{0}.hdf5'.format(r))
-    results.write('results.hdf5')    
+        #    results.write('results_order{0}.hdf5'.format(data.orders[r]))
+    #results.write('results.hdf5')   
+    results.compute_final_rvs(model) 
     return results    

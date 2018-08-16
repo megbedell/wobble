@@ -12,11 +12,21 @@ if __name__ == "__main__":
         # quick single-order test
         data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[56])
         model = wobble.Model(data)
-        model.add_star(starname)
-        model.add_telluric('tellurics', rvs_fixed=True)
+        model.add_star('star')
+        model.add_telluric('tellurics', rvs_fixed=True, variable_bases=0)
         wobble.optimize_order(model, data, 0, 
                 niter=50, save_history=True, basename=starname) 
         history = wobble.History(model, data, 0, 50, filename=starname+'_o0_history.hdf5')      
+        assert False
+        
+    if True:
+        # multi-order, variable tellurics test
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[30,56])
+        model = wobble.Model(data)
+        model.add_star('star')
+        model.add_telluric('tellurics', rvs_fixed=True, variable_bases=3)
+        results = wobble.optimize_orders(model, data, 
+                niter=50, save_history=False, basename=starname) 
         assert False
     
     
@@ -35,11 +45,10 @@ if __name__ == "__main__":
 
     plot_dir = 'results/plots/'
     niter = 80
-    for r in range(data.R):
-        if False: # no plots
-            results = wobble.optimize_order(model, data, r, 
-                        niter=niter, save_history=False)
-        else: # plots out the wazoo
+    if False: # no plots
+        results = wobble.optimize_orders(model, data, niter=niter, save_history=False)
+    else: # plots out the wazoo        
+        for r in range(data.R):
             results = wobble.optimize_order(model, 
                 data, r, niter=niter, save_history=True, basename=starname)
             history = wobble.History(model, data, r, niter, filename=starname+'_o{0}_history.hdf5'.format(r))      
@@ -75,9 +84,9 @@ if __name__ == "__main__":
                 plt.ylim(0.6, 1.4)
                 plt.legend(fontsize=14)
                 plt.savefig(plot_dir+'variable_tellurics_order{0}.png'.format(r))
-        print("order {1} optimization finished. time elapsed: {0:.2f} s".format(time() - start_time, r))
-    
-    results.compute_final_rvs()
+            print("order {1} optimization finished. time elapsed: {0:.2f} s".format(time() - start_time, r))
+        results.compute_final_rvs(model)
+        
     if K>0:
         results.write(starname+'_results_variablet.hdf5')
     else:
