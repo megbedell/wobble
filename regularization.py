@@ -243,7 +243,7 @@ def test_regularization_value(val, name, c, model, training_data, validation_dat
         
 if __name__ == "__main__":
     starname = '51peg'
-    R = 1
+    R = 72
     K = 3
 
     

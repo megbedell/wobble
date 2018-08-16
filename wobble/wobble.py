@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib import animation
+from scipy.optimize import minimize
 from tqdm import tqdm
 import sys
 import h5py
@@ -270,7 +271,7 @@ class Component(object):
         x0_sigmas = np.log(np.var(self.all_rvs - rv_predictions, axis=1))
         self.M = None
         # optimize
-        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, args=(restart), method='BFGS', options={'disp':True})['x'] # HACK
+        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS', options={'disp':True})['x'] # HACK
         # save results
         lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
         self.time_rvs = rvs_N
