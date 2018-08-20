@@ -8,7 +8,7 @@ import copy
 import tensorflow as tf
 T = tf.float64
 
-from .wobble import get_session
+from .utils import get_session
 
 class History(object):
     """

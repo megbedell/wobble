@@ -4,7 +4,7 @@ import h5py
 import tensorflow as tf
 T = tf.float64
 
-from .wobble import get_session
+from .utils import get_session
 
 COMPONENT_NP_ATTRS = ['K', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_rvs', 'learning_rate_template', 
                       'learning_rate_basis', 'L1_template', 'L2_template', 'L1_basis_vectors', 
@@ -22,10 +22,10 @@ class Results(object):
             self.N = data.N
             self.orders = data.orders
             self.origin_file = data.origin_file
-            continue
+            return
         if data is None:
             self.read(filename)
-            continue
+            return
         print("Results: must supply either data or filename keywords.")
                 
     def add_component(self, c):

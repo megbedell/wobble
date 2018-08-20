@@ -2,9 +2,41 @@
 
 from __future__ import division, print_function
 
-__all__ = ["fit_continuum", "bin_data"]
+__all__ = ["fit_continuum", "bin_data", "get_session", "doppler"]
 
 import numpy as np
+import tensorflow as tf
+
+speed_of_light = 2.99792458e8   # m/s
+
+def get_session(restart=False):
+  """Get the globally defined TensorFlow session.
+  If the session is not already defined, then the function will create
+  a global session.
+  Returns:
+    _SESSION: tf.Session.
+  (Code from edward package.)
+  """
+  global _SESSION
+  if tf.get_default_session() is None:
+    _SESSION = tf.InteractiveSession()
+    
+  else:
+    _SESSION = tf.get_default_session()
+
+  if restart:
+      _SESSION.close()
+      _SESSION = tf.InteractiveSession()
+
+  save_stderr = sys.stderr
+  return _SESSION
+  
+def doppler(v, tensors=True):
+    frac = (1. - v/speed_of_light) / (1. + v/speed_of_light)
+    if tensors:
+        return tf.sqrt(frac)
+    else:
+        return np.sqrt(frac)
 
 
 def fit_continuum(x, y, ivars, order=6, nsigma=[0.3,3.0], maxniter=50):

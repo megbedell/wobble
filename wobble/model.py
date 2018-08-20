@@ -4,7 +4,7 @@ import sys
 import tensorflow as tf
 T = tf.float64
 
-from .utils import bin_data
+from .utils import bin_data, doppler, get_session
 from .interp import interp
 from .history import History
 
@@ -13,10 +13,11 @@ class Model(object):
     Keeps track of all components in the model.
     Model is specific to order `r` of data object `data`.
     """
-    def __init__(self, data, r):
+    def __init__(self, data, results, r):
         self.components = []
         self.component_names = []
         self.data = data
+        self.results = results
         self.r = r
         
     def __str__(self):
@@ -30,28 +31,28 @@ class Model(object):
             string += '{0} variable basis components'.format(c.K)
         return string
         
-    def add_star(self, name, starting_rvs=None, **kwargs):
+    def add_component(self, name, starting_rvs, **kwargs):
         if np.isin(name, self.component_names):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
-        if starting_rvs is None:
-            starting_rvs = np.copy(self.data.bervs) - np.mean(self.data.bervs)
         c = Component(name, starting_rvs, **kwargs)
         self.components.append(c)
         self.component_names.append(name)
+        if not np.isin(name, self.results.component_names):
+            self.results.add_component(c)        
+        
+    def add_star(self, name, starting_rvs=None, **kwargs):
+        if starting_rvs is None:
+            starting_rvs = np.copy(self.data.bervs) - np.mean(self.data.bervs)
+        self.add_component(name, starting_rvs, **kwargs)
         
     def add_telluric(self, name, starting_rvs=None, **kwargs):
-        if np.isin(name, self.component_names):
-            print("The model already has a component named {0}. Try something else!".format(name))
-            return
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
-        c = Component(name, starting_rvs, **kwargs)
-        self.components.append(c)
-        self.component_names.append(name)
+        self.add_component(name, starting_rvs, **kwargs)
         
     def initialize_templates(self):
         data_xs = self.data.xs[self.r]
@@ -70,14 +71,34 @@ class Model(object):
         for c in self.components:
             self.nll += c.nll
             
+        # Set up optimizers
+        self.updates = []
+        for c in self.components:
+            c.opt_template = tf.train.AdamOptimizer(c.learning_rate_template).minimize(self.nll, 
+                            var_list=[c.template_ys])
+            self.updates.append(c.opt_template)
+            if not c.rvs_fixed:
+                c.opt_rvs = tf.train.AdamOptimizer(c.learning_rate_rvs).minimize(self.nll, 
+                            var_list=[c.rvs])  
+                self.updates.append(c.opt_rvs)       
+            if c.K > 0:
+                c.opt_basis = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll, 
+                            var_list=[c.basis_vectors, c.basis_weights])
+                self.updates.append(c.opt_basis)
+            
     def optimize(self, results, niter=100, save_history=False, basename='wobble'):
-        # TODO
-        # initialize tensorflow optimizers etc
         # initialize helper classes:
         if save_history:
             history = History(self, self.data, self.r, niter)
         # optimize
-        results.update(self)
+        session = get_session()
+        session.run(tf.global_variables_initializer())
+        for i in range(niter):
+            print("iter {0}".format(i))
+            session.run(self.updates)
+        for c in self.components:
+            results.update(c)
+            # check that all components have been recorded
         # save history
                                 
 class Component(object):
@@ -175,25 +196,3 @@ class Component(object):
             data_resids[n] -= np.interp(shifted_xs[n], template_xs, full_template[n])
         return data_resids
          
-        
-    def make_optimizers(self, r, nll, learning_rate_rvs=None, 
-            learning_rate_template=None, learning_rate_basis=None):
-        # TODO: make each one an R-length list rather than overwriting each order?
-        if learning_rate_rvs == None:
-            learning_rate_rvs = self.learning_rate_rvs
-        if learning_rate_template == None:
-            learning_rate_template = self.learning_rate_template
-        if learning_rate_basis == None:
-            learning_rate_basis = self.learning_rate_basis
-        self.gradients_template = tf.gradients(nll, self.template_ys[r])
-        self.opt_template = tf.train.AdamOptimizer(learning_rate_template).minimize(nll, 
-                            var_list=[self.template_ys[r]])
-        if not self.rvs_fixed:
-            self.gradients_rvs = tf.gradients(nll, self.rvs_block[r])
-            self.opt_rvs = tf.train.AdamOptimizer(learning_rate_rvs).minimize(nll, 
-                            var_list=[self.rvs_block[r]])
-        if self.K > 0:
-            self.gradients_basis = tf.gradients(nll, [self.basis_vectors[r], self.basis_weights[r]])
-            self.opt_basis = tf.train.AdamOptimizer(learning_rate_basis).minimize(nll, 
-                            var_list=[self.basis_vectors[r], self.basis_weights[r]]) 
-        # TODO: put initialization here
