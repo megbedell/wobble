@@ -35,7 +35,7 @@ class Model(object):
         if np.isin(name, self.component_names):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
-        c = Component(name, starting_rvs, **kwargs)
+        c = Component(name, self.r, starting_rvs, **kwargs)
         self.components.append(c)
         self.component_names.append(name)
         if not np.isin(name, self.results.component_names):
@@ -95,7 +95,7 @@ class Model(object):
         session.run(tf.global_variables_initializer())
         for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
             if save_history:
-                history.save_iter(model, data, i, nll, chis)
+                history.save_iter(model, self.data, i, self.nll, chis)
             session.run(self.updates)
         for c in self.components:
             self.results.update(c)
@@ -105,11 +105,12 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, starting_rvs, L1_template=0., L2_template=0., L1_basis_vectors=0.,
+    def __init__(self, name, r, starting_rvs, L1_template=0., L2_template=0., L1_basis_vectors=0.,
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=10.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
                  rvs_fixed=False, variable_bases=0, scale_by_airmass=False):
         self.name = name
+        self.r = r
         self.K = variable_bases # number of variable basis vectors
         self.N = len(starting_rvs)
         self.rvs_fixed = rvs_fixed

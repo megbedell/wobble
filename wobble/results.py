@@ -6,7 +6,7 @@ T = tf.float64
 
 from .utils import get_session
 
-COMPONENT_NP_ATTRS = ['K', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_rvs', 'learning_rate_template', 
+COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_rvs', 'learning_rate_template', 
                       'learning_rate_basis', 'L1_template', 'L2_template', 'L1_basis_vectors', 
                       'L2_basis_vectors', 'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
