@@ -29,14 +29,15 @@ class Parameters(object):
         for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
             getattr(self, attr)[r] = np.copy(getattr(c, attr)[0])
             
-    def copy_to_model(self, r, c):
+    def make_feed_dict(self, r, c):
         """
         Update regularization parameters in model component c to current values for order r.
         **NOTE** r refers ONLY to the order index in Parameters() record; 
         c is assumed to be single-order!
         """
+        dicts = {}
         for attr in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors']:
-             getattr(c, attr)[0] = np.copy(getattr(self, attr)[r])       
+             dicts[attr] = getattr(self, attr)[r]
             
     def set_order_to_previous(self, r):
         """
@@ -187,15 +188,8 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
     if verbose:
         print("{0} optimized; setting to {1:.0e}".format(name, grid[best_ind]))
     
-def test_regularization_value(val, name, c, model, training_data, validation_data, r, 
+def test_regularization_value(val, name, c, training_model, validation_model, r, 
                                 verbose=True, plot=False, basename=''):
-    getattr(c, name)[r] = val
-    
-    for co in model.components:
-        co.template_exists[r] = False # force reinitialization at each iteration
-    
-    # restart the session
-    session = wobble.get_session(restart=True)
         
     results_train = wobble.optimize_order(model, training_data, r, niter=50)
     
@@ -263,11 +257,12 @@ if __name__ == "__main__":
 
     start_time = time()
     
+    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=np.arange(72))
+    results = wobble.Results(data)
+    
     for r in range(R):
         print("starting order {0}...".format(r))
-        # make new data and model objects - this avoids wasting time with a giant results file
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[r])
-        model = wobble.Model(data)
+        model = wobble.Model(data, results, r)
         model.add_star('star')
         model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K)
         if r==0:

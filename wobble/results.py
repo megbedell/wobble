@@ -17,7 +17,7 @@ class Results(object):
     """
     def __init__(self, data=None, filename=None):
         if filename is None:
-            self.component_names = None
+            self.component_names = []
             self.R = data.R
             self.N = data.N
             self.orders = data.orders
@@ -32,6 +32,7 @@ class Results(object):
         if np.isin(c.name, self.component_names):
             print("A component of name {0} has already been added to the results object.".format(c.name))
             return
+        self.component_names.append(c.name)
         basename = c.name+'_'
         setattr(self, basename+'rvs', np.empty((self.R,self.N)) + np.nan)
         setattr(self, basename+'ivars', np.empty((self.R,self.N)) + np.nan)
@@ -66,28 +67,41 @@ class Results(object):
             for name in self.component_names:
                 basename = name + '_'
                 for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
-                    try:
-                        setattr(self, basename+attr, np.copy(f[basename+attr]))
-                    except: # catch when basis vectors are Nones
-                        assert np.copy(f[basename+'K']) == 0, "Results: read() failed on attribute {0}".format(basename+attr)
+                    setattr(self, basename+attr, np.copy(f[basename+attr]))
                 setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
-            for attr in f['attrs_to_resize']: # trim off the padding
+            for attr in f['attrs_to_pad']: # trim off the padding
                 data = [np.trim_zeros(np.asarray(getattr(self, attr)[r]), 'b') for r in range(self.R)]
                 setattr(self, attr, data)
+            #for attr in self.attrs_to_resize: # basis weights
+                #Ks = getattr(self, )
+                #for i,k in enumerate(self.K):
+                #    
+                #setattr(self, attr, np.resize())
                 
                     
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
-        self.attrs_to_resize = [['{0}_template_xs'.format(n), '{0}_template_ys'.format(n)] for n in self.component_names]
+        self.attrs_to_pad = [['{0}_template_xs'.format(n), '{0}_template_ys'.format(n)] for n in self.component_names]
+        self.attrs_to_resize = ['{0}_basis_weights'.format(n) for n in self.component_names]
+        #self.resize_dims = [1 for a in self.attrs_to_resize]
+        self.attrs_to_resize_and_pad = ['{0}_basis_vectors'.format(n) for n in self.component_names]
+        #self.resize_and_pad_dims = [1 for a in self.attrs_to_resize_and_pad]
         self.component_names = [n.encode('utf8') for n in self.component_names] # h5py workaround
         with h5py.File(filename,'w') as f:
+            group = f.create_group('order{0}'.format(r))
             for attr in vars(self):
-                if np.isin(attr, self.attrs_to_resize): # pad with zeros to make rectangular arrays bc h5py is infuriating
+                print("saving attribute {0}".format(attr))
+                if np.isin(attr, self.attrs_to_pad): # pad with zeros to make rectangular arrays bc h5py is infuriating
                     data = getattr(self, attr)
+                    if np.isin(attr, self.attrs_to_resize_and_pad):
+                        data = [np.ravel(d) for d in getattr(self, attr)]
                     max_len = np.max([len(x) for x in data])
                     for r in range(self.R):
                         data[r] = np.append(data[r], np.zeros(max_len - len(data[r])))
-                    f.create_dataset(attr, data=data)   
+                    f.create_dataset(attr, data=data) 
+                elif np.isin(attr, self.attrs_to_resize):
+                    data = [np.ravel(d) for d in getattr(self, attr)]
+                    f.create_dataset(attr, data=data)
                 else:
                     f.create_dataset(attr, data=getattr(self, attr))
                     

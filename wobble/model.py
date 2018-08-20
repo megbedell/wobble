@@ -67,7 +67,12 @@ class Model(object):
         for c in self.components:
             c.setup(self.data, self.r)
             self.synth += c.synth
-        self.nll = (self.data.ys[self.r] - self.synth)**2 * self.data.ivars[self.r]
+            
+        self.nll = 0.5*tf.reduce_sum(tf.square(tf.boolean_mask(tf.constant(self.data.ys[self.r], dtype=T), 
+                                                               self.data.epoch_mask) 
+                                              - tf.boolean_mask(self.synth, self.data.epoch_mask)) 
+                                    * tf.boolean_mask(tf.constant(self.data.ivars[self.r], dtype=T), 
+                                                      self.data.epoch_mask))
         for c in self.components:
             self.nll += c.nll
 
@@ -85,18 +90,21 @@ class Model(object):
                 c.opt_basis = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
                             var_list=[c.basis_vectors, c.basis_weights])
                 self.updates.append(c.opt_basis)
+        
+        session = get_session()
+        session.run(tf.global_variables_initializer())
 
-    def optimize(self, niter=100, save_history=False, basename='wobble'):
+    def optimize(self, niter=100, save_history=False, basename='wobble',
+                 feed_dict=None):
         # initialize helper classes:
         if save_history:
             history = History(self, self.data, self.r, niter)
         # optimize
         session = get_session()
-        session.run(tf.global_variables_initializer())
         for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
             if save_history:
                 history.save_iter(model, self.data, i, self.nll, chis)
-            session.run(self.updates)
+            session.run(self.updates, feed_dict=feed_dict)
         for c in self.components:
             self.results.update(c)
         # save history
@@ -143,12 +151,12 @@ class Component(object):
         self.L2_basis_vectors_tensor = tf.constant(self.L2_basis_vectors, dtype=T)
         self.L2_basis_weights_tensor = tf.constant(self.L2_basis_weights, dtype=T)
 
-        self.nll = self.L1_template_tensor * tf.norm(self.template_ys, 1)
-        self.nll += self.L2_template_tensor * tf.norm(self.template_ys, 2)
+        self.nll = self.L1_template_tensor * tf.reduce_sum(tf.abs(self.template_ys))
+        self.nll += self.L2_template_tensor * tf.reduce_sum(self.template_ys**2)
         if self.K > 0:
-            self.nll += self.L1_basis_vectors_tensor * tf.norm(self.basis_vectors, 1)
-            self.nll += self.L2_basis_vectors_tensor * tf.norm(self.basis_vectors, 2)
-            self.nll += self.L2_basis_weights_tensor * tf.norm(self.basis_weights, 2)
+            self.nll += self.L1_basis_vectors_tensor * tf.reduce_sum(tf.abs(self.basis_vectors))
+            self.nll += self.L2_basis_vectors_tensor * tf.reduce_sum(self.basis_vectors**2)
+            self.nll += self.L2_basis_weights_tensor * tf.reduce_sum(self.basis_weights**2)
 
         # Apply doppler
         shifted_xs = self.data_xs + tf.log(doppler(self.rvs[:, None]))
