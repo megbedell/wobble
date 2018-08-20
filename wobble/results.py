@@ -82,7 +82,7 @@ class Results(object):
         self.component_names = [n.encode('utf8') for n in self.component_names] # h5py workaround
         with h5py.File(filename,'w') as f:
             for attr in vars(self):
-                if np.isin(attr, self.attrs_to_resize): # pad with NaNs to make rectangular arrays bc h5py is infuriating
+                if np.isin(attr, self.attrs_to_resize): # pad with zeros to make rectangular arrays bc h5py is infuriating
                     data = getattr(self, attr)
                     max_len = np.max([len(x) for x in data])
                     for r in range(self.R):

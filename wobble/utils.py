@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-
 from __future__ import division, print_function
-
-__all__ = ["fit_continuum", "bin_data", "get_session", "doppler"]
-
 import numpy as np
 import tensorflow as tf
+import sys
 
 speed_of_light = 2.99792458e8   # m/s
+
+__all__ = ["fit_continuum", "bin_data", "get_session", "doppler"]
 
 def get_session(restart=False):
   """Get the globally defined TensorFlow session.

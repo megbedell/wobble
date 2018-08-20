@@ -86,19 +86,19 @@ class Model(object):
                             var_list=[c.basis_vectors, c.basis_weights])
                 self.updates.append(c.opt_basis)
             
-    def optimize(self, results, niter=100, save_history=False, basename='wobble'):
+    def optimize(self, niter=100, save_history=False, basename='wobble'):
         # initialize helper classes:
         if save_history:
             history = History(self, self.data, self.r, niter)
         # optimize
         session = get_session()
         session.run(tf.global_variables_initializer())
-        for i in range(niter):
-            print("iter {0}".format(i))
+        for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
+            if save_history:
+                history.save_iter(model, data, i, nll, chis)
             session.run(self.updates)
         for c in self.components:
-            results.update(c)
-            # check that all components have been recorded
+            self.results.update(c)
         # save history
                                 
 class Component(object):
