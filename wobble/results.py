@@ -10,6 +10,7 @@ COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_
                       'learning_rate_basis', 'L1_template', 'L2_template', 'L1_basis_vectors', 
                       'L2_basis_vectors', 'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
+COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'component_names']
 
 class Results(object):
     """
@@ -59,52 +60,36 @@ class Results(object):
     def read(self, filename): # THIS PROBABLY WON'T WORK
         print("Results: reading from {0}".format(filename))
         with h5py.File(filename,'r') as f:
-            for attr in np.append(DATA_NP_ATTRS, DATA_TF_ATTRS):
+            for attr in COMMON_ATTRS:
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            self.ys_predicted = np.copy(f['ys_predicted'])
+            #self.ys_predicted = np.copy(f['ys_predicted'])
+            all_order_attrs = []
             for name in self.component_names:
                 basename = name + '_'
+                setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
+                all_order_attrs.append(basename+'ys_predicted')
                 for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
-                    setattr(self, basename+attr, np.copy(f[basename+attr]))
-                setattr(self, basename+'ys_predicted', np.copy(f[basename+'ys_predicted']))
-            for attr in f['attrs_to_pad']: # trim off the padding
-                data = [np.trim_zeros(np.asarray(getattr(self, attr)[r]), 'b') for r in range(self.R)]
-                setattr(self, attr, data)
-            #for attr in self.attrs_to_resize: # basis weights
-                #Ks = getattr(self, )
-                #for i,k in enumerate(self.K):
-                #    
-                #setattr(self, attr, np.resize())
+                    setattr(self, basename+attr, [0 for r in range(self.R)])
+                    all_order_attrs.append(basename+attr)
+            for r in range(self.R):
+                for attr in all_order_attrs:
+                    getattr(self, attr)[r] = np.copy(f['order{0}'.format(r)][attr])
                 
                     
     def write(self, filename):
         print("Results: writing to {0}".format(filename))
-        self.attrs_to_pad = [['{0}_template_xs'.format(n), '{0}_template_ys'.format(n)] for n in self.component_names]
-        self.attrs_to_resize = ['{0}_basis_weights'.format(n) for n in self.component_names]
-        #self.resize_dims = [1 for a in self.attrs_to_resize]
-        self.attrs_to_resize_and_pad = ['{0}_basis_vectors'.format(n) for n in self.component_names]
-        #self.resize_and_pad_dims = [1 for a in self.attrs_to_resize_and_pad]
-        self.component_names = [n.encode('utf8') for n in self.component_names] # h5py workaround
-        with h5py.File(filename,'w') as f:
-            group = f.create_group('order{0}'.format(r))
-            for attr in vars(self):
-                print("saving attribute {0}".format(attr))
-                if np.isin(attr, self.attrs_to_pad): # pad with zeros to make rectangular arrays bc h5py is infuriating
-                    data = getattr(self, attr)
-                    if np.isin(attr, self.attrs_to_resize_and_pad):
-                        data = [np.ravel(d) for d in getattr(self, attr)]
-                    max_len = np.max([len(x) for x in data])
-                    for r in range(self.R):
-                        data[r] = np.append(data[r], np.zeros(max_len - len(data[r])))
-                    f.create_dataset(attr, data=data) 
-                elif np.isin(attr, self.attrs_to_resize):
-                    data = [np.ravel(d) for d in getattr(self, attr)]
-                    f.create_dataset(attr, data=data)
-                else:
-                    f.create_dataset(attr, data=getattr(self, attr))
-                    
+        with h5py.File(filename,'w') as f:            
+            for r in range(self.R):
+                g = f.create_group('order{0}'.format(r))
+                for n in self.component_names:
+                    g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
+                    for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
+                        g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])
+            self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
+            for attr in COMMON_ATTRS:
+                f.create_dataset(attr, data=getattr(self, attr))                    
                 
     def combine_orders(self, component_name):
         basename = component_name+'_'
