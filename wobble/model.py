@@ -87,9 +87,13 @@ class Model(object):
                             var_list=[c.rvs])
                 self.updates.append(c.opt_rvs)
             if c.K > 0:
-                c.opt_basis = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
-                            var_list=[c.basis_vectors, c.basis_weights])
-                self.updates.append(c.opt_basis)
+                c.opt_basis_vectors = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
+                            var_list=[c.basis_vectors])
+                self.updates.append(c.opt_basis_vectors)
+                c.opt_basis_weights = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
+                            var_list=[c.basis_weights])
+                self.updates.append(c.opt_basis_weights)
+        
         
         session = get_session()
         session.run(tf.global_variables_initializer())
