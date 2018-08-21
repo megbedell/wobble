@@ -36,7 +36,7 @@ def read_data_from_fits(filelist):
         drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
         
         spec_file = str.replace(f, 'ccf_G2', 'e2ds') 
-        spec_file = str.replace(f, 'ccf_M2', 'e2ds') 
+        spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         try:
             wave, spec = read_harps.read_spec_2d(spec_file)
         except:
@@ -60,7 +60,7 @@ def read_data_from_fits(filelist):
     airms = np.delete(airms, empty)
     drifts = np.delete(drifts, empty)
     
-    pipeline_rvs += bervs  
+    pipeline_rvs -= bervs  
     pipeline_rvs -= np.mean(pipeline_rvs)
     
     return data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts    
@@ -93,7 +93,7 @@ def read_data_from_savfile(savfile):
         ivars[r] = np.delete(ivars[r], empty, axis=0)
         xs[r] = np.delete(xs[r], empty, axis=0)
     
-    pipeline_rvs = (s.berv + s.rv) * 1.e3  # m/s    
+    pipeline_rvs = (s.rv - s.berv) * 1.e3  # m/s    
     pipeline_rvs = np.delete(pipeline_rvs, empty)
     pipeline_rvs -= np.mean(pipeline_rvs)
     bervs = np.delete(s.berv, empty) * 1.e3 # m/s
@@ -161,13 +161,13 @@ if __name__ == "__main__":
         hdffile = '../data/hip54287_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
         
-    if False: #51 Peg
-        ccf_filelist = np.genfromtxt('ccf_filelist.txt', dtype=None)
+    if True: #51 Peg
+        ccf_filelist = np.genfromtxt('ccf_filelist.txt', dtype=None, encoding=None)
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
         
-    if True: #Barnard's Star
+    if False: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
         
         if True: # check for missing wavelength files

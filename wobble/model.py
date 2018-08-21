@@ -43,7 +43,7 @@ class Model(object):
 
     def add_star(self, name, starting_rvs=None, **kwargs):
         if starting_rvs is None:
-            starting_rvs = np.copy(self.data.bervs) - np.mean(self.data.bervs)
+            starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):

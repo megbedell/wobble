@@ -188,7 +188,7 @@ def improve_parameter(name, c, model, training_data, validation_data, r, verbose
     if verbose:
         print("{0} optimized; setting to {1:.0e}".format(name, grid[best_ind]))
     
-def test_regularization_value(val, name, c, training_model, validation_model, r, 
+def test_regularization_value(val, name, c, training_model, validation_model, 
                                 verbose=True, plot=False, basename=''):
         
     results_train = wobble.optimize_order(model, training_data, r, niter=50)

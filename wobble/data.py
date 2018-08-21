@@ -23,9 +23,9 @@ class Data(object):
             self.ys = [f['data'][i][:self.N,:] for i in orders]
             self.xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
             self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
-            self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N] * -1.
+            self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N]
             self.dates = np.copy(f['dates'])[:self.N]
-            self.bervs = np.copy(f['bervs'])[:self.N] * -1.
+            self.bervs = np.copy(f['bervs'])[:self.N]
             self.drifts = np.copy(f['drifts'])[:self.N]
             self.airms = np.copy(f['airms'])[:self.N]
             
