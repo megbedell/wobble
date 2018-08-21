@@ -108,25 +108,14 @@ class Results(object):
         setattr(self, basename+'time_rvs', rvs_N)
         setattr(self, basename+'order_rvs', rvs_R)
         setattr(self, basename+'order_sigmas', soln_sigmas)
-        for tmp_attr in ['M', 'all_rvs', 'all_ivars', 'time_rvs', 'order_rvs', 'order_sigmas']:
+        for tmp_attr in ['M', 'all_rvs', 'all_ivars']:
             delattr(self, tmp_attr) # cleanup
-        
-    def pack_rv_pars(self, time_rvs, order_rvs, order_sigmas):
-        rv_pars = np.append(time_rvs, order_rvs)
-        rv_pars = np.append(rv_pars, order_sigmas)
-        return rv_pars
-    
-    def unpack_rv_pars(self, rv_pars):
-        self.time_rvs = np.copy(rv_pars[:self.data.N])
-        self.order_rvs = np.copy(rv_pars[self.data.N:self.data.R + self.data.N])
-        self.order_sigmas = np.copy(rv_pars[self.data.R + self.data.N:])
-        return self.time_rvs, self.order_rvs, self.order_sigmas
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
         assert len(sigmas) == self.R
         M = self.get_design_matrix(restart = restart)
         something = np.zeros_like(M[0,:])
-        something[self.N:] = 1. / self.data.R # last datum will be mean of order velocities is zero
+        something[self.N:] = 1. / self.R # last datum will be mean of order velocities is zero
         M = np.append(M, something[None, :], axis=0) # last datum
         Rs, Ns = self.get_index_lists()
         ivars = 1. / ((1. / self.all_ivars) + sigmas[Rs]**2) # not zero-safe

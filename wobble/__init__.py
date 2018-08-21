@@ -11,7 +11,7 @@ def optimize_order(model, **kwargs):
     optimize the model for order r in data
     '''      
     model.setup()    
-    model.optimize(*args, **kwargs)
+    model.optimize(**kwargs)
 
 def optimize_orders(data, **kwargs):
     """
@@ -24,8 +24,8 @@ def optimize_orders(data, **kwargs):
         model.add_telluric('tellurics', rvs_fixed=True, variable_bases=3)
         print("--- ORDER {0} ---".format(r))
         optimize_order(model, **kwargs)
-        #if (r % 5) == 0:
-        #    results.write('results_order{0}.hdf5'.format(data.orders[r]))
+        if (r % 5) == 0:
+            results.write('results_order{0}.hdf5'.format(data.orders[r]))
     results.compute_final_rvs(model) 
-    #results.write('results.hdf5')   
+    results.write('results.hdf5')   
     return results 
