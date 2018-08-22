@@ -63,7 +63,7 @@ class Model(object):
 
     def setup(self):
         self.initialize_templates()
-        self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T)
+        self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T, name='synth')
         for c in self.components:
             c.setup(self.data, self.r)
             self.synth += c.synth
@@ -138,22 +138,19 @@ class Component(object):
         self.template_xs = template_xs
 
     def setup(self, data, r):
-        self.rvs = tf.Variable(self.starting_rvs, dtype=T)
-        self.ivars = tf.constant(np.zeros(data.N) + 10., dtype=T) # TODO
-        self.template_xs = tf.constant(self.template_xs, dtype=T)
-        self.template_ys = tf.Variable(self.template_ys, dtype=T)
+        self.rvs = tf.Variable(self.starting_rvs, dtype=T, name='rvs_'+self.name)
+        self.ivars = tf.constant(np.zeros(data.N) + 10., dtype=T, name='ivars_'+self.name) # TODO
+        self.template_xs = tf.constant(self.template_xs, dtype=T, name='template_xs_'+self.name)
+        self.template_ys = tf.Variable(self.template_ys, dtype=T, name='template_ys_'+self.name)
         if self.K > 0:
-            self.basis_vectors = tf.Variable(self.basis_vectors, dtype=T)
-            self.basis_weights = tf.Variable(self.basis_weights, dtype=T)
+            self.basis_vectors = tf.Variable(self.basis_vectors, dtype=T, name='basis_vectors_'+self.name)
+            self.basis_weights = tf.Variable(self.basis_weights, dtype=T, name='basis_weights_'+self.name)
 
-        self.data_xs = tf.constant(data.xs[r], dtype=T)
+        self.data_xs = tf.constant(data.xs[r], dtype=T, name='data_xs_'+self.name)
 
         # Set up the regularization
-        self.L1_template_tensor = tf.constant(self.L1_template, dtype=T) # maybe change to Variable?
-        self.L2_template_tensor = tf.constant(self.L2_template, dtype=T)
-        self.L1_basis_vectors_tensor = tf.constant(self.L1_basis_vectors, dtype=T)
-        self.L2_basis_vectors_tensor = tf.constant(self.L2_basis_vectors, dtype=T)
-        self.L2_basis_weights_tensor = tf.constant(self.L2_basis_weights, dtype=T)
+        for name in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']:
+            setattr(self, name+'_tensor', tf.constant(getattr(self,name), dtype=T, name=name+'_'+self.name))
 
         self.nll = self.L1_template_tensor * tf.reduce_sum(tf.abs(self.template_ys))
         self.nll += self.L2_template_tensor * tf.reduce_sum(self.template_ys**2)

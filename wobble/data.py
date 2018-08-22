@@ -14,7 +14,7 @@ class Data(object):
                     epochs = None,
                     min_flux = 1.,
                     max_norm_flux = 2.,
-                    padding = 1):
+                    padding = 3):
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
         self.origin_file = filepath+filename
