@@ -45,15 +45,15 @@ class Results(object):
         for attr in COMPONENT_NP_ATTRS:
             setattr(self, basename+attr, [0 for r in range(self.R)])
                 
-    def update(self, c):
+    def update(self, c, **kwargs):
         basename = c.name+'_'
         for attr in COMPONENT_NP_ATTRS:
             getattr(self, basename+attr)[c.r] = np.copy(getattr(c,attr))
         session = get_session()
-        getattr(self, basename+'ys_predicted')[c.r] = session.run(c.synth)
+        getattr(self, basename+'ys_predicted')[c.r] = session.run(c.synth, **kwargs)
         for attr in COMPONENT_TF_ATTRS:
             try:
-                getattr(self, basename+attr)[c.r] = session.run(getattr(c,attr))
+                getattr(self, basename+attr)[c.r] = session.run(getattr(c,attr), **kwargs)
             except: # catch when basis vectors/weights don't exist
                 assert c.K == 0, "Results: update() failed on attribute {0}".format(attr)
                 

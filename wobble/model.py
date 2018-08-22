@@ -57,9 +57,10 @@ class Model(object):
     def initialize_templates(self):
         data_xs = self.data.xs[self.r]
         data_ys = np.copy(self.data.ys[self.r])
+        data_ivars = self.data.ivars[self.r]
         template_xs = None
         for c in self.components:
-            data_ys = c.initialize_template(data_xs, data_ys, template_xs)
+            data_ys = c.initialize_template(data_xs, data_ys, data_ivars, template_xs)
 
     def setup(self):
         self.initialize_templates()
@@ -178,7 +179,7 @@ class Component(object):
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)
 
 
-    def initialize_template(self, data_xs, data_ys, template_xs=None):
+    def initialize_template(self, data_xs, data_ys, data_ivars, template_xs=None):
         """
         Doppler-shift data into component rest frame, subtract off other components,
         and average to make a composite spectrum.
@@ -190,7 +191,7 @@ class Component(object):
             template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
                                    np.max(shifted_xs)+tiny*dx, dx)
 
-        template_xs, template_ys = bin_data(shifted_xs, data_ys, template_xs)
+        template_xs, template_ys = bin_data(shifted_xs, data_ys, data_ivars, template_xs)
         self.template_xs = template_xs
         self.template_ys = template_ys
         full_template = template_ys[None,:] + np.zeros((len(self.starting_rvs),len(template_ys)))

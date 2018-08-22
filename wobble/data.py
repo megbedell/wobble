@@ -10,8 +10,9 @@ class Data(object):
     Includes all orders and epochs.
     """
     def __init__(self, filename, filepath='../data/', 
-                    N = 0, orders = [30], min_flux = 1., 
-                    mask_epochs = None):
+                    N = 0, orders = [30], min_flux = 1.,
+                    max_norm_flux = 2.,
+                    mask_epochs = None, padding = 1):
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
         self.origin_file = filepath+filename
@@ -29,10 +30,13 @@ class Data(object):
             self.drifts = np.copy(f['drifts'])[:self.N]
             self.airms = np.copy(f['airms'])[:self.N]
             
-        # mask out bad pixels:
+        # mask out low pixels:
         for r in range(self.R):
-            bad = np.where(self.ys[r] < min_flux)
+            bad = self.ys[r] < min_flux
             self.ys[r][bad] = min_flux
+            for pad in range(padding):
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
             
         # mask out bad epochs:
@@ -45,6 +49,14 @@ class Data(object):
         self.ys = np.log(self.ys) 
         self.continuum_normalize() 
         
+        # mask out high pixels:
+        for r in range(self.R):
+            bad = self.ys[r] > max_norm_flux
+            self.ys[r][bad] = 1.
+            for pad in range(padding):
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
+            self.ivars[r][bad] = 0.
         
     def continuum_normalize(self):
         for r in range(self.R):

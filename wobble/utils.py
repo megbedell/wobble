@@ -68,26 +68,28 @@ def fit_continuum(x, y, ivars, order=6, nsigma=[0.3,3.0], maxniter=50):
         m = m_new
     return mu
 
-def bin_data(xs, ys, xps):
+def bin_data(xs, ys, ivars, xps):
     """
     Bin data onto a uniform grid using medians.
     
     Args:
         `xs`: `[N, M]` array of xs
         `ys`: `[N, M]` array of ys
+        `ivars`: `[N, M]` array of y-ivars
         `xps`: `M'` grid of x-primes for output template
     
     Returns:
         `yps`: `M'` grid of y-primes
     
     """
-    all_ys, all_xs = np.ravel(ys), np.ravel(xs)
+    all_ys, all_xs, all_ivars = np.ravel(ys), np.ravel(xs), np.ravel(ivars)
     dx = xps[1] - xps[0] # ASSUMES UNIFORM GRID
     yps = np.zeros_like(xps)
     for i,t in enumerate(xps):
         ind = (all_xs >= t-dx/2.) & (all_xs < t+dx/2.)
         if np.sum(ind) > 0:
-            yps[i] = np.nanmedian(all_ys[ind])
+            #yps[i] = np.nanmedian(all_ys[ind])
+            yps[i] = np.nansum(all_ys[ind] * all_ivars[ind]) / np.nansum(all_ivars[ind] + 1.) # MAGIC
     ind_nan = np.isnan(yps)
     yps.flat[ind_nan] = np.interp(xps[ind_nan], xps[~ind_nan], yps[~ind_nan])
     return xps, yps
