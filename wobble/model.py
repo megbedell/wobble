@@ -58,9 +58,8 @@ class Model(object):
         data_xs = self.data.xs[self.r]
         data_ys = np.copy(self.data.ys[self.r])
         data_ivars = self.data.ivars[self.r]
-        template_xs = None
         for c in self.components:
-            data_ys = c.initialize_template(data_xs, data_ys, data_ivars, template_xs)
+            data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
 
     def setup(self):
         self.initialize_templates()
@@ -69,11 +68,9 @@ class Model(object):
             c.setup(self.data, self.r)
             self.synth += c.synth
             
-        self.nll = 0.5*tf.reduce_sum(tf.square(tf.boolean_mask(tf.constant(self.data.ys[self.r], dtype=T), 
-                                                               self.data.epoch_mask) 
-                                              - tf.boolean_mask(self.synth, self.data.epoch_mask)) 
-                                    * tf.boolean_mask(tf.constant(self.data.ivars[self.r], dtype=T), 
-                                                      self.data.epoch_mask))
+        self.nll = 0.5*tf.reduce_sum(tf.square(tf.constant(self.data.ys[self.r], dtype=T) 
+                                               - self.synth) 
+                                    * tf.constant(self.data.ivars[self.r], dtype=T))
         for c in self.components:
             self.nll += c.nll
 
@@ -121,7 +118,8 @@ class Component(object):
     def __init__(self, name, r, starting_rvs, L1_template=0., L2_template=0., L1_basis_vectors=0.,
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=10.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
-                 rvs_fixed=False, variable_bases=0, scale_by_airmass=False):
+                 rvs_fixed=False, variable_bases=0, scale_by_airmass=False,
+                 template_xs=None):
         self.name = name
         self.r = r
         self.K = variable_bases # number of variable basis vectors
@@ -137,6 +135,7 @@ class Component(object):
         self.L2_basis_vectors = L2_basis_vectors
         self.L2_basis_weights = L2_basis_weights
         self.starting_rvs = starting_rvs
+        self.template_xs = template_xs
 
     def setup(self, data, r):
         self.rvs = tf.Variable(self.starting_rvs, dtype=T)
@@ -179,19 +178,19 @@ class Component(object):
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)
 
 
-    def initialize_template(self, data_xs, data_ys, data_ivars, template_xs=None):
+    def initialize_template(self, data_xs, data_ys, data_ivars):
         """
         Doppler-shift data into component rest frame, subtract off other components,
         and average to make a composite spectrum.
         """
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
-        if template_xs is None:
+        if self.template_xs is None:
             dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
             tiny = 10.
-            template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
+            self.template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
                                    np.max(shifted_xs)+tiny*dx, dx)
 
-        template_xs, template_ys = bin_data(shifted_xs, data_ys, data_ivars, template_xs)
+        template_xs, template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
         self.template_xs = template_xs
         self.template_ys = template_ys
         full_template = template_ys[None,:] + np.zeros((len(self.starting_rvs),len(template_ys)))

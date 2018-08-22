@@ -10,25 +10,32 @@ class Data(object):
     Includes all orders and epochs.
     """
     def __init__(self, filename, filepath='../data/', 
-                    N = 0, orders = [30], min_flux = 1.,
+                    orders = [30], 
+                    epochs = None,
+                    min_flux = 1.,
                     max_norm_flux = 2.,
-                    mask_epochs = None, padding = 1):
+                    padding = 1):
         self.R = len(orders) # number of orders to be analyzed
         self.orders = orders
         self.origin_file = filepath+filename
         with h5py.File(self.origin_file) as f:
-            if N < 1:
+            if epochs is None:
                 self.N = len(f['dates']) # all epochs
+                self.epochs = np.arange(self.N)
             else:
-                self.N = N
-            self.ys = [f['data'][i][:self.N,:] for i in orders]
-            self.xs = [np.log(f['xs'][i][:self.N,:]) for i in orders]
-            self.ivars = [f['ivars'][i][:self.N,:] for i in orders]
-            self.pipeline_rvs = np.copy(f['pipeline_rvs'])[:self.N]
-            self.dates = np.copy(f['dates'])[:self.N]
-            self.bervs = np.copy(f['bervs'])[:self.N]
-            self.drifts = np.copy(f['drifts'])[:self.N]
-            self.airms = np.copy(f['airms'])[:self.N]
+                self.epochs = epochs
+                self.N = len(epochs)
+                for e in epochs:
+                    assert (e >= 0) & (e < len(f['dates'])), \
+                        "epoch #{0} is not in datafile {1}".format(e, self.origin_file)
+            self.ys = [f['data'][i][self.epochs,:] for i in orders]
+            self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
+            self.ivars = [f['ivars'][i][self.epochs,:] for i in orders]
+            self.pipeline_rvs = np.copy(f['pipeline_rvs'])[self.epochs]
+            self.dates = np.copy(f['dates'])[self.epochs]
+            self.bervs = np.copy(f['bervs'])[self.epochs]
+            self.drifts = np.copy(f['drifts'])[self.epochs]
+            self.airms = np.copy(f['airms'])[self.epochs]
             
         # mask out low pixels:
         for r in range(self.R):
@@ -38,12 +45,6 @@ class Data(object):
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
-            
-        # mask out bad epochs:
-        self.epoch_mask = [True for n in range(self.N)]
-        if mask_epochs is not None:
-            for n in mask_epochs:
-                self.epoch_mask[n] = False
 
         # log and normalize:
         self.ys = np.log(self.ys) 

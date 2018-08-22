@@ -10,7 +10,7 @@ COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_
                       'learning_rate_basis', 'L1_template', 'L2_template', 'L1_basis_vectors', 
                       'L2_basis_vectors', 'L2_basis_weights']
 COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'component_names']
+COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names']
 
 class Results(object):
     """
@@ -23,6 +23,7 @@ class Results(object):
             self.N = data.N
             self.orders = data.orders
             self.origin_file = data.origin_file
+            self.epochs = data.epochs
             return
         if data is None:
             self.read(filename)
