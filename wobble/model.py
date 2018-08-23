@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import tensorflow as tf
+import h5py
 T = tf.float64
 
 from .utils import bin_data, doppler, get_session
@@ -115,7 +116,8 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model.
     """
-    def __init__(self, name, r, starting_rvs, L1_template=0., L2_template=0., L1_basis_vectors=0.,
+    def __init__(self, name, r, starting_rvs, regularization_par_file=None,
+                 L1_template=0., L2_template=0., L1_basis_vectors=0.,
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=10.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
                  rvs_fixed=False, variable_bases=0, scale_by_airmass=False,
@@ -129,11 +131,17 @@ class Component(object):
         self.learning_rate_rvs = learning_rate_rvs
         self.learning_rate_template = learning_rate_template
         self.learning_rate_basis = learning_rate_basis
-        self.L1_template = L1_template
-        self.L2_template = L2_template
-        self.L1_basis_vectors = L1_basis_vectors
-        self.L2_basis_vectors = L2_basis_vectors
-        self.L2_basis_weights = L2_basis_weights
+        regularization_par = ['L1_template', 'L2_template', 
+                              'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+        for par in regularization_par:
+            setattr(self, par, eval(par)) # set to input values/defaults
+        if regularization_par_file is not None:
+            try:
+                with h5py.File(regularization_par_file,'r') as f:
+                    for par in regularization_par:
+                        setattr(self, par, np.copy(f[par][r])) # overwrite with value from file
+            except:
+                print('Regularization parameter file {0} not recognized; using default parameters.'.format(regularization_par_file))
         self.starting_rvs = starting_rvs
         self.template_xs = template_xs
 
