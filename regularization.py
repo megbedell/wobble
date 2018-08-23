@@ -91,7 +91,8 @@ def improve_order_regularization(r, training_data, training_results,
                                                          plot=plot, basename=basename)
     
     if verbose:                       
-        print('---- ORDER COMPLETE ----')  
+        print('---- ORDER COMPLETE ----') 
+    return regularization_dict
     
     
 def improve_parameter(par, training_model, validation_model, regularization_dict, 
@@ -136,6 +137,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.scatter(grid, nll_grid)
+        ax.set_xlim([grid[0]*0.5, grid[-1]*2.])
         ax.set_xscale('log')
         ax.set_xlabel('{0} values'.format(par.name))
         ax.set_ylabel('NLL')
@@ -151,19 +153,23 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     '''
     Try setting regularization parameter `par` to value `val`; return goodness metric `nll`.
     '''
+    r = training_model.r
     regularization_dict[par] = val
-    training_model.optimize(niter=60, feed_dict=regularization_dict)
+    session = wobble.utils.get_session()
+    session.run(tf.global_variables_initializer()) # reset both models
+    
+    training_model.optimize(niter=80, feed_dict=regularization_dict)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
-                                                             c.name+'_template_xs')[training_model.r]
+                                                             c.name+'_template_xs')[r]
         validation_dict[getattr(c, 'template_ys')] = getattr(training_model.results, 
-                                                             c.name+'_template_ys')[training_model.r]
+                                                             c.name+'_template_ys')[r]
         if c.K > 0:
             validation_dict[getattr(c, 'basis_vectors')] = getattr(training_model.results, 
-                                                                   c.name+'_basis_vectors')[training_model.r]
+                                                                   c.name+'_basis_vectors')[r]
     session = wobble.utils.get_session()
-    for i in tqdm(range(60)):
+    for i in tqdm(range(80)):
         for c in validation_model.components:
             if not c.rvs_fixed:
                 session.run(c.opt_rvs, feed_dict=validation_dict) # HACK
@@ -178,23 +184,23 @@ def test_regularization_value(par, val, training_model, validation_model, regula
         zero_regularization_dict[key] = 0.0
     for c in validation_model.components:
         zero_regularization_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
-                                                             c.name+'_template_xs')[training_model.r]
+                                                             c.name+'_template_xs')[r]
         zero_regularization_dict[getattr(c, 'template_ys')] = getattr(training_model.results, 
-                                                             c.name+'_template_ys')[training_model.r]
+                                                             c.name+'_template_ys')[r]
         if not c.rvs_fixed:
             zero_regularization_dict[getattr(c, 'rvs')] = getattr(validation_model.results, 
-                                                             c.name+'_rvs')[training_model.r]
+                                                             c.name+'_rvs')[r]
         if c.K > 0:
             zero_regularization_dict[getattr(c, 'basis_vectors')] = getattr(training_model.results, 
-                                                                   c.name+'_basis_vectors')[training_model.r]
+                                                                   c.name+'_basis_vectors')[r]
             zero_regularization_dict[getattr(c, 'basis_weights')] = getattr(validation_model.results, 
-                                                                   c.name+'_basis_weights')[training_model.r]
+                                                                   c.name+'_basis_weights')[r]
 
 
     if plot:
         n = 0
         xs = np.exp(validation_data.xs[r][n])
-        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]})
+        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
         ax.scatter(xs, np.exp(validation_data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data')
         ax.plot(xs, 
                 np.exp(validation_results.star_ys_predicted[r][n]), 
