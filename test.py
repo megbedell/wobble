@@ -13,16 +13,17 @@ if __name__ == "__main__":
     star_reg_file = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     tellurics_reg_file = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     
-    if False:
+    if True:
         # quick test on two orders
         data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[30,56])
         results = wobble.Results(data=data)
-        model = wobble.Model(data, results, r)
-        model.add_star('star', variable_bases=K_star, 
+        for r in range(data.R):
+            model = wobble.Model(data, results, r)
+            model.add_star('star', variable_bases=K_star, 
                             regularization_par_file=star_reg_file)
-        model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
+            model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
                                 regularization_par_file=tellurics_reg_file)
-        wobble.optimize_order(model, niter=80)
+            wobble.optimize_order(model, niter=80, save_history=True, basename='results/plots_{0}/history'.format(starname))
         assert False
     
     
@@ -121,7 +122,7 @@ if __name__ == "__main__":
     plt.savefig('results/{0}_Kstar{1}_Kt{2}_rvs.png'.format(starname, K_star, K_t))
     plt.close(fig)
     
-    for o in np.arange(R):
+    for o in np.arange(72):
         e = 0
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
         ax.scatter(np.exp(data.xs[o][e]), np.exp(data.ys[o][e]), c='k', alpha=0.6)

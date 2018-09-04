@@ -126,25 +126,29 @@ class Model(object):
             Number of iterations.
         save_history : `bool` (default `False`)
             If `True`, create a wobble History object to track progress across 
-            iterations. The resulting output will be saved under `[basename]_order[#].hdf5`. 
+            iterations and generate plots.
         basename : `str` (default `wobble`)
-            Path/name to use when saving history. Only accessed if save_history = `True`.
+            Path/name to use when saving plots. Only accessed if save_history = `True`.
         feed_dict : `dict` (default `None`)
             TensorFlow magic; passed to the optimizer.
         """
         # initialize helper classes:
         if save_history:
-            history = History(self, self.data, self.r, niter)
+            history = History(self, self.data, self.r, niter+1)
+            history.save_iter(self, 0)
         # optimize:
         session = get_session()
         for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
-            if save_history:
-                history.save_iter(model, self.data, i, self.nll, chis)
             session.run(self.updates, feed_dict=feed_dict)
-        # copy over the outputs to Results for safekeeping:
+            if save_history:
+                history.save_iter(self, i+1)
+        # copy over the outputs to Results:
         for c in self.components:
             self.results.update(c)
-        # save history
+        # save optimization plots:
+        if save_history:
+            history.save_plots(basename)
+        
 
 class Component(object):
     """

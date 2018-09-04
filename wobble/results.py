@@ -134,8 +134,8 @@ class Results(object):
         
         Parameters
         ----------
-        component_name : str
-        Name of the model component to use.
+        component_name : `str`
+            Name of the model component to use.
         """
         if not np.isin(component_name, self.component_names):
             print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
