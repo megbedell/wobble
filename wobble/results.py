@@ -13,14 +13,26 @@ COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys', 'basis_vecto
 COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names']
 
 class Results(object):
-    """
-    Stores RV & template results across all orders.
+    """A read/writeable object which stores RV & template results across all orders. 
+    At the end of each Model optimize() call, the associated Results object is 
+    updated with numpy outputs from each optimized TensorFlow variable. 
+    This allows us to clear out the graph and retain the solution.
+    
+    One of the two keywords is required for initialization.
+    
+    Parameters
+    ----------
+    data : `object`
+        a wobble Data object
+    filename : str
+        a file path pointing to a saved Results object (HDF5 format).
     """
     def __init__(self, data=None, filename=None):
         if filename is None:
             self.component_names = []
             self.R = data.R
             self.N = data.N
+            # get everything we'd need to reconstruct the data used:
             self.orders = data.orders
             self.origin_file = data.origin_file
             self.epochs = data.epochs
@@ -29,10 +41,27 @@ class Results(object):
             self.read(filename)
             return
         print("Results: must supply either data or filename keywords.")
-                
+        
+    def __str__(self):
+        string = 'wobble Results object consisting of the following components: '
+        for n in self.component_names:
+            string += '\n{0}: '.format(n)
+        return string    
+                            
     def add_component(self, c):
+        """Initialize a new model component and prepare to save its optimized outputs. 
+        The component name should be consistent across all order models. 
+        
+        Note that if a component name was initialized in the models for 1+ orders but 
+        was not included in all order models, its RV values/uncertainties will be set 
+        to NaNs and all other properties set to 0 for the excluded order(s).
+        
+        Parameters
+        ----------
+        c : a wobble.Model.Component object
+        """
         if np.isin(c.name, self.component_names):
-            print("A component of name {0} has already been added to the results object.".format(c.name))
+            print("Results: A component of name {0} has already been added.".format(c.name))
             return
         self.component_names.append(c.name)
         basename = c.name+'_'
@@ -47,6 +76,12 @@ class Results(object):
             setattr(self, basename+attr, [0 for r in range(self.R)])
                 
     def update(self, c, **kwargs):
+        """Update the attributes of a component from the current values of Model.
+        
+        Parameters
+        ----------
+        c : a wobble.Model.Component object
+        """
         basename = c.name+'_'
         for attr in COMPONENT_NP_ATTRS:
             getattr(self, basename+attr)[c.r] = np.copy(getattr(c,attr))
@@ -58,14 +93,14 @@ class Results(object):
             except: # catch when basis vectors/weights don't exist
                 assert c.K == 0, "Results: update() failed on attribute {0}".format(attr)
                 
-    def read(self, filename): # THIS PROBABLY WON'T WORK
+    def read(self, filename):
+        """Write to HDF5 file."""
         print("Results: reading from {0}".format(filename))
         with h5py.File(filename,'r') as f:
             for attr in COMMON_ATTRS:
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            #self.ys_predicted = np.copy(f['ys_predicted'])
             all_order_attrs = []
             for name in self.component_names:
                 basename = name + '_'
@@ -80,6 +115,7 @@ class Results(object):
                 
                     
     def write(self, filename):
+        """Read from HDF5 file."""
         print("Results: writing to {0}".format(filename))
         with h5py.File(filename,'w') as f:            
             for r in range(self.R):
@@ -93,6 +129,17 @@ class Results(object):
                 f.create_dataset(attr, data=getattr(self, attr))                    
                 
     def combine_orders(self, component_name):
+        """Calculate and save final time-series RVs for a given component after all 
+        orders have been optimized.
+        
+        Parameters
+        ----------
+        component_name : str
+        Name of the model component to use.
+        """
+        if not np.isin(component_name, self.component_names):
+            print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
+                    self.component_names))
         basename = component_name+'_'
         self.all_rvs = np.asarray(getattr(self, basename+'rvs'))
         self.all_ivars = np.asarray(getattr(self, basename+'ivars'))
@@ -113,6 +160,7 @@ class Results(object):
             delattr(self, tmp_attr) # cleanup
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
+        """Internal code used by combine_orders()"""
         assert len(sigmas) == self.R
         M = self.get_design_matrix(restart = restart)
         something = np.zeros_like(M[0,:])
@@ -134,12 +182,15 @@ class Results(object):
         return lnlike
         
     def opposite_lnlike_sigmas(self, pars, **kwargs):
+        """...the opposite of lnlike_sigmas()"""
         return -1. * self.lnlike_sigmas(pars, **kwargs)    
 
     def get_index_lists(self):
+        """Internal code used by combine_orders()"""
         return np.mgrid[:self.R, :self.N]
 
     def get_design_matrix(self, restart = False):
+        """Internal code used by combine_orders()"""
         if (self.M is None) or restart:
             Rs, Ns = self.get_index_lists()
             ndata = self.R * self.N

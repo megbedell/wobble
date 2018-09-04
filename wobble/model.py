@@ -13,6 +13,15 @@ class Model(object):
     """
     Keeps track of all components in the model.
     Model is specific to order `r` of data object `data`.
+    
+    Parameters
+    ----------
+    data : `object`
+        a wobble Data object
+    results: `object`
+        a wobble Results object
+    r : `int`
+        the index of the order to be fit in Data
     """
     def __init__(self, data, results, r):
         self.components = []
@@ -33,6 +42,7 @@ class Model(object):
         return string
 
     def add_component(self, name, starting_rvs, **kwargs):
+        """Add a new Component object to the model."""
         if np.isin(name, self.component_names):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
@@ -43,11 +53,13 @@ class Model(object):
             self.results.add_component(c)
 
     def add_star(self, name, starting_rvs=None, **kwargs):
+        """Add a component with RVs initialized to zero in the barycentric-corrected rest frame."""
         if starting_rvs is None:
             starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):
+        """Add a component with RVs initialized to zero in the observatory rest frame."""
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
@@ -56,6 +68,12 @@ class Model(object):
         self.add_component(name, starting_rvs, **kwargs)
 
     def initialize_templates(self):
+        """Initialize spectral templates for all components. 
+        
+        *NOTE:* this will initialize each subsequent component from the residuals 
+        of the previous, so make sure you have added the components in order of 
+        largest to smallest contribution to the net spectrum.
+        """
         data_xs = self.data.xs[self.r]
         data_ys = np.copy(self.data.ys[self.r])
         data_ivars = self.data.ivars[self.r]
@@ -63,6 +81,7 @@ class Model(object):
             data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
 
     def setup(self):
+        """Initialize component templates and do TensorFlow magic in prep for optimizing"""
         self.initialize_templates()
         self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T, name='synth')
         for c in self.components:
@@ -99,22 +118,37 @@ class Model(object):
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
                  feed_dict=None):
+        """Optimize the model!
+            
+        Parameters
+        ----------
+        niter : `int` (default `100`)
+            Number of iterations.
+        save_history : `bool` (default `False`)
+            If `True`, create a wobble History object to track progress across 
+            iterations. The resulting output will be saved under `[basename]_order[#].hdf5`. 
+        basename : `str` (default `wobble`)
+            Path/name to use when saving history. Only accessed if save_history = `True`.
+        feed_dict : `dict` (default `None`)
+            TensorFlow magic; passed to the optimizer.
+        """
         # initialize helper classes:
         if save_history:
             history = History(self, self.data, self.r, niter)
-        # optimize
+        # optimize:
         session = get_session()
         for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
             if save_history:
                 history.save_iter(model, self.data, i, self.nll, chis)
             session.run(self.updates, feed_dict=feed_dict)
+        # copy over the outputs to Results for safekeeping:
         for c in self.components:
             self.results.update(c)
         # save history
 
 class Component(object):
     """
-    Generic class for an additive component in the spectral model.
+    Generic class for an additive component in the spectral model. 
     """
     def __init__(self, name, r, starting_rvs, regularization_par_file=None,
                  L1_template=0., L2_template=0., L1_basis_vectors=0.,
@@ -146,6 +180,7 @@ class Component(object):
         self.template_xs = template_xs
 
     def setup(self, data, r):
+        """Do TensorFlow magic in prep for optimizing"""
         self.rvs = tf.Variable(self.starting_rvs, dtype=T, name='rvs_'+self.name)
         self.ivars = tf.constant(np.zeros(data.N) + 10., dtype=T, name='ivars_'+self.name) # TODO
         self.template_xs = tf.constant(self.template_xs, dtype=T, name='template_xs_'+self.name)
@@ -184,8 +219,7 @@ class Component(object):
 
 
     def initialize_template(self, data_xs, data_ys, data_ivars):
-        """
-        Doppler-shift data into component rest frame, subtract off other components,
+        """Doppler-shift data into component rest frame, subtract off other components,
         and average to make a composite spectrum.
         """
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
