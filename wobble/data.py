@@ -57,7 +57,7 @@ class Data(object):
             
         self.R = len(orders) # number of orders
         self.orders = orders # indices of orders in origin_file
-            
+                    
         # mask out low pixels:
         for r in range(self.R):
             bad = self.ys[r] < min_flux
@@ -66,11 +66,12 @@ class Data(object):
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
+            
 
         # log and normalize:
         self.ys = np.log(self.ys) 
         self.continuum_normalize() 
-        
+                
         # mask out high pixels:
         for r in range(self.R):
             bad = self.ys[r] > max_norm_flux
@@ -79,10 +80,14 @@ class Data(object):
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
+
         
     def continuum_normalize(self, **kwargs):
         """Continuum-normalize all spectra using a polynomial fit. Takes kwargs of utils.fit_continuum"""
         for r in range(self.R):
             for n in range(self.N):
-                self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
+                try:
+                    self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
+                except:
+                    print("ERROR: Data: order {0}, epoch {1} could not be continuum normalized!".format(r,n))
                 

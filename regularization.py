@@ -4,7 +4,7 @@ import wobble
 import tensorflow as tf
 from tqdm import tqdm
 import h5py
-import pdb
+import os
 
 __all__ = ["improve_order_regularization", "improve_parameter", "test_regularization_value"]
 
@@ -74,7 +74,7 @@ def improve_order_regularization(r, best_regularization_par,
     tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
                        training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
     tensor_names = ['L2_template_tellurics', 'L2_template_star', 'L1_template_tellurics',
-                     'L1_template_star'] # HACK
+                     'L1_template_star'] # HACK - this is needed bc TF appends garbage to the end of the tensor name
     if K_star > 0:
         tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
                                                     training_model.components[0].L1_basis_vectors_tensor])
@@ -89,11 +89,13 @@ def improve_order_regularization(r, best_regularization_par,
     for (tensor,name) in zip(tensors_to_tune, tensor_names):
         regularization_dict[tensor] = np.copy(best_regularization_par[name][r_init])
 
-    for (tensor,name) in zip(tensors_to_tune, tensor_names):
+    i = 0 # track order in which parameters are improved
+    for tensor,name in zip(tensors_to_tune, tensor_names):
         if (name[0:2] == "L1" and L1) or (name[0:2] == "L2" and L2):
+            i += 1
             regularization_dict[tensor] = improve_parameter(tensor, training_model, validation_model, 
                                                          regularization_dict, verbose=verbose,
-                                                         plot=plot, basename=basename)
+                                                         plot=plot, basename=basename+'_par{0}'.format(i))
             best_regularization_par[name][r] = np.copy(regularization_dict[tensor])
     
     
@@ -152,7 +154,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
         ax.set_xlabel('{0} values'.format(name))
         ax.set_ylabel('NLL')
         fig.tight_layout()
-        plt.savefig('{0}_{1}_nll.png'.format(basename, name))
+        plt.savefig('{0}_nll.png'.format(basename))
         plt.close(fig)
     if verbose:
         print("{0} optimized to {1:.0e}".format(name, grid[best_ind]))
@@ -233,13 +235,13 @@ def test_regularization_value(par, val, training_model, validation_model, regula
         ax.set_title('{0}: value {1:.0e}'.format(name, val), fontsize=12)
         fig.tight_layout()
         fig.subplots_adjust(hspace=0.05)
-        plt.savefig('{0}_{1}_val{2:.0e}.png'.format(basename, name, val))
+        plt.savefig('{0}_val{1:.0e}.png'.format(basename, val))
         
         xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
         ax.set_xlim(xlim)
         ax.set_xticklabels([])
         ax2.set_xlim(xlim)
-        plt.savefig('{0}_{1}_val{2:.0e}_zoom.png'.format(basename, name, val))
+        plt.savefig('{0}_val{1:.0e}_zoom.png'.format(basename, val))
         plt.close(fig)
 
     nll = session.run(validation_model.nll, feed_dict=zero_regularization_dict)
@@ -250,10 +252,14 @@ def test_regularization_value(par, val, training_model, validation_model, regula
         
 if __name__ == "__main__":
     starname = '51peg'
-    R = 72
+    orders = np.arange(72)
     K_star = 0
     K_t = 3
     plot = True
+    plot_dir = 'regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
+    R = len(orders)
     
     # set up best_regularization_par dict:
     best_regularization_par = {}
@@ -276,31 +282,31 @@ if __name__ == "__main__":
     best_regularization_par['L2_basis_vectors_tellurics'][0] = 1.e9
 
     # set up training & validation data sets:
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=np.arange(R)) # to get N_epochs    
+    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders) # to get N_epochs    
     validation_epochs = np.random.choice(data.N, data.N//10, replace=False) # 10% of epochs will be validation set
     training_epochs = np.delete(np.arange(data.N), validation_epochs)
-    training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=np.arange(R), 
+    training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
                         epochs=training_epochs)
     training_results = wobble.Results(training_data)
-    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=np.arange(R), 
+    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
                           epochs=validation_epochs)
     validation_results = wobble.Results(validation_data)
     
     # improve each order's regularization:
-    for r in range(R):
-        print('---- STARTING ORDER {0} ----'.format(r))
+    for r,o in enumerate(orders):
+        print('---- STARTING ORDER {0} ----'.format(o))
         best_regularization_par = improve_order_regularization(r, best_regularization_par,
                                          training_data, training_results,
                                          validation_data, validation_results,
                                          verbose=True, plot=plot, 
-                                         basename='regularization/{0}_Kstar{1}_Kt{2}_o{3}'.format(starname, K_star, K_t, r), 
+                                         basename='{0}o{1}'.format(plot_dir, o), 
                                          K_star=K_star, K_t=K_t, L1=True, L2=True)
         
 
     for key in keys:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(np.arange(R), best_regularization_par[key], 'o')
+        ax.plot(orders, best_regularization_par[key], 'o')
         ax.set_yscale('log')
         ax.set_xlabel('Order #')
         ax.set_ylabel(key)

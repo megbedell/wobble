@@ -28,10 +28,11 @@ class Model(object):
         self.component_names = []
         self.data = data
         self.results = results
-        self.r = r
+        self.r = r # order index
+        self.order = data.orders[r] # order number
 
     def __str__(self):
-        string = 'Model for order {0} consisting of the following components: '.format(self.data.orders[self.r])
+        string = 'Model for order {0} consisting of the following components: '.format(self.order)
         for c in self.components:
             string += '\n{0}: '.format(c.name)
             if c.rvs_fixed:
@@ -134,7 +135,7 @@ class Model(object):
         """
         # initialize helper classes:
         if save_history:
-            history = History(self, self.data, self.r, niter+1)
+            history = History(self, niter+1)
             history.save_iter(self, 0)
         # optimize:
         session = get_session()
