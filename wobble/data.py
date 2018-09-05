@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import pdb
 
 from .utils import fit_continuum
 
@@ -34,6 +35,48 @@ class Data(object):
                     max_norm_flux = 2.,
                     padding = 3):
         self.origin_file = filepath+filename
+        self.read_data(orders=orders, epochs=epochs)
+        
+        orders = np.asarray(self.orders)
+        epochs = np.asarray(self.epochs)
+        min_snr = 10.
+        chis = np.asarray(self.fluxes) * np.sqrt(np.asarray(self.ivars))
+        snrs_by_epoch = np.sqrt(np.nanmean(chis, axis=(0,2)))
+        epochs_to_cut = snrs_by_epoch < min_snr
+        if np.sum(epochs_to_cut) > 0:
+            epochs = epochs[~epochs_to_cut]
+            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+        chis = np.asarray(self.fluxes) * np.sqrt(np.asarray(self.ivars))
+        snrs_by_order = np.sqrt(np.nanmean(chis, axis=(1,2)))
+        orders_to_cut = snrs_by_order < min_snr
+        if np.sum(orders_to_cut) > 0:
+            orders = orders[~orders_to_cut]
+            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+                           
+        # mask out low pixels:
+        for r in range(self.R):
+            bad = self.fluxes[r] < min_flux
+            self.fluxes[r][bad] = min_flux
+            for pad in range(padding): # mask out neighbors of low pixels
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
+            self.ivars[r][bad] = 0.
+            
+        # log and normalize:
+        self.ys = np.log(self.fluxes) 
+        self.continuum_normalize() 
+                
+        # mask out high pixels:
+        for r in range(self.R):
+            bad = self.ys[r] > max_norm_flux
+            self.ys[r][bad] = 1.
+            for pad in range(padding): # mask out neighbors of high pixels
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
+            self.ivars[r][bad] = 0.
+            
+    def read_data(self, orders = None, epochs = None):
+        """Read origin file and set up data attributes from it"""
         with h5py.File(self.origin_file) as f:
             if orders is None:
                 orders = np.arange(len(f['data']))
@@ -46,7 +89,7 @@ class Data(object):
                 for e in epochs:
                     assert (e >= 0) & (e < len(f['dates'])), \
                         "epoch #{0} is not in datafile {1}".format(e, self.origin_file)
-            self.ys = [f['data'][i][self.epochs,:] for i in orders]
+            self.fluxes = [f['data'][i][self.epochs,:] for i in orders]
             self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
             self.ivars = [f['ivars'][i][self.epochs,:] for i in orders]
             self.pipeline_rvs = np.copy(f['pipeline_rvs'])[self.epochs]
@@ -54,32 +97,8 @@ class Data(object):
             self.bervs = np.copy(f['bervs'])[self.epochs]
             self.drifts = np.copy(f['drifts'])[self.epochs]
             self.airms = np.copy(f['airms'])[self.epochs]
-            
-        self.R = len(orders) # number of orders
-        self.orders = orders # indices of orders in origin_file
-                    
-        # mask out low pixels:
-        for r in range(self.R):
-            bad = self.ys[r] < min_flux
-            self.ys[r][bad] = min_flux
-            for pad in range(padding):
-                bad = np.logical_or(bad, np.roll(bad, pad+1))
-                bad = np.logical_or(bad, np.roll(bad, -pad-1))
-            self.ivars[r][bad] = 0.
-            
-
-        # log and normalize:
-        self.ys = np.log(self.ys) 
-        self.continuum_normalize() 
-                
-        # mask out high pixels:
-        for r in range(self.R):
-            bad = self.ys[r] > max_norm_flux
-            self.ys[r][bad] = 1.
-            for pad in range(padding): # mask out neighbors of high pixels
-                bad = np.logical_or(bad, np.roll(bad, pad+1))
-                bad = np.logical_or(bad, np.roll(bad, -pad-1))
-            self.ivars[r][bad] = 0.
+            self.R = len(orders) # number of orders
+            self.orders = orders # indices of orders in origin_file
 
         
     def continuum_normalize(self, **kwargs):
