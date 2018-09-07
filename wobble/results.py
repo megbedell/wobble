@@ -7,9 +7,10 @@ T = tf.float64
 from .utils import get_session
 
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_rvs', 'learning_rate_template', 
-                      'learning_rate_basis', 'L1_template', 'L2_template', 'L1_basis_vectors', 
-                      'L2_basis_vectors', 'L2_basis_weights']
-COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys', 'basis_vectors', 'basis_weights']
+                      'L1_template', 'L2_template']
+OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys']
+OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights']
 COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names']
 
 class Results(object):
@@ -69,10 +70,14 @@ class Results(object):
         setattr(self, basename+'ivars', np.empty((self.R,self.N)) + np.nan)
         setattr(self, basename+'template_xs', [0 for r in range(self.R)])
         setattr(self, basename+'template_ys', [0 for r in range(self.R)])
-        setattr(self, basename+'basis_vectors', [0 for r in range(self.R)])
-        setattr(self, basename+'basis_weights', [0 for r in range(self.R)])
+        if c.K > 0:
+            setattr(self, basename+'basis_vectors', [0 for r in range(self.R)])
+            setattr(self, basename+'basis_weights', [0 for r in range(self.R)])
         setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
-        for attr in COMPONENT_NP_ATTRS:
+        attrs = COMPONENT_NP_ATTRS
+        if c.K > 0:
+            attrs = np.append(attrs, OPT_COMPONENT_NP_ATTRS)
+        for attr in attrs:
             setattr(self, basename+attr, [0 for r in range(self.R)])
                 
     def update(self, c, **kwargs):
@@ -83,15 +88,18 @@ class Results(object):
         c : a wobble.Model.Component object
         """
         basename = c.name+'_'
-        for attr in COMPONENT_NP_ATTRS:
+        attrs = np.copy(COMPONENT_NP_ATTRS)
+        if c.K > 0:
+            attrs = np.append(attrs, OPT_COMPONENT_NP_ATTRS)
+        for attr in attrs:
             getattr(self, basename+attr)[c.r] = np.copy(getattr(c,attr))
         session = get_session()
         getattr(self, basename+'ys_predicted')[c.r] = session.run(c.synth, **kwargs)
-        for attr in COMPONENT_TF_ATTRS:
-            try:
-                getattr(self, basename+attr)[c.r] = session.run(getattr(c,attr), **kwargs)
-            except: # catch when basis vectors/weights don't exist
-                assert c.K == 0, "Results: update() failed on attribute {0}".format(attr)
+        attrs = np.copy(COMPONENT_TF_ATTRS)
+        if c.K > 0:
+            attrs = np.append(attrs, OPT_COMPONENT_TF_ATTRS)
+        for attr in attrs:
+            getattr(self, basename+attr)[c.r] = session.run(getattr(c,attr), **kwargs)
                 
     def read(self, filename):
         """Write to HDF5 file."""
@@ -106,7 +114,10 @@ class Results(object):
                 basename = name + '_'
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
-                for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
+                attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
+                if np.copy(f[basename+'K']) > 0:
+                    attrs = np.append(attrs, [OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS])
+                for attr in attrs:
                     setattr(self, basename+attr, [0 for r in range(self.R)])
                     all_order_attrs.append(basename+attr)
             for r in range(self.R):
@@ -122,7 +133,10 @@ class Results(object):
                 g = f.create_group('order{0}'.format(r))
                 for n in self.component_names:
                     g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
-                    for attr in np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS):
+                    attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
+                    if getattr(self, n+'_K') > 0:
+                        attrs = np.append(attrs, [OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS])
+                    for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
             for attr in COMMON_ATTRS:

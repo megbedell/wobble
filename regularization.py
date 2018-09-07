@@ -13,7 +13,7 @@ def get_name_from_tensor(tensor):
     # NOTE - does not handle '_2' type additions!
     return str.split(tensor.name, ':')[0]
 
-def improve_order_regularization(r, best_regularization_par,
+def improve_order_regularization(r, o, star_filename, tellurics_filename,
                                  training_data, training_results,
                                  validation_data, validation_results,
                                  verbose=True, plot=False, basename='', 
@@ -21,14 +21,14 @@ def improve_order_regularization(r, best_regularization_par,
     """
     Use a validation scheme to determine the best regularization parameters for 
     all model components in a given order r.
-    Update dict best_regularization_parameters and return it.
+    Update files at star_filename, tellurics_filename and return it.
     """
     
     training_model = wobble.Model(training_data, training_results, r)
     training_model.add_star('star', variable_bases=K_star)
     training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
-    training_model.optimize(niter=0)
+    training_model.optimize(niter=0, verbose=verbose)
     
     if plot:
         n = 0
@@ -73,35 +73,49 @@ def improve_order_regularization(r, best_regularization_par,
     # the order in which these are defined will determine the order in which they are optimized:
     tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
                        training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
-    tensor_names = ['L2_template_tellurics', 'L2_template_star', 'L1_template_tellurics',
-                     'L1_template_star'] # HACK - this is needed bc TF appends garbage to the end of the tensor name
+    tensor_names = ['L2_template', 'L2_template', 'L1_template',
+                     'L1_template'] # HACK - this is needed bc TF appends garbage to the end of the tensor name
+    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # HACK
     if K_star > 0:
         tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
                                                     training_model.components[0].L1_basis_vectors_tensor])
-        tensor_names = np.append(tensor_names, ['L2_basis_vectors_star', 'L1_basis_vectors_star'])
+        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
+        tensor_components = np.append(tensor_components, ['star', 'star'])
     if K_t > 0:
         tensors_to_tune = np.append(tensors_to_tune, [training_model.components[1].L2_basis_vectors_tensor, 
                                                 training_model.components[1].L1_basis_vectors_tensor])
-        tensor_names = np.append(tensor_names, ['L2_basis_vectors_tellurics', 'L1_basis_vectors_tellurics'])
+        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
+        tensor_components = np.append(tensor_components, ['tellurics', 'tellurics'])
     
     regularization_dict = {}
-    r_init = max(0, r-1) # initialize from previous order, or if r=0 use defaults
-    for (tensor,name) in zip(tensors_to_tune, tensor_names):
-        regularization_dict[tensor] = np.copy(best_regularization_par[name][r_init])
+    o_init = max(0, o-1) # initialize from previous order, or if o=0 use defaults
+    for i,tensor in enumerate(tensors_to_tune):
+        if tensor_components[i] == 'star':
+            filename = star_filename
+        elif tensor_components[i] == 'tellurics':
+            filename = tellurics_filename
+        else:
+            print("something has gone wrong.")
+            assert False
+        with h5py.File(filename, 'r') as f:                
+                regularization_dict[tensor] = np.copy(f[tensor_names[i]][o_init])
 
     i = 0 # track order in which parameters are improved
-    for tensor,name in zip(tensors_to_tune, tensor_names):
+    for component,(tensor,name) in zip(tensor_components, zip(tensors_to_tune, tensor_names)):
         if (name[0:2] == "L1" and L1) or (name[0:2] == "L2" and L2):
             i += 1
             regularization_dict[tensor] = improve_parameter(tensor, training_model, validation_model, 
                                                          regularization_dict, verbose=verbose,
                                                          plot=plot, basename=basename+'_par{0}'.format(i))
-            best_regularization_par[name][r] = np.copy(regularization_dict[tensor])
-    
-    
-    if verbose:                       
-        print('---- ORDER {0} COMPLETE ----'.format(r)) 
-    return best_regularization_par
+            if component == 'star':
+                filename = star_filename
+            elif component == 'tellurics':
+                filename = tellurics_filename
+            else:
+                print("something has gone wrong.")
+                assert False
+            with h5py.File(filename, 'r+') as f:
+                    f[name][o] = np.copy(regularization_dict[tensor])    
     
     
 def improve_parameter(par, training_model, validation_model, regularization_dict, 
@@ -171,7 +185,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     session = wobble.utils.get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
-    training_model.optimize(niter=80, feed_dict=regularization_dict)
+    training_model.optimize(niter=80, feed_dict=regularization_dict, verbose=verbose)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
@@ -182,7 +196,11 @@ def test_regularization_value(par, val, training_model, validation_model, regula
             validation_dict[getattr(c, 'basis_vectors')] = getattr(training_model.results, 
                                                                    c.name+'_basis_vectors')[r]
     session = wobble.utils.get_session()
-    for i in tqdm(range(80)):
+    if verbose:
+        iterator = tqdm(range(80))
+    else:
+        iterator = range(80)
+    for i in iterator:
         for c in validation_model.components:
             if not c.rvs_fixed:
                 session.run(c.opt_rvs, feed_dict=validation_dict) # HACK
@@ -251,35 +269,40 @@ def test_regularization_value(par, val, training_model, validation_model, regula
 
         
 if __name__ == "__main__":
-    starname = '51peg'
+    starname = 'barnards'
     orders = np.arange(72)
     K_star = 0
-    K_t = 3
+    K_t = 0
     plot = True
+    verbose = False
     plot_dir = 'regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
     if not os.path.exists(plot_dir):
         os.makedirs(plot_dir)
     R = len(orders)
     
-    # set up best_regularization_par dict:
-    best_regularization_par = {}
-    keys = ['L1_template_star', 'L2_template_star', 'L1_template_tellurics', 'L2_template_tellurics', 
-            'L1_basis_vectors_star', 'L2_basis_vectors_star', 'L1_basis_vectors_tellurics', 
-            'L2_basis_vectors_tellurics']
-    for key in keys:
-        best_regularization_par[key] = np.zeros(R)
-    best_regularization_par['L2_basis_weights_star'] = np.ones(R) # never tuned, just need to pass to wobble
-    best_regularization_par['L2_basis_weights_tellurics'] = np.ones(R) # never tuned, just need to pass to wobble
-        
-    # HAND-TUNE INITIALIZATION:
-    best_regularization_par['L1_template_star'][0] = 1.e-2
-    best_regularization_par['L2_template_star'][0] = 1.e3
-    best_regularization_par['L1_template_tellurics'][0] = 1.e3
-    best_regularization_par['L2_template_tellurics'][0] = 1.e8
-    #best_regularization_par['L1_basis_vectors_star'][0] = 1.e5
-    #best_regularization_par['L2_basis_vectors_star'][0] = 1.e6
-    best_regularization_par['L1_basis_vectors_tellurics'][0] = 1.e3
-    best_regularization_par['L2_basis_vectors_tellurics'][0] = 1.e9
+    # create HDF5 files if they don't exist:
+    regularization_par = ['L1_template', 'L2_template', 
+                          'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+    star_filename = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
+    if not os.path.isfile(star_filename):
+        with h5py.File(star_filename,'w') as f:
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e-2)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e3)
+            if K_star > 0:
+                f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e5)
+                f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e6)
+                f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble
+                
+
+    tellurics_filename = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
+    if not os.path.isfile(tellurics_filename):                
+        with h5py.File(tellurics_filename,'w') as f:
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e3)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e8)
+            if K_t > 0:
+                f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e3)
+                f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e9)
+                f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble
 
     # set up training & validation data sets:
     data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders) # to get N_epochs    
@@ -288,48 +311,56 @@ if __name__ == "__main__":
     training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
                         epochs=training_epochs)
     training_results = wobble.Results(training_data)
-    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
+    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=training_data.orders, 
                           epochs=validation_epochs)
     validation_results = wobble.Results(validation_data)
+    assert len(training_data.orders) == len(validation_data.orders), "Number of orders used is not the same between training and validation data."
+    orders = training_data.orders
+    
     
     # improve each order's regularization:
-    for r,o in enumerate(orders):
+    for r,o in enumerate(orders): # r is an index into the (cleaned) data. o is an index into the 72 orders (and the file tracking them).
         print('---- STARTING ORDER {0} ----'.format(o))
-        best_regularization_par = improve_order_regularization(r, best_regularization_par,
+        improve_order_regularization(r, o, star_filename, tellurics_filename,
                                          training_data, training_results,
                                          validation_data, validation_results,
-                                         verbose=True, plot=plot, 
+                                         verbose=verbose, plot=plot, 
                                          basename='{0}o{1}'.format(plot_dir, o), 
                                          K_star=K_star, K_t=K_t, L1=True, L2=True)
-        
+                                         
+        print('---- ORDER {0} COMPLETE ({1}/{2}) ----'.format(o,r,len(orders)))
+        print("best values:")
+        print("star:")
+        with h5py.File(star_filename, 'r') as f:
+            for key in list(f.keys()):
+                print("{0}: {1:.0e}".format(key, f[key][o]))
+        print("tellurics:")
+        with h5py.File(tellurics_filename, 'r') as f:
+            for key in list(f.keys()):
+                print("{0}: {1:.0e}".format(key, f[key][o]))        
 
-    for key in keys:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(orders, best_regularization_par[key], 'o')
-        ax.set_yscale('log')
-        ax.set_xlabel('Order #')
-        ax.set_ylabel(key)
-        ax.set_xlim([-3,75])
-        fig.tight_layout()
-        plt.savefig('regularization/{0}_{1}_Kstar{2}_Kt{3}.png'.format(key, starname, K_star, K_t))
-        plt.close(fig)
-
-    # save in format to be read by wobble:
-    if R==72: # avoid overwriting with files that don't contain all orders
-        regularization_par = ['L1_template', 'L2_template', 
-                              'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
-        star_filename = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
-        with h5py.File(star_filename,'w') as f:
-            for par in regularization_par:
-                try:
-                    f.create_dataset(par, data=best_regularization_par[par+'_star'])
-                except:
-                    print("{0} not saved".format(par+'_star'))
-        tellurics_filename = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)            
-        with h5py.File(tellurics_filename,'w') as f:
-            for par in regularization_par:
-                try:
-                    f.create_dataset(par, data=best_regularization_par[par+'_tellurics'])
-                except:
-                    print("{0} not saved".format(par+'_tellurics'))                
+    with h5py.File(star_filename, 'r') as f:
+        for key in list(f.keys()):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.plot(orders, f[key][orders], 'o')
+            ax.set_yscale('log')
+            ax.set_xlabel('Order #')
+            ax.set_ylabel(key)
+            ax.set_xlim([-3,75])
+            fig.tight_layout()
+            plt.savefig('regularization/{0}_{1}_star_Kstar{2}_Kt{3}.png'.format(key, starname, K_star, K_t))
+            plt.close(fig)
+            
+    with h5py.File(tellurics_filename, 'r') as f:
+        for key in list(f.keys()):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.plot(orders, f[key][orders], 'o')
+            ax.set_yscale('log')
+            ax.set_xlabel('Order #')
+            ax.set_ylabel(key)
+            ax.set_xlim([-3,75])
+            fig.tight_layout()
+            plt.savefig('regularization/{0}_{1}_tellurics_Kstar{2}_Kt{3}.png'.format(key, starname, K_star, K_t))
+            plt.close(fig)            

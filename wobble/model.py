@@ -118,7 +118,7 @@ class Model(object):
         session.run(tf.global_variables_initializer())
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
-                 feed_dict=None):
+                 feed_dict=None, verbose=True):
         """Optimize the model!
             
         Parameters
@@ -139,7 +139,11 @@ class Model(object):
             history.save_iter(self, 0)
         # optimize:
         session = get_session()
-        for i in tqdm(range(niter), total=niter, miniters=int(niter/10)):
+        if verbose:
+            iterator = tqdm(range(niter), total=niter, miniters=int(niter/10))
+        else:
+            iterator = range(niter)
+        for i in iterator:
             session.run(self.updates, feed_dict=feed_dict)
             if save_history:
                 history.save_iter(self, i+1)
@@ -170,8 +174,10 @@ class Component(object):
         self.learning_rate_rvs = learning_rate_rvs
         self.learning_rate_template = learning_rate_template
         self.learning_rate_basis = learning_rate_basis
-        regularization_par = ['L1_template', 'L2_template', 
-                              'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+        regularization_par = ['L1_template', 'L2_template']
+        if self.K > 0:
+            regularization_par = np.append(regularization_par, ['L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'])
+        self.regularization_par = regularization_par
         for par in regularization_par:
             setattr(self, par, eval(par)) # set to input values/defaults
         if regularization_par_file is not None:
@@ -180,7 +186,7 @@ class Component(object):
                     for par in regularization_par:
                         setattr(self, par, np.copy(f[par][r])) # overwrite with value from file
             except:
-                print('Regularization parameter file {0} not recognized; using default parameters.'.format(regularization_par_file))
+                print('Regularization parameter file {0} not recognized; using keywords instead.'.format(regularization_par_file))
         self.starting_rvs = starting_rvs
         self.template_xs = template_xs
 
@@ -197,7 +203,7 @@ class Component(object):
         self.data_xs = tf.constant(data.xs[r], dtype=T, name='data_xs_'+self.name)
 
         # Set up the regularization
-        for name in ['L1_template', 'L2_template', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']:
+        for name in self.regularization_par:
             setattr(self, name+'_tensor', tf.constant(getattr(self,name), dtype=T, name=name+'_'+self.name))
 
         self.nll = self.L1_template_tensor * tf.reduce_sum(tf.abs(self.template_ys))

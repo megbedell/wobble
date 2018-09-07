@@ -29,8 +29,9 @@ if __name__ == "__main__":
     
     
     start_time = time()
-    orders = np.arange(10,72)
+    orders = np.arange(72)
     data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders)
+    orders = np.copy(data.orders)
     results = wobble.Results(data=data)
     
     print("data loaded")
