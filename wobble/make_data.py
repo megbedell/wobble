@@ -47,7 +47,7 @@ def read_data_from_fits(filelist):
         for r in range(R):
             data[r][n,:] = spec[r,:]
             ivars[r][n,:] = np.zeros(M) + snrs[r]**2
-            xs[r][n,:] = wave[r,:]  
+            xs[r][n,:] = wave[r,:] 
             
     for r in range(R):
         data[r] = np.delete(data[r], empty, axis=0)
@@ -107,7 +107,7 @@ def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffi
 
 if __name__ == "__main__":
         
-    if True: #51 Peg
+    if False: #51 Peg
         ccf_filelist = np.genfromtxt('51peg_ccf_filelist.txt', dtype=None, encoding=None)
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
