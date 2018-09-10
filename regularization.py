@@ -343,7 +343,7 @@ if __name__ == "__main__":
         for key in list(f.keys()):
             fig = plt.figure()
             ax = fig.add_subplot(111)
-            ax.plot(orders, f[key][orders], 'o')
+            ax.plot(orders, np.array(f[key])[orders], 'o')
             ax.set_yscale('log')
             ax.set_xlabel('Order #')
             ax.set_ylabel(key)
@@ -356,7 +356,7 @@ if __name__ == "__main__":
         for key in list(f.keys()):
             fig = plt.figure()
             ax = fig.add_subplot(111)
-            ax.plot(orders, f[key][orders], 'o')
+            ax.plot(orders, np.array(f[key])[orders], 'o')
             ax.set_yscale('log')
             ax.set_xlabel('Order #')
             ax.set_ylabel(key)
