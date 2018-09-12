@@ -115,8 +115,8 @@ class Results(object):
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
                 attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
-                if np.copy(f[basename+'K']) > 0:
-                    attrs = np.append(attrs, [OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS])
+                if np.any(np.array(f[basename+'K']) > 0):
+                    attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                 for attr in attrs:
                     setattr(self, basename+attr, [0 for r in range(self.R)])
                     all_order_attrs.append(basename+attr)
@@ -134,8 +134,8 @@ class Results(object):
                 for n in self.component_names:
                     g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
                     attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
-                    if getattr(self, n+'_K') > 0:
-                        attrs = np.append(attrs, [OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS])
+                    if np.any(np.array(getattr(self, n+'_K')) > 0):
+                        attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                     for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
