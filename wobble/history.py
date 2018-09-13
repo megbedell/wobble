@@ -16,7 +16,6 @@ class History(object):
         self.nll_history = np.empty(niter)
         self.synth_history = np.empty(np.append(niter, np.shape(self.data.ys[self.r])))
         self.rvs_history = [np.empty((niter, self.data.N)) for c in model.components]
-        self.ivars_history = [np.empty((niter, self.data.N)) for c in model.components]
         template_Ms = [int(c.template_ys.shape[0]) for c in model.components] # number of elements in templates
         self.template_history = [np.empty((niter, template_Ms[i])) for i,c in enumerate(model.components)]
         self.basis_vectors_history = [np.empty((niter, c.K, template_Ms[i])) for i,c in enumerate(model.components)]
@@ -35,7 +34,6 @@ class History(object):
         for j,c in enumerate(model.components):
             self.template_history[j][i,:] = np.copy(session.run(c.template_ys))
             self.rvs_history[j][i,:] = np.copy(session.run(c.rvs))  
-            self.ivars_history[j][i,:] = np.copy(session.run(c.ivars))  
             if c.K > 0:
                 self.basis_vectors_history[j][i,:,:] = np.copy(session.run(c.basis_vectors)) 
                 self.basis_weights_history[j][i,:,:] = np.copy(session.run(c.basis_weights))
