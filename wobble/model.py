@@ -140,6 +140,7 @@ class Model(object):
         # optimize:
         session = get_session()
         if verbose:
+            print("optimize: iterating through {0} optimization steps...".format(niter))
             iterator = tqdm(range(niter), total=niter, miniters=int(niter/10))
         else:
             iterator = range(niter)
@@ -147,12 +148,40 @@ class Model(object):
             session.run(self.updates, feed_dict=feed_dict)
             if save_history:
                 history.save_iter(self, i+1)
+        self.estimate_uncertainties(verbose=verbose)
         # copy over the outputs to Results:
         for c in self.components:
             self.results.update(c)
         # save optimization plots:
         if save_history:
             history.save_plots(basename)
+            
+    def estimate_uncertainties(self, verbose=True):
+        session = get_session()
+        for c in self.components:
+            best_rvs = session.run(c.rvs)
+            c.ivars_rvs = np.zeros_like(best_rvs)
+            if not c.rvs_fixed:
+                N_grid = 20
+                if verbose:
+                    print("optimize: iterating over epochs to calculate uncertainties...")
+                    iterator = tqdm(range(self.data.N), total=self.data.N, 
+                                    miniters=int(self.data.N/10))
+                else:
+                    iterator = range(self.data.N)
+                for n in iterator:
+                    rvs_grid = np.tile(best_rvs, (N_grid,1))
+                    rvs_grid[:,n] += np.linspace(-50., 50., N_grid) # arbitrary - may need to get fixed
+                    dnll_dv = tf.gradients(self.nll, c.rvs)
+                    dnll_dv_grid = [session.run(dnll_dv, 
+                                                feed_dict={c.rvs:v})[0][n] \
+                                    for v in rvs_grid]
+                    # fit a slope with linear algebra
+                    A = np.array(rvs_grid[:,n]) - best_rvs[n]
+                    ATA = np.dot(A, A)
+                    ATy = np.dot(A, np.array(dnll_dv_grid))
+                    c.ivars_rvs[n] = ATy / ATA
+            # TODO: set ivars for template, basis vectors, basis weights
         
 
 class Component(object):
@@ -193,7 +222,6 @@ class Component(object):
     def setup(self, data, r):
         """Do TensorFlow magic in prep for optimizing"""
         self.rvs = tf.Variable(self.starting_rvs, dtype=T, name='rvs_'+self.name)
-        self.ivars = tf.constant(np.zeros(data.N) + 10., dtype=T, name='ivars_'+self.name) # TODO
         self.template_xs = tf.constant(self.template_xs, dtype=T, name='template_xs_'+self.name)
         self.template_ys = tf.Variable(self.template_ys, dtype=T, name='template_ys_'+self.name)
         if self.K > 0:

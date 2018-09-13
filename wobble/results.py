@@ -6,10 +6,10 @@ T = tf.float64
 
 from .utils import get_session
 
-COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'scale_by_airmass', 'learning_rate_rvs', 'learning_rate_template', 
-                      'L1_template', 'L2_template']
+COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
+                      'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
-COMPONENT_TF_ATTRS = ['rvs', 'ivars', 'template_xs', 'template_ys']
+COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
 OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights']
 COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names']
 
@@ -67,7 +67,7 @@ class Results(object):
         self.component_names.append(c.name)
         basename = c.name+'_'
         setattr(self, basename+'rvs', np.empty((self.R,self.N)) + np.nan)
-        setattr(self, basename+'ivars', np.empty((self.R,self.N)) + np.nan)
+        setattr(self, basename+'ivars_rvs', np.empty((self.R,self.N)) + np.nan)
         setattr(self, basename+'template_xs', [0 for r in range(self.R)])
         setattr(self, basename+'template_ys', [0 for r in range(self.R)])
         if c.K > 0:
@@ -156,7 +156,7 @@ class Results(object):
                     self.component_names))
         basename = component_name+'_'
         self.all_rvs = np.asarray(getattr(self, basename+'rvs'))
-        self.all_ivars = np.asarray(getattr(self, basename+'ivars'))
+        self.all_ivars = np.asarray(getattr(self, basename+'ivars_rvs'))
         # initial guess
         x0_order_rvs = np.median(self.all_rvs, axis=1)
         x0_time_rvs = np.median(self.all_rvs - np.tile(x0_order_rvs[:,None], (1, self.N)), axis=0)
