@@ -6,12 +6,13 @@ T = tf.float64
 
 from .utils import get_session
 
+COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names', 
+                'bervs', 'pipeline_rvs', 'drifts', 'dates', 'airms']
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
-OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
+OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights', 'time_rvs', 'order_rvs', 'order_sigmas'] # it's ok if these don't exist
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
-OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights']
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names']
+OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights'] # only present if component K > 0
 
 class Results(object):
     """A read/writeable object which stores RV & template results across all orders. 
@@ -25,7 +26,7 @@ class Results(object):
     ----------
     data : `object`
         a wobble Data object
-    filename : str
+    filename : `str`
         a file path pointing to a saved Results object (HDF5 format).
     """
     def __init__(self, data=None, filename=None):
@@ -37,6 +38,12 @@ class Results(object):
             self.orders = data.orders
             self.origin_file = data.origin_file
             self.epochs = data.epochs
+            # get other convenient things
+            self.bervs = data.bervs
+            self.pipeline_rvs = data.pipeline_rvs
+            self.dates = data.dates
+            self.airms = data.airms
+            self.drifts = data.drifts
             return
         if data is None:
             self.read(filename)
@@ -115,11 +122,17 @@ class Results(object):
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
                 attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
-                if np.any(np.array(f[basename+'K']) > 0):
-                    attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                 for attr in attrs:
                     setattr(self, basename+attr, [0 for r in range(self.R)])
                     all_order_attrs.append(basename+attr)
+                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS) # check for these
+                for attr in opt_attrs:
+                    try: # if attribute exists in hdf5, set it up
+                        test = f['order0'][basename+attr]
+                        setattr(self, basename+attr, [0 for r in range(self.R)])
+                        all_order_attrs.append(basename+attr)                        
+                    except KeyError: # if attribute doesn't exist, move on
+                        continue
             for r in range(self.R):
                 for attr in all_order_attrs:
                     getattr(self, attr)[r] = np.copy(f['order{0}'.format(r)][attr])
