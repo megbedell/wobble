@@ -132,7 +132,9 @@ class Model(object):
         basename : `str` (default `wobble`)
             Path/name to use when saving plots. Only accessed if save_history = `True`.
         feed_dict : `dict` (default `None`)
-            TensorFlow magic; passed to the optimizer.
+            TensorFlow magic; passed to the optimizer. If `None`, does nothing.
+        verbose : `bool` (default `True`)
+            Toggle print statements and progress bars.
         """
         # initialize helper classes:
         if save_history:
@@ -158,6 +160,15 @@ class Model(object):
             history.save_plots(basename)
             
     def estimate_uncertainties(self, verbose=True):
+        """Estimate uncertainties using the second derivative of the likelihood. 
+        Currently saves inverse variances only for the RVs, but future versions 
+        may extend to other parameters.
+        
+        Parameters
+        ----------
+        verbose : `bool` (default `True`)
+            Toggle print statements and progress bars.
+        """
         session = get_session()
         for c in self.components:
             best_rvs = session.run(c.rvs)
@@ -170,7 +181,7 @@ class Model(object):
                                     miniters=int(self.data.N/10))
                 else:
                     iterator = range(self.data.N)
-                for n in iterator:
+                for n in iterator: # get d2nll/drv2 from gradients
                     rvs_grid = np.tile(best_rvs, (N_grid,1))
                     rvs_grid[:,n] += np.linspace(-50., 50., N_grid) # arbitrary - may need to get fixed
                     dnll_dv_grid = [session.run(c.dnll_dv, 

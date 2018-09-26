@@ -7,14 +7,14 @@ import h5py
 import os
 
 if __name__ == "__main__":
-    starname = 'barnards'
+    starname = '51peg'
     K_star = 0
     K_t = 3
     
     star_reg_file = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     tellurics_reg_file = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     
-    if False:
+    if True:
         # quick test on two orders
         data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=[30,56])
         results = wobble.Results(data=data)
@@ -24,7 +24,8 @@ if __name__ == "__main__":
                             regularization_par_file=star_reg_file)
             model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
                                 regularization_par_file=tellurics_reg_file)
-            wobble.optimize_order(model, niter=80, save_history=True, basename='results/plots_{0}/history'.format(starname))
+            wobble.optimize_order(model, niter=80, save_history=False)
+        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
         assert False
     
     
