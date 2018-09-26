@@ -102,6 +102,7 @@ class Model(object):
                             var_list=[c.template_ys])
             self.updates.append(c.opt_template)
             if not c.rvs_fixed:
+                c.dnll_dv = tf.gradients(self.nll, c.rvs)
                 c.opt_rvs = tf.train.AdamOptimizer(c.learning_rate_rvs).minimize(self.nll,
                             var_list=[c.rvs])
                 self.updates.append(c.opt_rvs)
@@ -172,8 +173,7 @@ class Model(object):
                 for n in iterator:
                     rvs_grid = np.tile(best_rvs, (N_grid,1))
                     rvs_grid[:,n] += np.linspace(-50., 50., N_grid) # arbitrary - may need to get fixed
-                    dnll_dv = tf.gradients(self.nll, c.rvs)
-                    dnll_dv_grid = [session.run(dnll_dv, 
+                    dnll_dv_grid = [session.run(c.dnll_dv, 
                                                 feed_dict={c.rvs:v})[0][n] \
                                     for v in rvs_grid]
                     # fit a slope with linear algebra
