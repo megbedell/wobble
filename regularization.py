@@ -28,40 +28,14 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     training_model.add_star('star', variable_bases=K_star)
     training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
-    training_model.optimize(niter=0, verbose=verbose)
+    training_model.optimize(niter=0, verbose=verbose, uncertainties=False)
     
     if plot:
-        n = 0
-        xs = np.exp(training_data.xs[r][n])
-        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
-        ax.scatter(xs, np.exp(training_data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data')
-        ax.plot(xs, 
-                np.exp(training_results.star_ys_predicted[r][n]), 
-                color='r', label='star model', lw=1.5, alpha=0.7)
-        ax.plot(xs, 
-                np.exp(training_results.tellurics_ys_predicted[r][n]), 
-                color='b', label='tellurics model', lw=1.5, alpha=0.7)
-        ax.set_xticklabels([])
-        ax.set_ylabel('Normalized Flux', fontsize=14)
-        resids = np.exp(training_data.ys[r][n]) - np.exp(training_results.star_ys_predicted[r][n] 
-                            + training_results.tellurics_ys_predicted[r][n])
-        ax2.scatter(xs, resids, marker=".", alpha=0.5, c='k')
-        ax2.set_ylim([-0.1, 0.1])
-        ax2.set_xlabel(r'Wavelength ($\AA$)', fontsize=14)
-        ax2.set_ylabel('Resids', fontsize=14)
-        
-        ax.legend(fontsize=12)
-        ax.set_title('Initialization', fontsize=12)
-        fig.tight_layout()
-        fig.subplots_adjust(hspace=0.05)
-        plt.savefig('{0}_init.png'.format(basename))
-        
-        xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
-        ax.set_xlim(xlim)
-        ax.set_xticklabels([])
-        ax2.set_xlim(xlim)
-        plt.savefig('{0}_init_zoom.png'.format(basename))
-        plt.close(fig)
+        n = 0 # epoch to plot
+        title = 'Initialization'
+        filename = '{0}_init'.format(basename)
+        plot_fit(r, n, training_data, training_results, title=title, basename=filename)
+
     
     validation_model = wobble.Model(validation_data, validation_results, r)
     validation_model.add_star('star', variable_bases=K_star, 
@@ -88,7 +62,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
         tensor_components = np.append(tensor_components, ['tellurics', 'tellurics'])
     
     regularization_dict = {}
-    o_init = max(0, o-1) # initialize from previous order, or if o=0 use defaults
+    #o_init = max(0, o-1) # initialize from previous order, or if o=0 use defaults
+    o_init = o # always initialize from starting guess (TODO: decide which init is better)
     for i,tensor in enumerate(tensors_to_tune):
         if tensor_components[i] == 'star':
             filename = star_filename
@@ -115,7 +90,14 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
                 print("something has gone wrong.")
                 assert False
             with h5py.File(filename, 'r+') as f:
-                    f[name][o] = np.copy(regularization_dict[tensor])    
+                    f[name][o] = np.copy(regularization_dict[tensor])   
+                    
+    if plot:
+        test_regularization_value(tensor, regularization_dict[tensor], 
+                                  training_model, validation_model, regularization_dict) # hack to update results
+        title = 'Final'
+        filename = '{0}_final'.format(basename)
+        plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)       
     
     
 def improve_parameter(par, training_model, validation_model, regularization_dict, 
@@ -137,7 +119,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
 
     # ensure that the minimum isn't on a grid edge:
     best_ind = np.argmin(nll_grid)
-    while best_ind == 0:
+    while (best_ind == 0 and val >= 1.e-8): # prevent runaway minimization
         val = grid[0]/10.
         new_nll = test_regularization_value(par, val, training_model, 
                                                 validation_model, regularization_dict, 
@@ -145,8 +127,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
         grid = np.append(val, grid)
         nll_grid = np.append(new_nll, nll_grid)
         best_ind = np.argmin(nll_grid)
-        if val <= 1.e-8:
-            break  # prevent runaway minimization
+        print("while loop: val {0:.0e}".format(val))
         
     while best_ind == len(grid) - 1:
         val = grid[-1]*10.
@@ -182,10 +163,11 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     '''
     r = training_model.r
     regularization_dict[par] = val
+    name = get_name_from_tensor(par) # chop off TF's ID #
     session = wobble.utils.get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
-    training_model.optimize(niter=80, feed_dict=regularization_dict, verbose=verbose)
+    training_model.optimize(niter=80, feed_dict=regularization_dict, verbose=verbose, uncertainties=False)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
@@ -226,46 +208,49 @@ def test_regularization_value(par, val, training_model, validation_model, regula
                                                                    c.name+'_basis_vectors')[r]
             zero_regularization_dict[getattr(c, 'basis_weights')] = getattr(validation_model.results, 
                                                                    c.name+'_basis_weights')[r]
-
-
+                                                            
     if plot:
-        name = get_name_from_tensor(par) # chop off TF's ID #
-        n = 0
-        xs = np.exp(validation_data.xs[r][n])
-        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
-        ax.scatter(xs, np.exp(validation_data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data')
-        ax.plot(xs, 
-                np.exp(validation_results.star_ys_predicted[r][n]), 
-                color='r', label='star model', lw=1.5, alpha=0.7)
-        ax.plot(xs, 
-                np.exp(validation_results.tellurics_ys_predicted[r][n]), 
-                color='b', label='tellurics model', lw=1.5, alpha=0.7)
-        ax.set_xticklabels([])
-        ax.set_ylabel('Normalized Flux', fontsize=14)
-        resids = np.exp(validation_data.ys[r][n]) - np.exp(validation_results.star_ys_predicted[r][n] 
-                            + validation_results.tellurics_ys_predicted[r][n])
-        ax2.scatter(xs, resids, marker=".", alpha=0.5, c='k')
-        ax2.set_ylim([-0.1, 0.1])
-        ax2.set_xlabel(r'Wavelength ($\AA$)', fontsize=14)
-        ax2.set_ylabel('Resids', fontsize=14)
-        
-        ax.legend(fontsize=12)
-        ax.set_title('{0}: value {1:.0e}'.format(name, val), fontsize=12)
-        fig.tight_layout()
-        fig.subplots_adjust(hspace=0.05)
-        plt.savefig('{0}_val{1:.0e}.png'.format(basename, val))
-        
-        xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
-        ax.set_xlim(xlim)
-        ax.set_xticklabels([])
-        ax2.set_xlim(xlim)
-        plt.savefig('{0}_val{1:.0e}_zoom.png'.format(basename, val))
-        plt.close(fig)
+        n = 0 # epoch to plot
+        title = '{0}: value {1:.0e}'.format(name, val)
+        filename = '{0}_val{1:.0e}'.format(basename, val)
+        plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)
 
     nll = session.run(validation_model.nll, feed_dict=zero_regularization_dict)
     if verbose:
         print('{0}, value {1:.0e}: nll {2:.4e}'.format(name, val, nll))
     return nll
+    
+def plot_fit(r, n, data, results, title='', basename=''):
+    fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
+    xs = np.exp(data.xs[r][n])
+    ax.scatter(xs, np.exp(data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data')
+    ax.plot(xs, 
+            np.exp(results.star_ys_predicted[r][n]), 
+            color='r', label='star model', lw=1.5, alpha=0.7)
+    ax.plot(xs, 
+            np.exp(results.tellurics_ys_predicted[r][n]), 
+            color='b', label='tellurics model', lw=1.5, alpha=0.7)
+    ax.set_xticklabels([])
+    ax.set_ylabel('Normalized Flux', fontsize=14)
+    resids = np.exp(data.ys[r][n]) - np.exp(results.star_ys_predicted[r][n] 
+                        + results.tellurics_ys_predicted[r][n])
+    ax2.scatter(xs, resids, marker=".", alpha=0.5, c='k')
+    ax2.set_ylim([-0.1, 0.1])
+    ax2.set_xlabel(r'Wavelength ($\AA$)', fontsize=14)
+    ax2.set_ylabel('Resids', fontsize=14)
+    
+    ax.legend(fontsize=12)
+    ax.set_title(title, fontsize=12)
+    fig.tight_layout()
+    fig.subplots_adjust(hspace=0.05)
+    plt.savefig('{0}.png'.format(basename, val))
+    
+    xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
+    ax.set_xlim(xlim)
+    ax.set_xticklabels([])
+    ax2.set_xlim(xlim)
+    plt.savefig('{0}_zoom.png'.format(basename, val))
+    plt.close(fig)    
 
         
 if __name__ == "__main__":
@@ -286,8 +271,8 @@ if __name__ == "__main__":
     star_filename = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     if not os.path.isfile(star_filename):
         with h5py.File(star_filename,'w') as f:
-            f.create_dataset('L1_template', data=np.zeros(R)+1.e-2)
-            f.create_dataset('L2_template', data=np.zeros(R)+1.e3)
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e-5)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e-5)
             if K_star > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e5)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e6)
@@ -297,8 +282,8 @@ if __name__ == "__main__":
     tellurics_filename = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     if not os.path.isfile(tellurics_filename):                
         with h5py.File(tellurics_filename,'w') as f:
-            f.create_dataset('L1_template', data=np.zeros(R)+1.e3)
-            f.create_dataset('L2_template', data=np.zeros(R)+1.e8)
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e5)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e5)
             if K_t > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e3)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e9)

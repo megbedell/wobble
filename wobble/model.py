@@ -77,9 +77,13 @@ class Model(object):
         """
         data_xs = self.data.xs[self.r]
         data_ys = np.copy(self.data.ys[self.r])
-        data_ivars = self.data.ivars[self.r]
+        data_ivars = np.copy(self.data.ivars[self.r])
         for c in self.components:
-            data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
+            if c.name == 'tellurics': #TEMPORARY HACK!!!
+                resids = c.initialize_template(data_xs, data_ys, data_ivars)
+                c.template_ys = np.zeros_like(c.template_xs)
+            else:
+                data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
 
     def setup(self):
         """Initialize component templates and do TensorFlow magic in prep for optimizing"""
@@ -119,7 +123,7 @@ class Model(object):
         session.run(tf.global_variables_initializer())
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
-                 feed_dict=None, verbose=True):
+                 feed_dict=None, verbose=True, uncertainties=True):
         """Optimize the model!
             
         Parameters
@@ -135,6 +139,8 @@ class Model(object):
             TensorFlow magic; passed to the optimizer. If `None`, does nothing.
         verbose : `bool` (default `True`)
             Toggle print statements and progress bars.
+        uncertainties : `bool` (default `True`)
+            Toggle whether uncertainty estimates should be calculated.
         """
         # initialize helper classes:
         if save_history:
@@ -151,7 +157,8 @@ class Model(object):
             session.run(self.updates, feed_dict=feed_dict)
             if save_history:
                 history.save_iter(self, i+1)
-        self.estimate_uncertainties(verbose=verbose)
+        if uncertainties:
+            self.estimate_uncertainties(verbose=verbose)
         # copy over the outputs to Results:
         for c in self.components:
             self.results.update(c)
@@ -172,7 +179,6 @@ class Model(object):
         session = get_session()
         for c in self.components:
             best_rvs = session.run(c.rvs)
-            c.ivars_rvs = np.zeros_like(best_rvs)
             if not c.rvs_fixed:
                 N_grid = 20
                 if verbose:
@@ -228,6 +234,7 @@ class Component(object):
             except:
                 print('Regularization parameter file {0} not recognized; using keywords instead.'.format(regularization_par_file))
         self.starting_rvs = starting_rvs
+        self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
         self.template_xs = template_xs
 
     def setup(self, data, r):

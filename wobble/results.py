@@ -10,9 +10,10 @@ COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names',
                 'bervs', 'pipeline_rvs', 'drifts', 'dates', 'airms']
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
-OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights', 'time_rvs', 'order_rvs', 'order_sigmas'] # it's ok if these don't exist
+OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
 OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights'] # only present if component K > 0
+POST_COMPONENT_ATTRS = ['time_rvs', 'order_rvs', 'order_sigmas'] # these won't exist until post-processing
 
 class Results(object):
     """A read/writeable object which stores RV & template results across all orders. 
@@ -119,13 +120,18 @@ class Results(object):
             all_order_attrs = []
             for name in self.component_names:
                 basename = name + '_'
+                for attr in POST_COMPONENT_ATTRS:
+                    try:
+                        setattr(self, basename+attr, np.copy(f[basename+attr]))
+                    except KeyError:
+                        continue
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
                 attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
                 for attr in attrs:
                     setattr(self, basename+attr, [0 for r in range(self.R)])
                     all_order_attrs.append(basename+attr)
-                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS) # check for these
+                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS) # only exist if K>0
                 for attr in opt_attrs:
                     try: # if attribute exists in hdf5, set it up
                         test = f['order0'][basename+attr]
@@ -151,6 +157,12 @@ class Results(object):
                         attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                     for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])
+            for n in self.component_names:
+                for attr in POST_COMPONENT_ATTRS:
+                    try:
+                        f.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr))
+                    except:
+                        continue
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
             for attr in COMMON_ATTRS:
                 f.create_dataset(attr, data=getattr(self, attr))                    
