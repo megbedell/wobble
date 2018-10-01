@@ -6,7 +6,7 @@ from tqdm import tqdm
 import h5py
 import os
 
-__all__ = ["improve_order_regularization", "improve_parameter", "test_regularization_value"]
+__all__ = ["improve_order_regularization", "improve_parameter", "test_regularization_value", "plot_pars_from_file"]
 
 def get_name_from_tensor(tensor):
     # hacky method to get rid of characters TF adds to the variable names
@@ -187,9 +187,9 @@ def test_regularization_value(par, val, training_model, validation_model, regula
                                                                    c.name+'_basis_vectors')[r]
     session = wobble.utils.get_session()
     if verbose:
-        iterator = tqdm(range(80))
+        iterator = tqdm(range(100))
     else:
-        iterator = range(80)
+        iterator = range(100)
     for i in iterator:
         for c in validation_model.components:
             if not c.rvs_fixed:
@@ -260,7 +260,23 @@ def plot_fit(r, n, data, results, title='', basename=''):
     ax.set_xticklabels([])
     ax2.set_xlim(xlim)
     plt.savefig('{0}_zoom.png'.format(basename))
-    plt.close(fig)    
+    plt.close(fig) 
+    
+def plot_pars_from_file(filename, basename, orders=np.arange(72)):
+    """Takes an HDF5 file and automatically creates overview plots of regularization amplitudes"""
+    with h5py.File(filename, 'r') as f:
+        for key in list(f.keys()):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_yscale('log')
+            ax.plot(orders, np.array(f[key])[orders], 'o')
+            ax.set_xlabel('Order #')
+            ax.set_ylabel('Regularization Amplitude')
+            ax.set_title(key)
+            ax.set_xlim([-3,75])
+            fig.tight_layout()
+            plt.savefig(basename+'_{0}.png'.format(key))
+            plt.close(fig)      
 
         
 if __name__ == "__main__":
@@ -334,28 +350,5 @@ if __name__ == "__main__":
             for key in list(f.keys()):
                 print("{0}: {1:.0e}".format(key, f[key][o]))        
 
-    with h5py.File(star_filename, 'r') as f:
-        for key in list(f.keys()):
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.plot(orders, np.array(f[key])[orders], 'o')
-            ax.set_yscale('log')
-            ax.set_xlabel('Order #')
-            ax.set_ylabel(key)
-            ax.set_xlim([-3,75])
-            fig.tight_layout()
-            plt.savefig('regularization/{0}_{1}_star_Kstar{2}_Kt{3}.png'.format(key, starname, K_star, K_t))
-            plt.close(fig)
-            
-    with h5py.File(tellurics_filename, 'r') as f:
-        for key in list(f.keys()):
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.plot(orders, np.array(f[key])[orders], 'o')
-            ax.set_yscale('log')
-            ax.set_xlabel('Order #')
-            ax.set_ylabel(key)
-            ax.set_xlim([-3,75])
-            fig.tight_layout()
-            plt.savefig('regularization/{0}_{1}_tellurics_Kstar{2}_Kt{3}.png'.format(key, starname, K_star, K_t))
-            plt.close(fig)            
+    plot_pars_from_file(star_filename, 'regularization/{1}_star_Kstar{2}_Kt{3}'.format(starname, K_star, K_t), orders=orders)
+    plot_pars_from_file(tellurics_filename, 'regularization/{1}_tellurics_Kstar{2}_Kt{3}'.format(starname, K_star, K_t), orders=orders)          

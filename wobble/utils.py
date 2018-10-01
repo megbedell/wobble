@@ -92,4 +92,4 @@ def bin_data(xs, ys, ivars, xps):
             yps[i] = np.nansum(all_ys[ind] * all_ivars[ind]) / np.nansum(all_ivars[ind] + 1.) # MAGIC
     ind_nan = np.isnan(yps)
     yps.flat[ind_nan] = np.interp(xps[ind_nan], xps[~ind_nan], yps[~ind_nan])
-    return xps, yps
+    return yps

@@ -66,6 +66,7 @@ class Model(object):
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
+        #kwargs['initialize_at_zero'] = kwargs.get('initialize_at_zero', True)
         self.add_component(name, starting_rvs, **kwargs)
 
     def initialize_templates(self):
@@ -79,11 +80,7 @@ class Model(object):
         data_ys = np.copy(self.data.ys[self.r])
         data_ivars = np.copy(self.data.ivars[self.r])
         for c in self.components:
-            if c.name == 'tellurics': #TEMPORARY HACK!!!
-                resids = c.initialize_template(data_xs, data_ys, data_ivars)
-                c.template_ys = np.zeros_like(c.template_xs)
-            else:
-                data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
+            data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
 
     def setup(self):
         """Initialize component templates and do TensorFlow magic in prep for optimizing"""
@@ -210,7 +207,7 @@ class Component(object):
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=10.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
                  rvs_fixed=False, variable_bases=0, scale_by_airmass=False,
-                 template_xs=None):
+                 template_xs=None, initialize_at_zero=False):
         self.name = name
         self.r = r
         self.K = variable_bases # number of variable basis vectors
@@ -236,6 +233,7 @@ class Component(object):
         self.starting_rvs = starting_rvs
         self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
         self.template_xs = template_xs
+        self.initialize_at_zero = initialize_at_zero # initialize template ys to flat continuum
 
     def setup(self, data, r):
         """Do TensorFlow magic in prep for optimizing"""
@@ -285,9 +283,12 @@ class Component(object):
             tiny = 10.
             self.template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
                                    np.max(shifted_xs)+tiny*dx, dx)
-
-        template_xs, template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
-        self.template_xs = template_xs
+                                   
+        if self.initialize_at_zero:
+            template_ys = np.zeros_like(self.template_xs)
+        else:
+            template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
+            
         self.template_ys = template_ys
         full_template = template_ys[None,:] + np.zeros((len(self.starting_rvs),len(template_ys)))
         if self.K > 0:
@@ -303,6 +304,6 @@ class Component(object):
             full_template += np.dot(basis_weights, basis_vectors)
         data_resids = np.copy(data_ys)
         for n in range(len(self.starting_rvs)):
-            data_resids[n] -= np.interp(shifted_xs[n], template_xs, full_template[n])
+            data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
         return data_resids
 
