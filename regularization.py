@@ -80,7 +80,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
         if (name[0:2] == "L1" and L1) or (name[0:2] == "L2" and L2):
             i += 1
             regularization_dict[tensor] = improve_parameter(tensor, training_model, validation_model, 
-                                                         regularization_dict, verbose=verbose,
+                                                         regularization_dict, validation_data, validation_results, 
+                                                         verbose=verbose,
                                                          plot=plot, basename=basename+'_par{0}'.format(i))
             if component == 'star':
                 filename = star_filename
@@ -93,14 +94,16 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
                     f[name][o] = np.copy(regularization_dict[tensor])   
                     
     if plot:
-        test_regularization_value(tensor, regularization_dict[tensor], 
-                                  training_model, validation_model, regularization_dict) # hack to update results
+        test_regularization_value(tensor, regularization_dict[tensor],
+                                  training_model, validation_model, regularization_dict,
+                                  validation_data, validation_results, plot=False, verbose=False) # hack to update results
         title = 'Final'
         filename = '{0}_final'.format(basename)
         plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)       
     
     
 def improve_parameter(par, training_model, validation_model, regularization_dict, 
+                      validation_data, validation_results, 
                       plot=False, verbose=True, basename=''):
     """
     Perform a grid search to set the value of regularization parameter `par`.
@@ -114,25 +117,27 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
     for i,val in enumerate(grid):
         nll_grid[i] = test_regularization_value(par, val, training_model, 
                                                 validation_model, regularization_dict, 
+                                                validation_data, validation_results, 
                                                 plot=plot, verbose=verbose, basename=basename)
 
 
     # ensure that the minimum isn't on a grid edge:
     best_ind = np.argmin(nll_grid)
-    while (best_ind == 0 and val >= 1.e-8): # prevent runaway minimization
+    while (best_ind == 0 and val >= 1.e-2): # prevent runaway minimization
         val = grid[0]/10.
         new_nll = test_regularization_value(par, val, training_model, 
                                                 validation_model, regularization_dict, 
+                                                validation_data, validation_results, 
                                                 plot=plot, verbose=verbose, basename=basename)
         grid = np.append(val, grid)
         nll_grid = np.append(new_nll, nll_grid)
         best_ind = np.argmin(nll_grid)
-        print("while loop: val {0:.0e}".format(val))
         
     while best_ind == len(grid) - 1:
         val = grid[-1]*10.
         new_nll = test_regularization_value(par, val, training_model, 
-                                            validation_model, regularization_dict,                                                               
+                                            validation_model, regularization_dict,  
+                                            validation_data, validation_results,                                                              
                                             plot=plot, verbose=verbose, basename=basename)
 
         grid = np.append(grid, val)
@@ -142,8 +147,10 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
     if plot:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.scatter(grid, nll_grid)
+        ax.scatter(grid, nll_grid, color='r')
+        ax.plot(grid, nll_grid, c='r', ls='dashed', lw=1)
         ax.axvline(grid[best_ind], c='k', alpha=0.7, ls='dashed', lw=2)
+        ax.set_ylim([nll_grid[best_ind]-10., nll_grid[best_ind]+100.])
         ax.set_xlim([grid[0]*0.5, grid[-1]*2.])
         ax.set_xscale('log')
         ax.set_xlabel('{0} values'.format(name))
@@ -157,6 +164,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
     return grid[best_ind]
     
 def test_regularization_value(par, val, training_model, validation_model, regularization_dict, 
+                              validation_data, validation_results, 
                               plot=False, verbose=True, basename=''):
     '''
     Try setting regularization parameter `par` to value `val`; return goodness metric `nll`.
@@ -223,7 +231,9 @@ def test_regularization_value(par, val, training_model, validation_model, regula
 def plot_fit(r, n, data, results, title='', basename=''):
     fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
     xs = np.exp(data.xs[r][n])
-    ax.scatter(xs, np.exp(data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data')
+    ax.scatter(xs, np.exp(data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data', s=16)
+    mask = data.ivars[r][n] <= 1.e-8
+    ax.scatter(xs[mask], np.exp(data.ys[r][n,mask]), marker=".", alpha=1., c='white', s=8)
     ax.plot(xs, 
             np.exp(results.star_ys_predicted[r][n]), 
             color='r', label='star model', lw=1.5, alpha=0.7)
@@ -243,13 +253,13 @@ def plot_fit(r, n, data, results, title='', basename=''):
     ax.set_title(title, fontsize=12)
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.05)
-    plt.savefig('{0}.png'.format(basename, val))
+    plt.savefig('{0}.png'.format(basename))
     
     xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
     ax.set_xlim(xlim)
     ax.set_xticklabels([])
     ax2.set_xlim(xlim)
-    plt.savefig('{0}_zoom.png'.format(basename, val))
+    plt.savefig('{0}_zoom.png'.format(basename))
     plt.close(fig)    
 
         
@@ -271,8 +281,8 @@ if __name__ == "__main__":
     star_filename = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     if not os.path.isfile(star_filename):
         with h5py.File(star_filename,'w') as f:
-            f.create_dataset('L1_template', data=np.zeros(R)+1.e-5)
-            f.create_dataset('L2_template', data=np.zeros(R)+1.e-5)
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e-2)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e-2)
             if K_star > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e5)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e6)

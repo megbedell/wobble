@@ -64,6 +64,7 @@ class Data(object):
             
         # log and normalize:
         self.ys = np.log(self.fluxes) 
+        self.ivars = [self.fluxes[r]**2 * self.ivars[r] for r in range(self.R)]
         self.continuum_normalize() 
                 
         # mask out high pixels:
