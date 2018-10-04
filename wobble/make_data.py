@@ -46,7 +46,7 @@ def read_data_from_fits(filelist):
         # save stuff
         for r in range(R):
             data[r][n,:] = spec[r,:]
-            ivars[r][n,:] = np.zeros(M) + snrs[r]**2
+            ivars[r][n,:] = snrs[r]**2 * data[r][n,:]/np.nanmean(data[r][n,:]) # scaling hack
             xs[r][n,:] = wave[r,:] 
             
     for r in range(R):

@@ -17,7 +17,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
                                  training_data, training_results,
                                  validation_data, validation_results,
                                  verbose=True, plot=False, basename='', 
-                                 K_star=0, K_t=0, L1=True, L2=True): 
+                                 K_star=0, K_t=0, L1=True, L2=True,
+                                 initialize_at_zero=False): 
     """
     Use a validation scheme to determine the best regularization parameters for 
     all model components in a given order r.
@@ -26,7 +27,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     
     training_model = wobble.Model(training_data, training_results, r)
     training_model.add_star('star', variable_bases=K_star)
-    training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
+    training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
+                                initialize_at_zero=initialize_at_zero)
     training_model.setup()
     training_model.optimize(niter=0, verbose=verbose, uncertainties=False)
     
@@ -41,7 +43,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     validation_model.add_star('star', variable_bases=K_star, 
                           template_xs=training_results.star_template_xs[r]) # ensure templates are same size
     validation_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t,
-                              template_xs=training_results.tellurics_template_xs[r])
+                              template_xs=training_results.tellurics_template_xs[r],
+                              initialize_at_zero=initialize_at_zero)
     validation_model.setup()
     
     # the order in which these are defined will determine the order in which they are optimized:
@@ -99,7 +102,20 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
                                   validation_data, validation_results, plot=False, verbose=False) # hack to update results
         title = 'Final'
         filename = '{0}_final'.format(basename)
-        plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)       
+        plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)    
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        val_rvs = validation_results.star_rvs[r] + validation_results.bervs
+        train_rvs = training_results.star_rvs[r] + training_results.bervs
+        ax.plot(validation_results.dates, val_rvs - np.mean(val_rvs), 'r.')
+        ax.plot(training_results.dates, train_rvs - np.mean(train_rvs), 'k.', alpha=0.5)   
+        ax.set_ylabel('RV (m/s)')
+        ax.set_xlabel('JD')
+        fig.tight_layout()
+        plt.savefig(basename+'_rvs.png')
+        plt.close(fig)
+        
     
     
 def improve_parameter(par, training_model, validation_model, regularization_dict, 
@@ -165,7 +181,8 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
     
 def test_regularization_value(par, val, training_model, validation_model, regularization_dict, 
                               validation_data, validation_results, 
-                              plot=False, verbose=True, basename=''):
+                              plot=False, verbose=True, basename='', 
+                              training_niter=100, validation_niter=1000):
     '''
     Try setting regularization parameter `par` to value `val`; return goodness metric `nll`.
     '''
@@ -175,7 +192,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     session = wobble.utils.get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
-    training_model.optimize(niter=80, feed_dict=regularization_dict, verbose=verbose, uncertainties=False)
+    training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, uncertainties=False)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
@@ -187,9 +204,9 @@ def test_regularization_value(par, val, training_model, validation_model, regula
                                                                    c.name+'_basis_vectors')[r]
     session = wobble.utils.get_session()
     if verbose:
-        iterator = tqdm(range(100))
+        iterator = tqdm(range(validation_niter))
     else:
-        iterator = range(100)
+        iterator = range(validation_niter)
     for i in iterator:
         for c in validation_model.components:
             if not c.rvs_fixed:
@@ -284,6 +301,7 @@ if __name__ == "__main__":
     orders = np.arange(72)
     K_star = 0
     K_t = 0
+    initialize_at_zero = False # toggle telluric template initialization
     plot = True
     verbose = False
     plot_dir = 'regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
@@ -298,7 +316,7 @@ if __name__ == "__main__":
     if not os.path.isfile(star_filename):
         with h5py.File(star_filename,'w') as f:
             f.create_dataset('L1_template', data=np.zeros(R)+1.e-2)
-            f.create_dataset('L2_template', data=np.zeros(R)+1.e-2)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e4)
             if K_star > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e5)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e6)
@@ -308,8 +326,8 @@ if __name__ == "__main__":
     tellurics_filename = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     if not os.path.isfile(tellurics_filename):                
         with h5py.File(tellurics_filename,'w') as f:
-            f.create_dataset('L1_template', data=np.zeros(R)+1.e5)
-            f.create_dataset('L2_template', data=np.zeros(R)+1.e5)
+            f.create_dataset('L1_template', data=np.zeros(R)+1.e6)
+            f.create_dataset('L2_template', data=np.zeros(R)+1.e3)
             if K_t > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e3)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e9)
@@ -337,7 +355,8 @@ if __name__ == "__main__":
                                          validation_data, validation_results,
                                          verbose=verbose, plot=plot, 
                                          basename='{0}o{1}'.format(plot_dir, o), 
-                                         K_star=K_star, K_t=K_t, L1=True, L2=True)
+                                         K_star=K_star, K_t=K_t, L1=True, L2=True, 
+                                         initialize_at_zero=initialize_at_zero)
                                          
         print('---- ORDER {0} COMPLETE ({1}/{2}) ----'.format(o,r,len(orders)))
         print("best values:")
@@ -350,5 +369,5 @@ if __name__ == "__main__":
             for key in list(f.keys()):
                 print("{0}: {1:.0e}".format(key, f[key][o]))        
 
-    plot_pars_from_file(star_filename, 'regularization/{1}_star_Kstar{2}_Kt{3}'.format(starname, K_star, K_t), orders=orders)
-    plot_pars_from_file(tellurics_filename, 'regularization/{1}_tellurics_Kstar{2}_Kt{3}'.format(starname, K_star, K_t), orders=orders)          
+    plot_pars_from_file(star_filename, 'regularization/{0}_star_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)
+    plot_pars_from_file(tellurics_filename, 'regularization/{0}_tellurics_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)          
