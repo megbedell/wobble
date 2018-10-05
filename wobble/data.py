@@ -25,34 +25,21 @@ class Data(object):
         Flux in counts/pixel below which a pixel is masked out.
     max_norm_flux : `float` (default `2.`)
         Flux in normalized counts/pixel above which a pixel is masked out.
-    padding : `int` (default `3`)
+    padding : `int` (default `2`)
         Number of pixels to additionally mask on either side of a bad high pixel.
+    min_snr : `float` (default `5.`)
+        Mean SNR below which which we discard sections of data.
     """
     def __init__(self, filename, filepath='../data/', 
                     orders = None, 
                     epochs = None,
                     min_flux = 1.,
                     max_norm_flux = 2.,
-                    padding = 3):
+                    padding = 2,
+                    min_snr = 5.):
         self.origin_file = filepath+filename
         self.read_data(orders=orders, epochs=epochs)
         
-        orders = np.asarray(self.orders)
-        epochs = np.asarray(self.epochs)
-        min_snr = 10.
-        chis = np.asarray(self.fluxes) * np.sqrt(np.asarray(self.ivars))
-        snrs_by_epoch = np.sqrt(np.nanmean(chis, axis=(0,2)))
-        epochs_to_cut = snrs_by_epoch < min_snr
-        if np.sum(epochs_to_cut) > 0:
-            epochs = epochs[~epochs_to_cut]
-            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
-        chis = np.asarray(self.fluxes) * np.sqrt(np.asarray(self.ivars))
-        snrs_by_order = np.sqrt(np.nanmean(chis, axis=(1,2)))
-        orders_to_cut = snrs_by_order < min_snr
-        if np.sum(orders_to_cut) > 0:
-            orders = orders[~orders_to_cut]
-            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
-                           
         # mask out low pixels:
         for r in range(self.R):
             bad = self.fluxes[r] < min_flux
@@ -60,11 +47,24 @@ class Data(object):
             for pad in range(padding): # mask out neighbors of low pixels
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
+            self.flux_ivars[r][bad] = 0.
             self.ivars[r][bad] = 0.
+            
+        # find bad regions in masked spectra:
+        for r in range(self.R):
+            self.trim_bad_edges(r, min_snr=min_snr) # HACK
+        
+        '''''
+        epochs = np.asarray(self.epochs)
+        snrs_by_epoch = np.sqrt(np.nanmean(self.ivars, axis=(0,2)))
+        epochs_to_cut = snrs_by_epoch < min_snr
+        if np.sum(epochs_to_cut) > 0:
+            epochs = epochs[~epochs_to_cut]
+            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+        '''''
             
         # log and normalize:
         self.ys = np.log(self.fluxes) 
-        self.ivars = [self.fluxes[r]**2 * self.ivars[r] for r in range(self.R)]
         self.continuum_normalize() 
                 
         # mask out high pixels:
@@ -78,6 +78,7 @@ class Data(object):
             
     def read_data(self, orders = None, epochs = None):
         """Read origin file and set up data attributes from it"""
+        # TODO: add asserts to check data are finite, no NaNs, non-negative ivars, etc
         with h5py.File(self.origin_file) as f:
             if orders is None:
                 orders = np.arange(len(f['data']))
@@ -92,7 +93,7 @@ class Data(object):
                         "epoch #{0} is not in datafile {1}".format(e, self.origin_file)
             self.fluxes = [f['data'][i][self.epochs,:] for i in orders]
             self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
-            self.ivars = [f['ivars'][i][self.epochs,:] for i in orders]
+            self.flux_ivars = [f['ivars'][i][self.epochs,:] for i in orders] # ivars for linear fluxes
             self.pipeline_rvs = np.copy(f['pipeline_rvs'])[self.epochs]
             self.dates = np.copy(f['dates'])[self.epochs]
             self.bervs = np.copy(f['bervs'])[self.epochs]
@@ -100,6 +101,33 @@ class Data(object):
             self.airms = np.copy(f['airms'])[self.epochs]
             self.R = len(orders) # number of orders
             self.orders = orders # indices of orders in origin_file
+            self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)
+            
+    def trim_bad_edges(self, r, window_width = 128, min_snr = 5.):
+        """
+        Find edge regions that contain no information and trim them.
+        
+        Parameters
+        ----------
+        r : `int`
+            order index
+        window_width : `int`
+            number of pixels to average over for local SNR            
+        min_snr : `float`
+            SNR threshold below which we discard the data
+        """
+        for n in range(self.N):
+            n_pix = len(self.xs[0][n])
+            for window_start in range(n_pix - window_width):
+                mean_snr = np.sqrt(np.nanmean(self.ivars[r][n,window_start:window_start+window_width]))
+                if mean_snr > min_snr:
+                    self.ivars[r][n,:window_start] = 0. # trim everything to left of window
+                    break
+            for window_start in reversed(range(n_pix - window_width)):
+                mean_snr = np.sqrt(np.nanmean(self.ivars[r][n,window_start:window_start+window_width]))
+                if mean_snr > min_snr:
+                    self.ivars[r][n,window_start+window_width:] = 0. # trim everything to right of window
+                    break
 
         
     def continuum_normalize(self, **kwargs):
