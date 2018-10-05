@@ -39,29 +39,29 @@ class Data(object):
                     min_snr = 5.):
         self.origin_file = filepath+filename
         self.read_data(orders=orders, epochs=epochs)
+        self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         
-        # mask out low pixels:
-        for r in range(self.R):
-            bad = self.fluxes[r] < min_flux
-            self.fluxes[r][bad] = min_flux
-            for pad in range(padding): # mask out neighbors of low pixels
-                bad = np.logical_or(bad, np.roll(bad, pad+1))
-                bad = np.logical_or(bad, np.roll(bad, -pad-1))
-            self.flux_ivars[r][bad] = 0.
-            self.ivars[r][bad] = 0.
-            
-        # find bad regions in masked spectra:
-        for r in range(self.R):
-            self.trim_bad_edges(r, min_snr=min_snr) # HACK
-        
-        '''''
+        orders = np.asarray(self.orders)
+        snrs_by_order = np.sqrt(np.nanmean(self.ivars, axis=(1,2)))
+        orders_to_cut = snrs_by_order < min_snr
+        if np.sum(orders_to_cut) > 0:
+            orders = orders[~orders_to_cut]
+            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+            self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
+        if len(orders) == 0:
+            print("All orders failed the quality cuts. Try lowering min_snr.")
+            return
         epochs = np.asarray(self.epochs)
+        print(np.nanmean(self.ivars, axis=(0,2)))
         snrs_by_epoch = np.sqrt(np.nanmean(self.ivars, axis=(0,2)))
         epochs_to_cut = snrs_by_epoch < min_snr
         if np.sum(epochs_to_cut) > 0:
             epochs = epochs[~epochs_to_cut]
             self.read_data(orders=orders, epochs=epochs) # overwrite with new data
-        '''''
+            self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
+        if len(epochs) == 0:
+            print("All epochs failed the quality cuts. Try lowering min_snr.")
+            return
             
         # log and normalize:
         self.ys = np.log(self.fluxes) 
@@ -102,6 +102,22 @@ class Data(object):
             self.R = len(orders) # number of orders
             self.orders = orders # indices of orders in origin_file
             self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)
+    
+    def mask_low_pixels(self, min_flux = 1., padding = 2, min_snr = 5.):
+        """Set ivars to zero for pixels and regions that are bad."""
+        # mask out low pixels:
+        for r in range(self.R):
+            bad = self.fluxes[r] < min_flux
+            self.fluxes[r][bad] = min_flux
+            for pad in range(padding): # mask out neighbors of low pixels
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
+            self.flux_ivars[r][bad] = 0.
+            self.ivars[r][bad] = 0.
+            
+        # find bad regions in masked spectra:
+        for r in range(self.R):
+            self.trim_bad_edges(r, min_snr=min_snr) # HACK
             
     def trim_bad_edges(self, r, window_width = 128, min_snr = 5.):
         """
