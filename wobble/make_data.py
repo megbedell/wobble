@@ -46,9 +46,10 @@ def read_data_from_fits(filelist):
         # save stuff
         for r in range(R):
             data[r][n,:] = spec[r,:]
-            ivars[r][n,:] = snrs[r]**2 * data[r][n,:]/np.nanmean(data[r][n,:]) # scaling hack
+            ivars[r][n,:] = snrs[r]**2/spec[r,:]/np.nanmean(spec[r,:]) # scaling hack
             xs[r][n,:] = wave[r,:] 
             
+    # delete data without wavelength solutions:
     for r in range(R):
         data[r] = np.delete(data[r], empty, axis=0)
         ivars[r] = np.delete(ivars[r], empty, axis=0)
@@ -60,9 +61,10 @@ def read_data_from_fits(filelist):
     airms = np.delete(airms, empty)
     drifts = np.delete(drifts, empty)
     
+    # re-introduce BERVs to HARPS results:
     pipeline_rvs -= bervs  
     pipeline_rvs -= np.mean(pipeline_rvs)
-    
+        
     return data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts
     
 def savfile_to_filelist(savfile, destination_dir='../data/'):
@@ -107,7 +109,7 @@ def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffi
 
 if __name__ == "__main__":
         
-    if False: #51 Peg
+    if True: #51 Peg
         ccf_filelist = np.genfromtxt('51peg_ccf_filelist.txt', dtype=None, encoding=None)
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
@@ -116,7 +118,7 @@ if __name__ == "__main__":
     if True: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
         
-        if True: # check for missing wavelength files
+        if False: # check for missing wavelength files
             missing_files = missing_wavelength_files(ccf_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files for Barnard\'s Star'.format(len(missing_files)))
