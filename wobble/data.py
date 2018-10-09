@@ -52,7 +52,6 @@ class Data(object):
             print("All orders failed the quality cuts. Try lowering min_snr.")
             return
         epochs = np.asarray(self.epochs)
-        print(np.nanmean(self.ivars, axis=(0,2)))
         snrs_by_epoch = np.sqrt(np.nanmean(self.ivars, axis=(0,2)))
         epochs_to_cut = snrs_by_epoch < min_snr
         if np.sum(epochs_to_cut) > 0:

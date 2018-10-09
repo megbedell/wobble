@@ -42,7 +42,7 @@ class History(object):
             
                 
         
-    def animfunc(self, i, xs, ys, ys2, xlims, ylims, ax, driver):
+    def animfunc(self, i, xs, ys, xlims, ylims, ax, driver, xlabel, ylabel):
         """
         Produces each frame; called by History.plot()
         """
@@ -50,11 +50,11 @@ class History(object):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         ax.set_title('Optimization step #{0}'.format(i))
-        if ys2 is not None:
-            s2 = driver(xs, ys2, 'k', alpha=0.8)
+        ax.set_xlabel(xlabel, fontsize=14)
+        ax.set_ylabel(ylabel, fontsize=14)
         s = driver(xs, ys[i,:], alpha=0.8)
         
-    def plot(self, xs, ys, ys2=None, linestyle='line', nframes=None, ylims=None):
+    def plot(self, xs, ys, linestyle='line', nframes=None, ylims=None, xlabel='', ylabel=''):
         """
         Generate a matplotlib animation of xs and ys
         Linestyle options: 'scatter', 'line'
@@ -76,7 +76,7 @@ class History(object):
             y_pad = (np.max(ys) - np.min(ys)) * 0.1
             ylims = (np.min(ys)-y_pad, np.max(ys)+y_pad)
         ani = animation.FuncAnimation(fig, self.animfunc, np.linspace(0, self.niter-1, nframes, dtype=int), 
-                    fargs=(xs, ys, ys2, xlims, ylims, ax, driver), interval=150)
+                    fargs=(xs, ys, xlims, ylims, ax, driver, xlabel, ylabel), interval=150)
         plt.close(fig)
         return ani  
                          
@@ -90,7 +90,10 @@ class History(object):
         ys = self.rvs_history[ind]
         if compare_to_pipeline:
             ys -= np.repeat([self.data.pipeline_rvs], self.niter, axis=0)    
-        return self.plot(xs, ys, linestyle='scatter', **kwargs)     
+            ylabel = 'RV Residuals to HARPS Pipeline (m/s)'
+        else:
+            ylabel = 'RV (m/s)'
+        return self.plot(xs, ys, linestyle='scatter', ylabel=ylabel, xlabel='JD', **kwargs)     
     
     def plot_template(self, ind, **kwargs):
         """
@@ -103,22 +106,50 @@ class History(object):
         y_pad = 0.1
         ylims = (np.min(ys)-y_pad, min([np.max(ys)+y_pad, 10.])) # hard upper limit to prevent inf
         kwargs['ylims'] = kwargs.get('ylims', ylims)
-        return self.plot(xs, ys, linestyle='line', **kwargs)
+        return self.plot(xs, ys, linestyle='line', ylabel='Normalized Flux', xlabel=r'Wavelength ($\AA$)', **kwargs)
         
-    def plot_synth(self, e, **kwargs):
+    def animfunc_synth(self, i, xs, synths, data, data_mask, resids, xlims, ylims, ylims2, ax, ax2):
+        ax.cla()
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        ax2.set_xlim(xlims)
+        ax2.set_ylim(ylims2)
+        ax.set_title('Optimization step #{0}'.format(i))
+        ax.set_xlabel(r'Wavelength ($\AA$)', fontsize=14)
+        ax.set_ylabel('Normalized Flux', fontsize=14)
+        ax2.set_ylabel('Resids', fontsize=14)
+        l = ax.plot(xs, synths[i,:], alpha=0.8)
+        s = ax.scatter(xs, data, marker=".", alpha=0.5, c='k', s=40)
+        sm = ax.scatter(xs[data_mask], data[data_mask], marker=".", alpha=1., c='white', s=20)
+        s2 = ax2.scatter(xs, resids[i,:], marker=".", alpha=0.5, c='k', s=40)
+        sm2 = ax2.scatter(xs[data_mask], resids[i,:][data_mask], marker=".", alpha=1., c='white', s=20)
+        
+    def plot_synth(self, e, nframes=None, ylims=None, ylims2=None, **kwargs):
         """
         Generate a matplotlib animation of the data + model prediction for a given epoch
         e: index of epoch to be plotted
         """
         xs = np.exp(self.data.xs[self.r][e])
-        ys = np.exp(self.synth_history[:,e,:])
-        ys2 = np.exp(self.data.ys[self.r][e])
+        synths = np.exp(self.synth_history[:,e,:])
+        data = np.exp(self.data.ys[self.r][e])
+        data_mask = self.data.ivars[self.r][e] <= 1.e-8
+        resids = np.exp(self.synth_history[:,e,:] - np.repeat([self.data.ys[self.r][e]], self.niter, axis=0))
         # set up ylims if not otherwise specified:
         y_pad = 0.1
-        ylims = (np.min(ys)-y_pad, min([np.max(ys)+y_pad, 10.])) # hard upper limit to prevent inf
+        ylims = (np.min(synths)-y_pad, min([np.max(synths)+y_pad, 10.])) # hard upper limit to prevent inf
         kwargs['ylims'] = kwargs.get('ylims', ylims)
-        return self.plot(xs, ys, ys2=ys2, linestyle='line', **kwargs)
+        kwargs['ylims2'] = kwargs.get('ylims', [-0.1, 0.1])
+        if nframes is None:
+            nframes = self.niter
+        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
+        x_pad = (np.max(xs) - np.min(xs)) * 0.1
+        xlims = (np.min(xs)-x_pad, np.max(xs)+x_pad)
+        ani = animation.FuncAnimation(fig, self.animfunc_synth, np.linspace(0, self.niter-1, nframes, dtype=int), 
+                    fargs=(xs, synths, data, data_mask, resids, xlims, ylims, ylims2, ax, ax2), interval=150)
+        plt.close(fig)
+        return ani  
         
+                
     def save_plots(self, basename, epochs=[0,50]):
         plt.scatter(np.arange(len(self.nll_history)), self.nll_history)
         ax = plt.gca()
