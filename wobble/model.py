@@ -120,7 +120,7 @@ class Model(object):
         session.run(tf.global_variables_initializer())
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
-                 feed_dict=None, verbose=True, uncertainties=True):
+                 feed_dict=None, verbose=True, uncertainties=True, **kwargs):
         """Optimize the model!
             
         Parameters
@@ -161,7 +161,7 @@ class Model(object):
             self.results.update(c)
         # save optimization plots:
         if save_history:
-            history.save_plots(basename)
+            history.save_plots(basename, **kwargs)
             
     def estimate_uncertainties(self, verbose=True):
         """Estimate uncertainties using the second derivative of the likelihood. 
@@ -204,7 +204,7 @@ class Component(object):
     """
     def __init__(self, name, r, starting_rvs, regularization_par_file=None,
                  L1_template=0., L2_template=0., L1_basis_vectors=0.,
-                 L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=10.,
+                 L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=1.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
                  rvs_fixed=False, variable_bases=0, scale_by_airmass=False,
                  template_xs=None, initialize_at_zero=False):

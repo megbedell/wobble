@@ -110,7 +110,7 @@ class Results(object):
             getattr(self, basename+attr)[c.r] = session.run(getattr(c,attr), **kwargs)
                 
     def read(self, filename):
-        """Write to HDF5 file."""
+        """Read from HDF5 file."""
         print("Results: reading from {0}".format(filename))
         with h5py.File(filename,'r') as f:
             for attr in COMMON_ATTRS:
@@ -145,7 +145,7 @@ class Results(object):
                 
                     
     def write(self, filename):
-        """Read from HDF5 file."""
+        """Write to HDF5 file."""
         print("Results: writing to {0}".format(filename))
         with h5py.File(filename,'w') as f:            
             for r in range(self.R):

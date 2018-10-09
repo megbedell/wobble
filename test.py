@@ -7,12 +7,13 @@ import h5py
 import os
 
 if __name__ == "__main__":
-    starname = 'barnards'
+    starname = '51peg'
     K_star = 0
     K_t = 0    
-    niter = 200 # for optimization
+    niter = 150 # for optimization
     plots = True
     epochs = [0, 50] # to plot
+    movies = False
     
     star_reg_file = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     tellurics_reg_file = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
@@ -25,10 +26,13 @@ if __name__ == "__main__":
         for r in range(data.R):
             model = wobble.Model(data, results, r)
             model.add_star('star', variable_bases=K_star, 
-                            regularization_par_file=star_reg_file)
+                            regularization_par_file=star_reg_file,
+                            learning_rate_template=0.01, learning_rate_rvs=1.)
             model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
-                                regularization_par_file=tellurics_reg_file)
-            wobble.optimize_order(model, niter=80, save_history=False)
+                                regularization_par_file=tellurics_reg_file,
+                                learning_rate_template=0.01)
+            wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
+                                  basename='results/test', epochs=epochs, movies=movies)
         results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
         assert False
     
@@ -40,22 +44,28 @@ if __name__ == "__main__":
     results = wobble.Results(data=data)
     
     print("data loaded")
-    print("time elapsed: {0:.2f} s".format(time() - start_time))
+    print("time elapsed: {0:.2f} min".format((time() - start_time)/60.0))
+    elapsed_time = time() - start_time
+    
 
     if plots:
         print("plots will be saved under directory: {0}".format(plot_dir))
         if not os.path.exists(plot_dir):
             os.makedirs(plot_dir)
+    star_learning_rate = 0.1
+    telluric_learning_rate = 0.01
     for r,o in enumerate(orders):
         model = wobble.Model(data, results, r)
         model.add_star('star', variable_bases=K_star, 
-                        regularization_par_file=star_reg_file)
+                        regularization_par_file=star_reg_file, 
+                        learning_rate_template=star_learning_rate)
         model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
-                            regularization_par_file=tellurics_reg_file)
+                            regularization_par_file=tellurics_reg_file, 
+                            learning_rate_template=telluric_learning_rate)
         print("--- ORDER {0} ---".format(o))
         if plots:
             wobble.optimize_order(model, niter=niter, save_history=True, 
-                                  basename=plot_dir+'history')            
+                                  basename=plot_dir+'history', epochs=epochs, movies=movies)            
             for e in epochs:
                 fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
                 xs = np.exp(data.xs[r][e])
@@ -67,7 +77,7 @@ if __name__ == "__main__":
                 ax2.scatter(xs, np.exp(data.ys[r][e]) - np.exp(results.star_ys_predicted[r][e]
                                                             + results.tellurics_ys_predicted[r][e]), 
                             marker=".", alpha=0.5, c='k', label='data', s=40)
-                ax2.scatter(xs[mask], np.exp(data.ys[r][e]) - np.exp(results.star_ys_predicted[r][e]
+                ax2.scatter(xs[mask], np.exp(data.ys[r][e][mask]) - np.exp(results.star_ys_predicted[r][e]
                                                             + results.tellurics_ys_predicted[r][e])[mask], 
                             marker=".", alpha=1., c='white', s=20)
                 ax.set_ylim([0.0,1.3])
@@ -80,7 +90,9 @@ if __name__ == "__main__":
         else:
             wobble.optimize_order(model, niter=niter)
         del model # not sure if this does anything
-        print("order {1} optimization finished. time elapsed: {0:.2f} s".format(time() - start_time, o))
+        print("order {1} optimization finished. time elapsed: {0:.2f} min".format((time() - start_time)/60.0, o))
+        print("this order took {0:.2f} min".format((time() - start_time - elapsed_time)/60.0))
+        elapsed_time = time() - start_time
     
     print("all orders optimized.")
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))

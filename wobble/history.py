@@ -133,12 +133,12 @@ class History(object):
         synths = np.exp(self.synth_history[:,e,:])
         data = np.exp(self.data.ys[self.r][e])
         data_mask = self.data.ivars[self.r][e] <= 1.e-8
-        resids = np.exp(self.synth_history[:,e,:] - np.repeat([self.data.ys[self.r][e]], self.niter, axis=0))
+        resids =  np.exp(np.repeat([self.data.ys[self.r][e]], self.niter, axis=0)) - np.exp(self.synth_history[:,e,:])
         # set up ylims if not otherwise specified:
         y_pad = 0.1
-        ylims = (np.min(synths)-y_pad, min([np.max(synths)+y_pad, 10.])) # hard upper limit to prevent inf
-        kwargs['ylims'] = kwargs.get('ylims', ylims)
-        kwargs['ylims2'] = kwargs.get('ylims', [-0.1, 0.1])
+        yl = (np.min(synths)-y_pad, min([np.max(synths)+y_pad, 10.])) # hard upper limit to prevent inf
+        ylims = kwargs.get('ylims', yl)
+        ylims2 = kwargs.get('ylims2', [-0.25, 0.25])
         if nframes is None:
             nframes = self.niter
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
@@ -150,21 +150,19 @@ class History(object):
         return ani  
         
                 
-    def save_plots(self, basename, epochs=[0,50]):
+    def save_plots(self, basename, epochs=[0,50], movies=True):
         plt.scatter(np.arange(len(self.nll_history)), self.nll_history)
         ax = plt.gca()
         ax.set_yscale('log')
         plt.savefig(basename+'_order{0}_nll.png'.format(self.order))   
-        plt.clf()
-        
-        rvs_ani_star = self.plot_rvs(0, compare_to_pipeline=True)
-        rvs_ani_star.save(basename+'_order{0}_rvs_star.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])
-        
-        template_ani_star = self.plot_template(0, nframes=50)
-        template_ani_star.save(basename+'_order{0}_template_star.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])
-        template_ani_t = self.plot_template(1, nframes=50)
-        template_ani_t.save(basename+'_order{0}_template_t.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])
-
-        for e in epochs:
-            synth_ani = self.plot_synth(e)
-            synth_ani.save(basename+'_order{0}_synth_epoch{1}.mp4'.format(self.order, e), fps=30, extra_args=['-vcodec', 'libx264'])
+        plt.clf()        
+        if movies:
+            rvs_ani_star = self.plot_rvs(0, compare_to_pipeline=True)
+            rvs_ani_star.save(basename+'_order{0}_rvs_star.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])    
+            template_ani_star = self.plot_template(0, nframes=50)
+            template_ani_star.save(basename+'_order{0}_template_star.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])
+            template_ani_t = self.plot_template(1, nframes=50)
+            template_ani_t.save(basename+'_order{0}_template_t.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])
+            for e in epochs:
+                synth_ani = self.plot_synth(e)
+                synth_ani.save(basename+'_order{0}_epoch{1}.mp4'.format(self.order, e), fps=30, extra_args=['-vcodec', 'libx264'])
