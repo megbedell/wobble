@@ -295,7 +295,7 @@ class Component(object):
             # initialize basis components
             resids = np.empty((len(self.starting_rvs),len(template_ys)))
             for n in range(len(self.starting_rvs)):
-                resids[n] = np.interp(template_xs, shifted_xs[n], data_ys[n]) - template_ys
+                resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - template_ys
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
             basis_weights = u[:, :self.K] * s[None, :self.K] # weights (N x K)
