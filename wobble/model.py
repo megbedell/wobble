@@ -68,6 +68,17 @@ class Model(object):
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
         #kwargs['initialize_at_zero'] = kwargs.get('initialize_at_zero', True)
         self.add_component(name, starting_rvs, **kwargs)
+        
+    def add_continuum(self, degree, **kwargs):
+        if np.isin("continuuum", self.component_names):
+            print("The model already has a continuum component.")
+            return
+        c = Continuum(self.r, self.data.N, degree, **kwargs)
+        self.components.append(c)
+        self.component_names.append(c.name)
+        if not np.isin(c.name, self.results.component_names):
+            self.results.add_component(c)
+        
 
     def initialize_templates(self):
         """Initialize spectral templates for all components. 
@@ -295,7 +306,7 @@ class Component(object):
             # initialize basis components
             resids = np.empty((len(self.starting_rvs),len(template_ys)))
             for n in range(len(self.starting_rvs)):
-                resids[n] = np.interp(template_xs, shifted_xs[n], data_ys[n]) - template_ys
+                resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - template_ys
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
             basis_weights = u[:, :self.K] * s[None, :self.K] # weights (N x K)
@@ -306,4 +317,27 @@ class Component(object):
         for n in range(len(self.starting_rvs)):
             data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
         return data_resids
+        
+class Continuum(Component):
+    """
+    Polynomial continuum component which is modeled in data space
+    """
+    def __init__(self, r, N, degree, **kwargs):
+        Component.__init__(self, 'continuum', r, np.zeros(N),
+                 rvs_fixed=True, variable_bases=0, scale_by_airmass=False, **kwargs)
+        self.degree = degree
+        
+    def setup(self, data, r):
+        self.template_xs = tf.constant(self.wavelength_matrix, dtype=T, name='wavelength_matrix_'+self.name)
+        self.template_ys = tf.Variable(self.weights, dtype=T, name='weights_'+self.name) # HACK to play well with Results
+        self.rvs = tf.constant(self.starting_rvs, dtype=T, name='rvs_'+self.name) # HACK to play well with Results
+        self.synth = tf.matmul(self.template_ys, self.template_xs)
+        self.nll = tf.constant(0., dtype=T) # no regularization
+        
+    def initialize_template(self, data_xs, data_ys, data_ivars):
+        assert np.all(data_xs[0] == data_xs[1]), "Continuum failed: wavelength grid must be constant in time"
+        wavelength_vector = (data_xs[0] - np.mean(data_xs[0]))/(np.max(data_xs[0]) - np.min(data_xs[0]))
+        self.wavelength_matrix = np.array([wavelength_vector**d for d in range(1,self.degree)]) # D_degrees x M_pixels
+        self.weights = np.zeros((self.N, self.degree-1)) # N_epochs x D_degrees
+        return data_ys
 
