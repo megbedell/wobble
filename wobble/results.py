@@ -189,14 +189,22 @@ class Results(object):
         x0_sigmas = np.log(np.var(self.all_rvs - rv_predictions, axis=1))
         self.M = None
         # optimize
-        soln_sigmas = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS', options={'disp':True})['x'] # HACK
+        soln = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS')
+        if not soln['success']:
+            print(soln.status)
+            print(soln.message)
+            #print(soln)
+            #assert False
+        soln_sigmas = soln['x']
         # save results
-        lnlike, rvs_N, rvs_R = self.lnlike_sigmas(soln_sigmas, return_rvs=True)
+        lnlike, rvs_N, rvs_R, Cinv = self.lnlike_sigmas(soln_sigmas, return_rvs=True) # Cinv is inverse covariance matrix
         setattr(self, basename+'time_rvs', rvs_N)
         setattr(self, basename+'order_rvs', rvs_R)
-        setattr(self, basename+'order_sigmas', soln_sigmas)
+        setattr(self, basename+'order_jitters', soln_sigmas)
+        setattr(self, basename+'time_sigmas', np.sqrt(np.diag(np.linalg.inv(Cinv))[:self.N])) # really really a bad idea
         for tmp_attr in ['M', 'all_rvs', 'all_ivars']:
             delattr(self, tmp_attr) # cleanup
+        return Cinv
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
         """Internal code used by combine_orders()"""
@@ -208,7 +216,7 @@ class Results(object):
         Rs, Ns = self.get_index_lists()
         ivars = 1. / ((1. / self.all_ivars) + sigmas[Rs]**2) # not zero-safe
         ivars = ivars.flatten()
-        ivars = np.append(ivars, 1.) # last datum: MAGIC
+        ivars = np.append(ivars, 1.) # last datum: MAGIC - implicit units of 1/velocity**2
         MTM = np.dot(M.T, ivars[:, None] * M)
         ys = self.all_rvs.flatten()
         ys = np.append(ys, 0.) # last datum
@@ -217,7 +225,7 @@ class Results(object):
         resids = ys - np.dot(M, xs)
         lnlike = -0.5 * np.sum(resids * ivars * resids - np.log(2. * np.pi * ivars))
         if return_rvs:
-            return lnlike, xs[:self.N], xs[self.N:] # must be synchronized with get_design_matrix(), and last datum removal
+            return lnlike, xs[:self.N], xs[self.N:], MTM # must be synchronized with get_design_matrix(), and last datum removal
         return lnlike
         
     def opposite_lnlike_sigmas(self, pars, **kwargs):
