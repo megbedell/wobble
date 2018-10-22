@@ -297,10 +297,10 @@ def plot_pars_from_file(filename, basename, orders=np.arange(72)):
 
         
 if __name__ == "__main__":
-    starname = 'barnards'
+    starname = '51peg'
     orders = np.arange(72)
     K_star = 0
-    K_t = 0
+    K_t = 3
     initialize_at_zero = False # toggle telluric template initialization
     plot = True
     verbose = True
@@ -330,7 +330,7 @@ if __name__ == "__main__":
             f.create_dataset('L2_template', data=np.zeros(R)+1.e6)
             if K_t > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e3)
-                f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e9)
+                f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e8)
                 f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble
 
     # set up training & validation data sets:
