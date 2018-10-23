@@ -71,7 +71,8 @@ def savfile_to_filelist(savfile, destination_dir='../data/'):
     # copies CCF + E2DS files to destination_dir and returns a list of the CCFs
     s = readsav(savfile)
     filelist = []
-    for f in s.files:
+    files = [f.decode('utf8') for f in s.files]
+    for f in files:
         shutil.copy2(f, destination_dir)
         spec_file = str.replace(f, 'ccf_G2', 'e2ds')
         shutil.copy2(spec_file, destination_dir)
@@ -109,13 +110,13 @@ def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffi
 
 if __name__ == "__main__":
         
-    if True: #51 Peg
+    if False: #51 Peg
         ccf_filelist = np.genfromtxt('51peg_ccf_filelist.txt', dtype=None, encoding=None)
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
         
-    if True: #Barnard's Star
+    if False: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
         
         if False: # check for missing wavelength files
@@ -126,4 +127,10 @@ if __name__ == "__main__":
         data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
 
         hdffile = '../data/barnards_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)                  
+        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)     
+        
+    if True: #HIP11915
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/hip11915/HARPS*ccf_G2_A.fits')
+        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        hdffile = '../data/hip11915_e2ds.hdf5'
+        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, hdffile)
