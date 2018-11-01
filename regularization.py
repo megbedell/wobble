@@ -182,7 +182,7 @@ def improve_parameter(par, training_model, validation_model, regularization_dict
 def test_regularization_value(par, val, training_model, validation_model, regularization_dict, 
                               validation_data, validation_results, 
                               plot=False, verbose=True, basename='', 
-                              training_niter=100, validation_niter=1000):
+                              training_niter=200, validation_niter=1000):
     '''
     Try setting regularization parameter `par` to value `val`; return goodness metric `nll`.
     '''
@@ -297,8 +297,8 @@ def plot_pars_from_file(filename, basename, orders=np.arange(72)):
 
         
 if __name__ == "__main__":
-    starname = '51peg'
-    orders = np.arange(72)
+    starname = 'HD189733'
+    orders = np.arange(70,72)
     K_star = 0
     K_t = 3
     initialize_at_zero = False # toggle telluric template initialization
@@ -334,14 +334,14 @@ if __name__ == "__main__":
                 f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble
 
     # set up training & validation data sets:
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders) # to get N_epochs    
+    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, min_snr=3) # to get N_epochs    
     validation_epochs = np.random.choice(data.N, data.N//8, replace=False) # 12.5% of epochs will be validation set
     training_epochs = np.delete(np.arange(data.N), validation_epochs)
     training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
-                        epochs=training_epochs)
+                        epochs=training_epochs, min_snr=3)
     training_results = wobble.Results(training_data)
     validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=training_data.orders, 
-                          epochs=validation_epochs)
+                          epochs=validation_epochs, min_snr=1) # HACK
     validation_results = wobble.Results(validation_data)
     assert len(training_data.orders) == len(validation_data.orders), "Number of orders used is not the same between training and validation data."
     orders = training_data.orders
