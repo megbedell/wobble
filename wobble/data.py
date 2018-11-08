@@ -45,21 +45,23 @@ class Data(object):
         snrs_by_order = np.sqrt(np.nanmean(self.ivars, axis=(1,2)))
         orders_to_cut = snrs_by_order < min_snr
         if np.sum(orders_to_cut) > 0:
+            print("Data: Dropping orders {0} because they have average SNR < {1:.0f}".format(orders[orders_to_cut], min_snr))
             orders = orders[~orders_to_cut]
             self.read_data(orders=orders, epochs=epochs) # overwrite with new data
             self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         if len(orders) == 0:
-            print("All orders failed the quality cuts. Try lowering min_snr.")
+            print("All orders failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             return
         epochs = np.asarray(self.epochs)
         snrs_by_epoch = np.sqrt(np.nanmean(self.ivars, axis=(0,2)))
         epochs_to_cut = snrs_by_epoch < min_snr
         if np.sum(epochs_to_cut) > 0:
+            print("Data: Dropping epochs {0} because they have average SNR < {1:.0f}".format(epochs[epochs_to_cut], min_snr))
             epochs = epochs[~epochs_to_cut]
             self.read_data(orders=orders, epochs=epochs) # overwrite with new data
             self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         if len(epochs) == 0:
-            print("All epochs failed the quality cuts. Try lowering min_snr.")
+            print("All epochs failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             return
             
         # log and normalize:
@@ -103,7 +105,7 @@ class Data(object):
             self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)
     
     def mask_low_pixels(self, min_flux = 1., padding = 2, min_snr = 5.):
-        """Set ivars to zero for pixels and regions that are bad."""
+        """Set ivars to zero for pixels and edge regions that are bad."""
         # mask out low pixels:
         for r in range(self.R):
             bad = self.fluxes[r] < min_flux
