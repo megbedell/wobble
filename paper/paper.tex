@@ -40,34 +40,30 @@
 \begin{abstract}
 % Context
 Extreme-precision radial velocity (\EPRV) exoplanet surveys face considerable data analysis challenges in extracting maximally precise \RVs from spectra. 
-Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features, which cannot be perfectly modeled. 
+Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features, which are not perfectly known. 
 Another major limitation on the achievable \RV precision is the need to adopt an imperfect stellar template against which to cross-correlate or otherwise match the observations. 
 In both cases, the precision-limiting reliance on external information can be sidestepped using the data itself. 
-%In both cases, the full data set of all observed spectra for a given target generally contains more complete information about the underlying 
-%In both cases, using the full data set of all observed spectra for a given target will yield more precise constraints on the underlying spectra and their \RVs than a traditional analysis. %\todo{(reword this to be less controversial?)}
-%Telluric absorption features in stellar spectra provide particular challenges to extreme-precision radial velocity (\EPRV) exoplanet surveys. 
-%Large amplitude features are often masked in data analysis pipelines, reducing the number of observable spectral features which can be used to measure an \RV shift.
-%Low-amplitude features that are hard to see even in high signal-to-noise spectra may be an important contributor to the overall \RV noise budget.
 % Aims
-Here we propose a data-driven method to simultaneously extract precise \RVs and infer the underlying stellar and telluric spectra using a linear model (in the log flux). 
+Here we propose a data-driven method to simultaneously extract precise \RVs and infer the underlying stellar and telluric spectra using a linear model (in the log of flux). 
 The model employs a convex objective and convex regularization to keep the optimization of the spectral components fast. 
-We implement this method in \wobble, an open-source \python package which uses \TF in its first non-machine-learning application to astronomical data. 
+We implement this method in \wobble, an open-source \python package which uses \TF in its first non-neural-network application to astronomical data. 
 In this work, we demonstrate the performance of \wobble on archival \HARPS spectra.
 % Results
 We recover the canonical exoplanet 51 Pegasi b, detect the secular \RV evolution of the M dwarf \Mdwarf, and retrieve the \RM for the Hot Jupiter HD 189733b. 
 We also present extremely high-\SNR composite stellar spectra and detailed time-variable telluric spectra derived from these data. 
-%This method may be of particular interest for future red-optimized spectrographs aiming to detect and characterize M dwarf host stars, where telluric features are considerable at wavelengths corresponding to the peak of the stellar spectral energy distribution.  
 \end{abstract}
+
+\keywords{atmospheric effects, methods: data analysis, planets and satellites: detection, stars: individual (51 Pegasi, Barnard's Star, HD 189733), techniques: radial velocities}
 
 \section{Introduction}
 
 Precise radial velocity (\RV) measurements are critical to the discovery and characterization of exoplanets. 
-On order of one dozen dedicated spectrographs exist for the purpose of \RV planet-hunting, with at least as many more currently under construction \citep{Wright2017}. 
+On the order of one dozen dedicated spectrographs exist for the purpose of \RV planet-hunting, with at least as many more currently under construction \citep{Wright2017}. 
 However, significant challenges exist in deriving precise \RV measurements from these spectra. 
 %The current capabilities of extreme-precision radial velocity (\EPRV) instruments do not extend to the 10 \cms\ regime, 
 %In this work, we present an open-source code for \RV\ determination. We use a highly flexible linear model to extract \RV s in a fully data-driven way. %Our method simultaneously models the stellar and telluric spectra.
 
-One of the primary drivers of the \RV noise budget is the incomplete treatment of telluric features in the
+One of the primary contributors to the noise budget in \RV measurements is the incomplete treatment of telluric features in the
 Earth's atmosphere \citep{Halverson2016}. 
 Often, particular sections of a spectrum that are likely to feature telluric features are identified before the velocity shift of the stellar spectrum is inferred. 
 These regions are then removed from analysis, leaving only seemingly telluric-free regions to be analyzed \citep[e.g.][]{AngladaEscude2012}.
@@ -94,7 +90,7 @@ For these conditions to be true, though, requires a significant investment of ob
 Additionally, artifacts may remain near strong telluric features due to the imperfect correction of unresolved features \citep{Bailey2007}.
 
 An alternative approach is the simultaneous modeling of both telluric and spectral features from the data. 
-As the Earth's motion around the barycenter of the solar system induces a Doppler shift considerably larger than both the motion of telluric features and the size of a single pixel on the detector, these two spectra can be disentangled.
+As the Earth's motion around the barycenter of the Solar System induces a Doppler shift considerably larger than both the motion of telluric features and the size of a single pixel on the detector, these two spectra can be disentangled.
 This process is well-established in the analysis of binary star systems through the development of linear models \citep[e.g.][]{Simon1994} and in a Gaussian process framework \citep{Czekala2017}.
 In these cases, both spectra are assumed to be unchanging in time, which is a reasonable approximation of a stellar spectrum but not necessarily of the telluric spectrum.
 A more complicated model with time variability in the telluric spectrum may provide a more accurate fit. 
@@ -103,8 +99,8 @@ Work by \citet{Artigau2014} demonstrates that a Principal Component Analysis (\a
 
 Just as imperfect telluric modeling can be a noise source in \EPRV analyses, the choice of stellar template can also be a major source of error. 
 For stabilized, non-gas-cell \RV spectrographs, a standard approach has been to adopt a quasi-binary mask consisting of weighted top-hat functions at the expected locations of informative stellar absorption lines and cross-correlate this mask with the observed spectrum \citep[e.g.][]{Baranne1979, Pepe2002}. 
-This approach is limited by the accuracy of the mask, and since most masks are built for a broad category of spectral type rather than customized for the individual star in question, it is unlikely that this techniques retrieve maximally precise \RVs. 
-Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined was shown to be a superior approach for stars with complex spectra by \citet{AngladaEscude2012}. 
+This approach is limited by the accuracy of the mask, and since most masks are built for a broad category of spectral type rather than customized for the individual star in question, it is unlikely that this technique retrieves maximally precise \RVs. 
+Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined has been shown to be a superior approach for stars with complex spectra \citep{AngladaEscude2012}. 
 
 Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is a single observation taken for the purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
@@ -113,7 +109,7 @@ Such data-driven templates have the benefit of being both customized to the star
 
 %\todo{(talk about lack of open-source code and difficulty of modifying \RV pipelines here?)}
 
-Here we develop a data-driven model to infer the telluric and stellar spectra and calculate the stellar RV at each observed epoch. 
+Here we develop a data-driven model to infer the telluric and stellar spectra and calculate the stellar \RV at each observed epoch. 
 The telluric model component may vary with time in a low-dimensional manner, which is also inferred from the data. 
 Our model requires no prior knowledge of the star or the Earth's atmosphere. 
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
@@ -130,6 +126,7 @@ However, the implementation that we present here is designed for flexibility and
 In Section \ref{s:methods}, we outline the model and its key underlying assumptions. 
 We present an open-source implementation of this method in \python and \TF called \wobble. 
 In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733. 
+We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}.
 We revisit many of the assumptions underlying \wobble in Section \ref{s:future} with a detailed look at the limitations of the current implementation. 
 We outline potential ways of adapting \wobble\ for such cases as instruments with absorption cells, intrinsic time variability in the stellar spectrum, and lower-quality data. 
 Finally, we conclude with a brief summary in Section \ref{s:conclusion}.
@@ -151,29 +148,28 @@ For the cases shown in this work, two components are used: a stellar spectrum wh
 We choose to work in log(flux) space so that the data to be modeled are simply a sum of the component spectra.
 
 For the case of the telluric component, whose spectrum is allowed to vary with time, we assume this spectral variability is low-dimensional. 
-This assumption is physically motivated by the fact that a relatively small number of molecular species contribute to the telluric absorption spectrum. 
+This assumption is physically motivated in the sense that that a relatively small number of molecular species contribute to the telluric absorption spectrum. 
 It is also needed in a practical sense, since every additional dimension over which the telluric spectrum can vary adds several thousand more free parameters to the model.
 
 We assume that the stellar spectrum is invariant with time. 
-This assumption will be revisited in Section \ref{s:future}. 
+This assumption does not hold true in detail and will be revisited in Section \ref{s:future}. 
 
-We assume that both the stellar and telluric spectra are approximately located at zero in logarithmic flux with small deviations due to absorption lines. 
+We assume that both the stellar and telluric spectra are approximately located at zero in logarithmic flux (or unity in linear) with small deviations due to absorption lines. 
 As a result of this assumption, we are able to apply L1 and L2 regularization to the spectral templates. 
 Regularization is a commonly used technique in machine learning, where large numbers of free parameters are standard. 
 It is equivalent to applying a prior to the parameters which pushes them toward zero in the absence of strong evidence otherwise from the data. 
 The strength of the regularization may be tuned to suit the data at hand through a cross-validation scheme: for example, the best-suited regularization in the bluest spectral orders may be much stronger for the telluric spectrum, where few features are present, than it is for the star, which generally has a dense forest of spectral lines. 
 The exact implementation and validation of regularization in this model is further described in Section \ref{s:model-eqns}.
 
-Aside from this regularization to push spectra to zero in the low-\SNR regime, the model makes no assumptions about the shape of the stellar or telluric spectra. 
-We solve for spectral templates for each component as a series of pixels with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing. 
+Aside from this regularization to push model components to zero in the low-\SNR regime, the model makes no assumptions about the shape of the stellar or telluric spectra. 
+We solve for spectral templates for each component as a series of control points with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing. 
 In addition to keeping this model simple, linear, and largely convex, this means that no physical knowledge about the object being observed is needed to extract its \RVs. 
 
 For practical applications, the number of epochs $N$ must be large and span a significant fraction of the observing season. 
-If the number of spectra is small or if all spectra are taken over a very small range of time (e.g. a single night), it will be nearly impossible to disentangle the components of the model from each other, as this process relies on the apparent Doppler shifting of the star(s) and Earth's atmosphere relative to each other. 
+If the number of spectra is small or if all spectra are taken over a very small range of time (e.g. a single night), it will be nearly impossible to disentangle the components of the model, as this process relies on the apparent Doppler shifting of the star(s) and Earth's atmosphere relative to each other. 
 We will revisit this restriction in Section \ref{s:future}.
 
 Finally, we assume that, when the stellar and telluric components are properly optimized, only Gaussian noise remains. 
-This assumption will be revisited in Section \ref{s:future}.
 
 \subsection{Model Specification}
 \label{s:model-eqns}
@@ -192,34 +188,34 @@ The stellar spectrum contribution is:
 \begin{equation}
 y_{\star, n} = P(v_{obs, n}) \mu_{\star},
 \end{equation}
-where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu_{\star}$ is a spectral template with length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid. 
+where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu_{\star}$ is a spectral template with length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid of control points. 
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
 The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
 
-The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity about its center of mass ($v_{\star, n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV$_{n}$ ), the latter of which is known.
+The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity about its center of mass ($v_{\star, n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{t, n} =  A_n(\mu_{t} + W_{t} z_n)
+y_{t, n} =  A_n(\mu_{t} + W_{t} z_n).
 \end{equation}
-In addition to its mean spectrum $\mu_t$, the telluric component also takes a time-dependent component assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
+In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
 $W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used. 
 For the purposes of this work we found good performance with $K$ set to 3, but this may vary for other applications. 
-The net telluric spectrum (mean + time-variable components) is weighted by the air mass at the time of observation $A_n$, a known quantity.
+The net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
 
 We evaluate a log-likelihood for each epoch
 \begin{equation}
 \ln \mathcal{L}_n = \sum_{m} -0.5 (y_{m,n} - y'_{m,n})^T C_{m,n}^{-1} (y_{m,n}-y'_{m,n}),
 \end{equation}
-comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties on each data point.
+comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data.
 
 The number of free parameters in this model is large: we must optimize every grid point in the mean spectral templates and telluric basis vectors along with the stellar \RV and the telluric basis weights for each epoch. 
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
 
-L1 normalization adds a term to the log-likelihood that takes the form:
+L1 normalization adds a term to the log-likelihood that takes the form \todo{(TO DO: change notation to match literature)}:
 $$ L1(p, \lambda) = \lambda \sum_{i} | p_{i} | ,$$
 where $p$ is the vector of parameters to be normalized (in this case $\mu_{{\star}}$, $\mu_{{t}}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
 
@@ -253,7 +249,7 @@ where the regularization amplitude for the basis weights is arbitrarily set to 1
 \subsection{Optimizing the Model}
 \label{s:optimizing}
 
-As an initial guess, we set the star to be stationary, e.g. $v_{obs} = v_{BERV}$ at all epochs. 
+As an initial guess, we set the star to be stationary, e.g. $v_{obs} = $ \BERV at all epochs. 
 We may then initialize the stellar spectrum $\mu_{\star}$ by Doppler-shifting the data and calculating the median flux across \BERV-corrected spectra in bins at each model wavelength $\lambda'$. 
 The telluric template is initialized similarly by using the residuals after the stellar contribution has been removed, again binning in model wavelength (this time without applying any Doppler shift to the spectra) and taking the median values of each bin. 
 Finally, we initialize the telluric spectrum's basis vectors $W_t$ and weights $z_t$ by performing Principal Component Analysis (\acronym{PCA}) on the residuals after both the stellar spectrum and the mean telluric spectrum have been removed. 
@@ -283,14 +279,14 @@ v_{n,r} = v_n + v_r + \mathcal{N}(0,\,\sigma_{n,r}^{2} + \delta_r^2 )\,,
 \end{equation}
 where $v_n$ and $v_r$ are the characteristic \RVs at epoch $n$ and order $r$, $\sigma_{n,r}$ is the estimated measurement uncertainty on $v_{n,r}$, and $\delta_r$ is an additional jitter term specific to order $r$. 
 
-\todo{(To do: fill in details: prior on $<v_r>$, optimization over $\delta_r$.)}
+\todo{(To do: fill in details: prior on $<v_r>$, optimization over $\delta_r$ with $v_n$ and $v_r$ analytically solved for.)}
 
 \subsection{Implementation}
 \label{s:implementation}
 
 The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, in \code{python} using \TF. 
-\TF is a \todo{DFM: [blah blah technical blah]}. 
-While it has primarily been used in machine-learning contexts in the astronomical literature \todo{(cite)}, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well. 
+\TF is a \todo{(DFM: write something technical here please)}. 
+While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well. 
 The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in \todo{30} minutes on a standard Mac desktop.
 
 Our code made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
@@ -315,7 +311,7 @@ This masking is done by setting the inverse variance on the masked data point to
 In brief, we mask pixels whose extracted flux is below zero as well as regions at the edges of the spectral orders where the local \SNR falls below 5. 
 After masking these data, we convert the flux to log space and continuum normalize by fitting a polynomial to an asymmetrically clipped subset of the data. 
 
-\todo{The final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off a drift term specified in the data header, consistent with the standard \HARPS pipeline.}
+The final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off a drift term specified in the data header, consistent with the standard \HARPS pipeline. \todo{(TO DO: make sure this is implemented!)}
 
 Below we describe the results of applying this procedure and optimizing the \wobble model using \HARPS data for stars of different types: a G dwarf with a known planet, an \RV-quiet M dwarf, and an early-K dwarf undergoing a planetary transit event.
 
@@ -326,14 +322,15 @@ This target is a Sun-like star hosting a planet with an orbital period of 4 days
 Its canonical status as the first exoplanet discovered means that large amounts of data exist for this system. 
 In particular, archival \HARPS data exist mainly from efforts to observe reflected-light spectra of the planet \citep{Martins2015}. 
 
-We ran \wobble on these archival data to test its performance on recovering a planetary signal with well-known orbital characteristics.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell329968 and mbedell331551.} 
-The 91 publicly available spectra in the \HARPS archive are largely concentrated on a few nights of intensive observing, but these nights are sufficiently spread out throughout the year for a wide enough range in \BERV to disentangle the stellar and telluric spectra.
+We ran \wobble on these archival data to test its performance on recovering a planetary signal with well-known orbital characteristics.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell:329968 and mbedell:331551.} 
+The 91 publicly available spectra in the \HARPS archive are largely concentrated on a few nights of intensive observing, but these nights are sufficiently spread out throughout the year for a wide enough range in \BERV to disentangle the stellar and telluric spectra. 
+Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the central wavelength regions of \HARPS.
 
 Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the correct period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). \todo{(numbers here, address the structure in residuals)}
 
 Fits to an individual spectrum are shown in Figure \ref{fig:51peg_spectrum}. 
 We emphasize that no \textit{a priori} information on e.g. expected spectral line positions and depths were used. 
-The current realization of the \wobble algorithm treats each pixel of the template spectra as independent and has no line shape parameterization included. 
+The current realization of the \wobble algorithm treats each control point of the template spectra as independent and has no line shape parameterization included. 
 Nevertheless, the optimized stellar templates clearly reproduce the expected appearance of the spectra in a variety of regimes, from a crowded-line region to a sparser, continuum-dominated region to an extremely strong absorption line like the H$\alpha$ feature.
 
 \begin{figure}
@@ -353,19 +350,21 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 \subsection{\Mdwarf}
 \label{s:Mdwarf}
 
-Next, we tested \wobble with 306 epochs of \Mdwarf spectra.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell359445 and mbedell359501.} 
-\todo{(say brief things about data quality - it's low \SNR)}
+Next, we tested \wobble with 306 epochs of \Mdwarf spectra.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell:359445 and mbedell:359501.} 
+\Mdwarf is a mid-M dwarf, and as such its output is low in the optical; the typical \SNR of the spectra in the central wavelength regions of \HARPS ranges from 20-50. 
+In practice, this means that the 7 bluest echelle orders were consistently masked and dropped from the fit in accordance with the \SNR criteria outlined previously. 
+Regardless, a large amount of data remained, allowing us to test \wobble's performance on observations with substantially different properties from the previous case.
 
 \Mdwarf is one of the nearest stars to us at a distance of less than 2 parsecs. 
 It is also the star with the highest known proper motion. 
 Its trajectory translates to a projected secular change in \RV of approximately 4.5 $\mathrm{m}~\mathrm{s}^{-1}~\mathrm{yr}^{-1}$ \citep{Kurster2003}. 
 This trend has been observed in some data sets, including long-term \HARPS and \acronym{HIRES} observations, although \acronym{UVES} \RVs were inconsistent with the predicted linear slope \citep{Kurster2003, Bonfils2013, Choi2013, Montet2014}. 
-No planets have been found around \Mdwarf to date despite considerable amounts of \RV monitoring and little stellar activity has been observed, making it a good quiet star test case for \wobble. 
+Aside from this linear trend, \Mdwarf is commonly used as an \RV standard M dwarf because little stellar activity has been observed and no planets discovered until very recently despite considerable \RV monitoring \citep{Ribas2018}. 
 
 \begin{figure}
 \centering
 \includegraphics[width=5in]{barnards_rvs}
-\caption{Radial velocity measurements for \Mdwarf from \wobble (black) and from the standard \HARPS pipeline (red). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid blue line (top panel). Residuals away from the predicted trend are plotted in the lower panel. \todo{(TO DO: add error bars)}}
+\caption{Radial velocity measurements for \Mdwarf from \wobble (black) and from the standard \HARPS pipeline (red). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid blue line (top panel). Residuals away from the predicted trend are plotted in the lower panel. \todo{(TO DO: add error bars and change color scheme)}}
 \label{fig:barnards_rvs}
 \end{figure}
 
@@ -387,14 +386,14 @@ The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
 \begin{figure}
 \centering
 \includegraphics[width=5.5in]{barnards_multispectrum}
-\caption{Example echelle orders at a randomly chosen epoch from the \HARPS observations of Barnard's Star, plotted as in Figure \ref{fig:51peg_spectrum}. \todo{(to do: weaken telluric regularization to try and get missing line at 6576 \ang)}}
+\caption{Example echelle orders at a randomly chosen epoch from the \HARPS observations of Barnard's Star, plotted as in Figure \ref{fig:51peg_spectrum}.}
 \label{fig:barnards_spectrum}
 \end{figure}
 
 \begin{figure}
 \centering
 \includegraphics[width=6in]{barnards_model}
-\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. The spectral template derived by \wobble is shown as a red line, while a theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as a blue line. The \wobble model has been Doppler-shifted to match the rest-frame line positions.}
+\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. The spectral template derived by \wobble is shown as a red line, while a theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as a blue line. The \wobble model has been Doppler-shifted to match the rest-frame line positions. \todo{(FIX COLORS!)}}
 \label{fig:barnards_model}
 \end{figure}
 
@@ -403,13 +402,13 @@ To keep the template spectra from overfitting the noise, the regularization ampl
 This has the side effect of flattening out weak features if no strong lines are present in a given order. 
 As a result, we are able to retrieve fewer telluric lines in the bluer orders (compare the top panels of Figures \ref{fig:51peg_spectrum} and \ref{fig:barnards_spectrum} \todo{-- To do: check if there's a better example order}). 
 In redder orders, where the \SNR is higher and more strong telluric lines are present, the features are retrieved (bottom panel of Figure \ref{fig:barnards_spectrum}). 
-However, telluric variability was not able to be resolved in the overwhelming majority of orders \todo{(check on this and whether RVs are affected by K setting)}. 
-We therefore caution that difficult-to-resolve microtellurics and time-variable features may not be reliably disentangled from the stellar spectrum when \wobble is applied to lower signal observations \todo{(\SNR $\lessapprox 100$ pixel$^{-1}$)}.
+However, telluric variability was not able to be resolved in the overwhelming majority of orders; in fact, the results presented here were obtained with the tellurics model set to $K=0$ (no variability included). 
+We therefore caution that difficult-to-resolve microtellurics and time-variable features may not be reliably disentangled from the stellar spectrum when \wobble is applied to lower signal observations \SNR $\lessapprox 50$ pixel$^{-1}$).
 
 Despite the extreme noise at the bluer end of the wavelength range, where \Mdwarf is very faint, \wobble successfully retrieves a template spectrum that appears consistent with general expectations for a mid-M dwarf through most of the \HARPS wavelength range. 
 As a sanity check, we compare the \wobble stellar template model with a high-resolution \PHOENIX model at \Mdwarf's previously measured spectral parameters \citep[\teff = 3200 K, \logg = 5.0, and \mh = $-0.5$;][and references therein]{Husser2013, Artigau2018}. 
 Even in the bluest regions, the features inferred by \wobble compare well with the \PHOENIX predictions in broad strokes (Figure \ref{fig:barnards_model}). 
-\todo{(check in about opacity binning affecting the smaller features)} 
+\todo{(TO DO: ask Travis Barman about opacity binning affecting the detailed features)} 
 
 These results emphasize the potential value of \wobble data products for spectral characterization and model testing, particularly in the case of faint stars and M dwarfs, for which many spectra must be combined to get a reasonably detailed composite spectrum. 
 The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and marginalizing over unknown \RV shifts.
@@ -436,12 +435,12 @@ We derived this template by running \wobble on the 51 Peg data with non-time-var
 The stellar spectrum of HD 189733 and its \RVs were left as free parameters.
 
 The resulting \RV signal retrieved by \wobble is shown in Figure \ref{fig:hd189_rm}. 
-We fit the signal using \starry \citep{Luger2018}. \todo{(TO DO: fill in with Rodrigo)} 
+We fit the signal using \starry \citep{Luger2018}. \todo{(RODRIGO: fill in a bit about methods)} 
 \todo{(comparison of retrieved parameters to previous work here)} 
 
 These results confirm that the \wobble method measures line asymmetries as \RV shifts in the same manner as traditional \RV analysis techniques. 
 While this is a useful approximation in the case of the \RM, in general the confusion of these two spectral changes is a major cause of correlated noise in \RV time series \citep[e.g.][]{}. 
-The simplicity and extensibility of the \wobble method is useful in this regard, as the model could be modified in a relatively straightforward manner to fit line asymmetries and true Doppler shifts separately. 
+The simplicity and extensibility of the \wobble method is useful in this regard, as the model could be modified to fit line asymmetries and true Doppler shifts as separate parameters. 
 This would help to disentangle signals caused by photospheric features like starspots from the \RV signal due to reflex motion in a planetary system. 
 We discuss this prospect further in Section \ref{s:future}.
 
@@ -452,7 +451,7 @@ We discuss this prospect further in Section \ref{s:future}.
 \begin{figure}
 \centering
 \includegraphics[width=6.5in]{telluric_comparison}
-\caption{Fits to a 15-\ang region with substantial telluric contamination for 51 Peg (left) and \Mdwarf (right). The upper panels show the \wobble best-fit telluric spectrum (blue line), best-fit stellar spectrum (red line), data (black points), and the sum of the telluric and stellar model predictions (black line). Residuals are shown in the lower panels. Although the fits to each data set were performed entirely independently, the optimized telluric spectra are nearly identical, demonstrating that \wobble successfully finds an accurate representation of the common telluric absorption spectrum.}
+\caption{Fits to a 15-\ang region with substantial telluric contamination for 51 Peg (left) and \Mdwarf (right). The upper panels show the \wobble best-fit telluric spectrum (blue line), best-fit stellar spectrum (red line), data (black points), and the sum of the telluric and stellar model predictions (black line). Residuals are shown in the lower panels. Although the fits to each data set were performed entirely independently, the optimized telluric spectra are nearly identical, demonstrating that \wobble successfully finds an accurate representation of the common telluric absorption spectrum. \todo{(TO DO: add y-label, fix centering)}}
 \label{fig:telluric_comparison}
 \end{figure}
 
@@ -473,11 +472,11 @@ We leave such an effort to future work.
 \begin{figure}
 \centering
 \includegraphics[width=5in]{telluric_standard}
-\caption{Comparison of telluric spectrum derived by \wobble analysis of 51 Peg spectra (upper panel) and the spectrum observed with a telluric standard star (lower panel) around an H$_2$O absorption band. The \wobble method delivers a very high \SNR telluric spectrum with no overhead observing time required.}
+\caption{Comparison of telluric spectrum derived by \wobble analysis of 51 Peg spectra (upper panel) and the spectrum observed with a telluric standard star (lower panel) around an H$_2$O absorption band. No telluric standard star data was used in determining the \wobble telluric template. The \wobble method delivers a very high \SNR telluric spectrum with no overhead observing time required.}
 \label{fig:telluric_standard}
 \end{figure}
 
-As another test of our derived telluric spectra, we compared the mean template from 51 Peg to an observation of the telluric standard star \todo{HR 3090 (+details)}.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell:385782 and } 
+As another test of our derived telluric spectra, we compared the mean template from 51 Peg to an observation of the telluric standard star \todo{HR 3090 (+details)}.\footnote{Based on data obtained from the ESO Science Archive Facility under request numbers mbedell:385782 and \todo{xxx}.}
 As shown in Figure \ref{fig:telluric_standard}, the spectra agree well. 
 Moreover, the composite telluric spectrum inferred from the time series of 51 Peg observations is at a much higher \SNR than the single shot telluric standard spectrum, so that low-amplitude lines which border on statistical insignificance in the standard star show up clearly in the \wobble results. 
 Unlike a traditional telluric standard observation, no overhead time is required to produce these results.
@@ -498,7 +497,7 @@ There is clearly coherent structure in the variations.
 As we might expect, many of the lines co-vary with each other: as all known telluric lines in this region arise from H$_2$O, this likely corresponds to time-variable levels of atmospheric water vapor content. 
 In general, the basis vectors are suggestive of Doppler shifts, perhaps due to wind speeds in different layers of the atmosphere contributing individually to the overall line shapes. 
 These hypotheses could be tested in the future by seeking correlations between basis weights and externally-measured weather diagnostics. 
-\todo{(is this enough? also show that basis weights change seasonally-ish?)}
+%\todo{(is this enough? also show that basis weights change seasonally-ish?)}
 
 
 \section{Limitations and Extensibility of \wobble}
@@ -513,14 +512,17 @@ For simplicity, we break this discussion down into two categories: changes to th
 We additionally outline some general changes or enhancements that could be made to potentially improve the \RV precision achieved by \wobble. 
 
 \subsection{Changes to the Data}
+\label{s:data-changes}
 
 In general, the data used in this work are high quality in terms of \SNR, spectral resolution, and quantity. 
 As demonstrated for the case of \Mdwarf, \wobble is limited in its operability when the data are at low \SNR. 
-\wobble implicitly assumes Gaussian noise in $\ln$ flux, which is not strictly accurate. 
+\wobble implicitly assumes Gaussian noise in logarithmic flux, which is not strictly accurate. 
 This may become a substantial issue at low \SNR, making \wobble a poor tool choice for accurate modeling of very low \SNR spectra. 
 \todo{(HOGG: maybe say something about how we could mitigate this with changes to continuum handling?)}
 
-Our method may also fail at low spectral resolution. \todo{(what will happen for undersampled lines?)}
+Our method may also fail at low spectral resolution. 
+In particular, if the stellar spectrum does not shift with respect to the telluric spectrum by at least a resolution element, it will become extremely challenging to disentangle the two components. 
+\todo{(HOGG: say other things about undersampled lines?)}
 
 Along with minimum requirements on the spectral data quality, \wobble has some limitations driven by the number of spectra available and the sampling of those spectra. 
 Some minimum quantity of spectra are necessarily simply because the spectral templates contribute many free parameters, deriving up the data points needed for inference. 
@@ -544,15 +546,18 @@ The stellar \RV measurement would then be differential with respect to the effec
 This effective spectrograph \RV may vary in different spectral orders or smaller wavelength regions. \todo{(HOGG: say a thing)} 
 \todo{(TO DO: add some citations to using tellurics for this)}
 
-Spectral variability due to LSF changing? Additional parameters to the P operators, this would go into the non-convex optimization part (ask Hogg to throw in some words earlier on about location vs linear parameters)
-In principle, if the changes to the LSF were well-understood they could be hard-coded into the P operators. 
-Realistically speaking, if LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
+%Spectral variability due to LSF changing? Additional parameters to the P operators, this would go into the non-convex optimization part (ask Hogg to throw in some words earlier on about location vs linear parameters)
+Another way a less well-calibrated instrument may violate \wobble's assumptions is in the non-negligible variability of all spectral lines due to changes in the instrumental line spread function (\LSF). 
+In principle, if the changes to the \LSF were well-understood they could be hard-coded into the P operators. 
+Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
 This leads us into the territory of making more fundamental changes to the \wobble model.
 
 \subsection{Changes to the Model}
-
+\label{s:model-changes}
+ 
 The test data used in this work were all instances of a single, bright star, so that only one stellar component was necessary to model the astronomical source. 
 Other data sets may require a more complex model, including additional stars, planetary spectra, or non-negligible sky background. 
+They may also require more complex treatment of spectral variability. 
 There are some trade-offs associated with adding these components to the model, which we discuss here.
 
 One important feature of \wobble is that it models all fluxes in the log-space. 
@@ -561,18 +566,31 @@ If we chose instead to convert the $y$ data vectors to linear fluxes and use a m
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra. 
 If, however, the model needed to incorporate both additive and multiplicative components, major structural changes would be necessary and much of the optimization speed would be lost. 
 This means that at present, additive components may only be easily modeled by either fixing or neglecting the multiplicative components. 
-\todo{(HOGG: say things about hacks)}
+\todo{(HOGG: say things about hacks - maybe in a footnote even?)}
 
 One extra model component that is at present both simpler to implement and perhaps more important to the results than additive components is the spectral continuum. 
-We have assumed that our simple continuum normalization is good, but this is certainly not true at a detailed level.
+We have assumed that our simple continuum normalization is good, but this is certainly not true at a detailed level. 
+To some extent, this wrongness is absorbed into the telluric spectrum, as both the tellurics and the continuum can be treated as observatory rest frame features. 
+However, since the continuum and tellurics vary through time in different ways, the continuum should in principle be its own independent model component. 
+This component will be highly degenerate with the tellurics, but a clever representation could circumvent this: for example, the continuum spectrum could be placed on an extremely sparse wavelength grid to ensure that very localized effects like absorption lines are not included.
 
-Another way in which the \wobble model may fail for some data sets is in its assumptions about spectral variability.
+Another way in which the \wobble model may fail for some regimes is in its treatment of spectral variability.
 
-low-dimensional telluric variability: it's possible this isn't true in the current parameterization. what if we work with residuals away from a physical model of the tellurics? or reparameterize lines 
+We have assumed that the telluric spectrum is variable in a low-dimensional sense only. 
+While this assumption has a basis in the physical understanding of telluric lines, which are produced by only a small number of molecular species, it is not guaranteed that this reasoning translates into low variability in the current parameterization. 
+We may instead wish to change the spectral representation so that additional physics is included, as discussed further in Section \ref{s:improvements}. 
+Alternatively, we could keep the current representation but fit the telluric model to the residuals away from some physics-based model. 
 
-constant stellar spectrum: cite \citet{Davis2017} for PCA approach. Some absorption lines are more sensitive to the effects of stellar activity than others (Dumusque). If these fall into a small number of categories, a PCA-like dimensionality reduction should do well. Address pros and cons of introducing Gaussian processes to parameterize line profiles. deal with this similarly to the LSF changing? also, maybe we need to regularize (or put priors on) the \RVs themselves and force them to sum of Keplerians for the purpose of breaking degeneracies with stellar variability.
+We have also assumed that the stellar spectrum is constant, which is almost certainly false. 
+A variety of physical effects cause changes in the spectrum including stellar oscillations, convection, and activity in the form of starspots or plages. 
+\wobble can model stellar variability trivially by making the stellar component of the model take a similar form to the tellurics, where a set of basis vectors and weights are inferred from the data to capture variability. 
+This \PCA-like approach may be quite effective \citep{Davis2017}. 
+It does, however, introduce potential degeneracies between the inferred stellar variability and the Doppler shift. 
+To avoid this degeneracy, we might instead represent the stellar spectrum with an explicit parameterization of the line profile and restrict variability to the line depths, widths, and skews; such a change would fall along the same lines as the global \LSF parameterization proposed in Section \ref{s:data-changes}. 
 
-\todo{HOGG: Bayesian version of \wobble?}
+%Some absorption lines are more sensitive to the effects of stellar activity than others (Dumusque). If these fall into a small number of categories, a PCA-like dimensionality reduction should do well. Address pros and cons of introducing Gaussian processes to parameterize line profiles. deal with this similarly to the LSF changing? also, maybe we need to regularize (or put priors on) the \RVs themselves and force them to sum of Keplerians for the purpose of breaking degeneracies with stellar variability.
+
+\todo{(HOGG: Bayesian version of \wobble?)}
 
 
 \subsection{Basic Adjustments}
@@ -582,7 +600,7 @@ Even working within \wobble's current assumptions and running on \HARPS data, th
 Many of these are quite basic and straightforward changes to be made within the existing framework of \wobble. 
 We discuss some of potential adjustments here.
 
-Perhaps the most obviously sub-optimal part of \wobble is its reliance on regularization. 
+Perhaps the most obvious shortcoming of \wobble is its reliance on regularization. 
 We chose this framework because it keeps the model convex and its implicit assumptions (that the spectra are a flat continuum by default) closely mirror our physical understanding. 
 However, setting the regularization amplitudes optimally is by far the computationally slowest and most unwieldy part of applying \wobble to a new data set. 
 In principle, as data sets get larger, regularization becomes less necessary. 
@@ -592,38 +610,54 @@ This could be done with relatively trivial changes to the \wobble code, although
 One choice that \wobble makes differently from other data-driven \RV codes is the way we represent the underlying spectral components. 
 We use an extremely simple representation: a model grid of wavelengths and corresponding fluxes that gets linearly interpolated by the P operator. 
 One possible improvement would be to go to a higher-order interpolation scheme. 
-Another approach would be to take a non-parameteric approach like a Gaussian process (as \code{STARFISH} uses). 
-A third approach would be to use a model that incorporates more physics: this could range from a model that is parameterized in terms of absorption line profile parameters to a complex model including various atomic and molecular physics of the lines. 
+Another approach would be a non-parameteric method like a Gaussian process (as in the \code{STARFISH} code from \citet{Czekala2017}). 
+A third approach would be to use a model that incorporates more physics: this could range from a model with fixed lines that may vary only in terms of common line profile parameters to a complex model including various atomic and molecular physics of the lines. 
 A sensible way to implement this within the existing \wobble framework might be to add a physically motivated mean spectral template and optimize $y_{\star, n}$ vectors of residuals away from this template. 
 In any case, the general approach of \wobble does not depend intrinsically on the spectral representation, and swapping out the current representation for something else is simple, provided that the representative function can be implemented in \TF.
 
+Another choice we made which is almost certainly suboptimal is the treatment of each spectral order in the echelle data as an independent spectrum with its own stellar \RV. 
+In reality, every \RV should be informed by all spectral orders simultaneously. 
+Implementing this would take on some extra computational cost, but being in \TF will help to mitigate this.
 
+Finally, a change that is quite major but worth stating regardless is the possibility of fitting the data directly in the 2D domain. 
+Widely used methods of extracting 1D spectra almost certainly sacrifice some degree of spectral information \citep{Bolton2010}. 
+In the future, we may wish to move to fitting the data directly without extracting. 
+The equations for \wobble would change very little in this regime: essentially, the P operator would become a 2D interpolator. 
+However, implementation of this model would become much more complicated, and extra variable components like sky background and spectrograph dispersion functions would need to be introduced. 
+While this implementation is far beyond the scope of current work, we nevertheless emphasize that the \wobble model is a useful starting framework in which to work towards this goal.
 
-
-\begin{itemize}
-
-\item Spectral continuum!!! All methods are questionable at low SNR and in the absence of true continuum. Right solution is to simultaneously fit continuum with other model components, but this introduces degeneracies and must be handled carefully.
-
-\item We treat the orders separately: we mostly did this to break up the computation, but this could be changed straightforwardly. Doing so would take on additional computational cost, but we are in \TF so it shouldn't hurt too much.
-
-\item 1D extracted spectra. Our P operators are interpolators onto 1D data but they could be 2D interpolators! Little about the model equations would change, but implementation would become much trickier.
-
-\end{itemize}
+\vspace{2cm}
 
 \section{Conclusion}
 \label{s:conclusion}
 
-Extracting precise \RVs is important and will become more critical as new instruments come online. 
+Extremely precise \RV measurements are a critical part of modern exoplanet detection and characterization. 
+Many dedicated \EPRV instruments exist and more are being built with the goal of achieving better than \ms precision over long timescales. 
+Beyond the hardware challenges of building such instruments, software challenges exist as well: extracting maximally precise \RVs from high-quality spectra is not a trivial task. 
+Moreover, most existing \EPRV pipelines are closed-source, proprietary, and built for use with a specific instrument in mind. 
+While traditional \RV extraction methods are demonstrably suboptimal when it comes to treatment of telluric features or use of a fixed stellar template spectrum, experimenting with changes to the existing pipelines is generally not possible.
 
-Fundamental data-driven technique - requires no physics knowledge which makes it a great tool for expanding \RV searches.  
-Open-source, can be adapted for use with any current or future \EPRV instrument
-...
+In this work, we have proposed a simple linear model for simultaneously inferring stellar spectra, telluric spectra, and \RVs from the data. 
+Our model does not rely on physical knowledge of the star or the Earth's atmosphere. 
+We implement this method in \wobble, an open-source code designed to be extensible and adaptable for a variety of data sets. 
 
-Here's what this enables. 
+By running the \wobble algorithm on archival \HARPS spectra for a variety of stars, we have demonstrated its basic capabilities. 
+The \RVs achieved through this method are comparably precise to those obtained with the closed-source \HARPS pipeline. 
+Furthermore, the stellar and telluric spectra inferred purely from the data are high-quality and accurate. 
+We have shown that consistent telluric features are found from independent data sets with extremely different properties. 
 
-\todo{[TO DO: add software citations]}
+The data-driven methods used in \wobble are highly promising for the treatment of microtelluric lines and other deviations from spectral models. 
+This makes the approach particularly valuable for upcoming infrared surveys targeting M dwarfs, where telluric features are non-negligible and stellar models often fall short of matching the data. 
+It also eliminates costs in observational overhead for obtaining telluric standard spectra or accurate stellar templates.
 
-\acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, Heather Knutson, Timothy Morton, Melissa Ness, Hans-Walter Rix, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
+We make \wobble freely available to the \RV community to be adapted for use with various instruments and data sets. 
+We highlight the versatility of the algorithm in Section \ref{s:future} with suggested changes and improvements for applications to different regimes. 
+It is our hope that openly shared development of next-generation \RV analysis techniques will enable the community as a whole to make full use of the information-rich data being produced by current and future \EPRV surveys.
+
+\software{\todo{TO DO! --} astropy, numpy, matplotlib, scipy, tensorflow}
+
+\acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
+We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project.
 
 This research has made use of the services of the ESO Science Archive Facility. 
 
