@@ -541,17 +541,19 @@ This means that a gas cell instrument will generally violate other, more critica
 It is likely that for such an instrument, our assumption that the wavelength solution is perfect does not hold. 
 One simple way to deal with this would be to allow the observatory rest frame component(s) of the model to change in \RV. 
 The stellar \RV measurement would then be differential with respect to the effective spectrograph \RV. 
+This effective spectrograph \RV may vary in different spectral orders or smaller wavelength regions. \todo{(HOGG: say a thing)} 
 \todo{(TO DO: add some citations to using tellurics for this)}
 
 Spectral variability due to LSF changing? Additional parameters to the P operators, this would go into the non-convex optimization part (ask Hogg to throw in some words earlier on about location vs linear parameters)
+In principle, if the changes to the LSF were well-understood they could be hard-coded into the P operators. 
+Realistically speaking, if LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
+This leads us into the territory of making more fundamental changes to the \wobble model.
 
 \subsection{Changes to the Model}
 
 The test data used in this work were all instances of a single, bright star, so that only one stellar component was necessary to model the astronomical source. 
 Other data sets may require a more complex model, including additional stars, planetary spectra, or non-negligible sky background. 
 There are some trade-offs associated with adding these components to the model, which we discuss here.
-%Some or all of these additional components may also vary with time. 
-%Here we briefly discuss how such modifications might be made to the \wobble model to make it applicable to a wider variety of data.
 
 One important feature of \wobble is that it models all fluxes in the log-space. 
 When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}. 
@@ -561,27 +563,48 @@ If, however, the model needed to incorporate both additive and multiplicative co
 This means that at present, additive components may only be easily modeled by either fixing or neglecting the multiplicative components. 
 \todo{(HOGG: say things about hacks)}
 
+One extra model component that is at present both simpler to implement and perhaps more important to the results than additive components is the spectral continuum. 
+We have assumed that our simple continuum normalization is good, but this is certainly not true at a detailed level.
+
 Another way in which the \wobble model may fail for some data sets is in its assumptions about spectral variability.
 
 low-dimensional telluric variability: it's possible this isn't true in the current parameterization. what if we work with residuals away from a physical model of the tellurics? or reparameterize lines 
 
 constant stellar spectrum: cite \citet{Davis2017} for PCA approach. Some absorption lines are more sensitive to the effects of stellar activity than others (Dumusque). If these fall into a small number of categories, a PCA-like dimensionality reduction should do well. Address pros and cons of introducing Gaussian processes to parameterize line profiles. deal with this similarly to the LSF changing? also, maybe we need to regularize (or put priors on) the \RVs themselves and force them to sum of Keplerians for the purpose of breaking degeneracies with stellar variability.
 
+\todo{HOGG: Bayesian version of \wobble?}
 
-\subsection{General Changes}
+
+\subsection{Basic Adjustments}
 \label{s:improvements}
 
+Even working within \wobble's current assumptions and running on \HARPS data, there are potential changes to be made to the implementation of \wobble that may improve its performance. 
+Many of these are quite basic and straightforward changes to be made within the existing framework of \wobble. 
+We discuss some of potential adjustments here.
+
+Perhaps the most obviously sub-optimal part of \wobble is its reliance on regularization. 
+We chose this framework because it keeps the model convex and its implicit assumptions (that the spectra are a flat continuum by default) closely mirror our physical understanding. 
+However, setting the regularization amplitudes optimally is by far the computationally slowest and most unwieldy part of applying \wobble to a new data set. 
+In principle, as data sets get larger, regularization becomes less necessary. 
+One way to remove the need for telluric regularization might be to run on a data set that is composed of many different stars, each with their own individual spectra and \RVs but with a shared telluric component, so that the data informing the telluric lines is sufficiently large. 
+This could be done with relatively trivial changes to the \wobble code, although it would require strong computational resources.
+
+One choice that \wobble makes differently from other data-driven \RV codes is the way we represent the underlying spectral components. 
+We use an extremely simple representation: a model grid of wavelengths and corresponding fluxes that gets linearly interpolated by the P operator. 
+One possible improvement would be to go to a higher-order interpolation scheme. 
+Another approach would be to take a non-parameteric approach like a Gaussian process (as \code{STARFISH} uses). 
+A third approach would be to use a model that incorporates more physics: this could range from a model that is parameterized in terms of absorption line profile parameters to a complex model including various atomic and molecular physics of the lines. 
+A sensible way to implement this within the existing \wobble framework might be to add a physically motivated mean spectral template and optimize $y_{\star, n}$ vectors of residuals away from this template. 
+In any case, the general approach of \wobble does not depend intrinsically on the spectral representation, and swapping out the current representation for something else is simple, provided that the representative function can be implemented in \TF.
+
+
+
+
 \begin{itemize}
-
-\item Regularization framework could be improved: we chose it because it is convex and represents our beliefs but it's the most difficult and unwieldy part of \wobble.
-
-\item Spectral representation: ours sucks. Could go to higher-order interpolation scheme like cubic split OR smooth non-parametric rep like a GP OR something that incorporates more physics. Nothing about wobble depends on the spectral representation and it should be simple to swap out for something better provided it can be implemented in \TF.
 
 \item Spectral continuum!!! All methods are questionable at low SNR and in the absence of true continuum. Right solution is to simultaneously fit continuum with other model components, but this introduces degeneracies and must be handled carefully.
 
 \item We treat the orders separately: we mostly did this to break up the computation, but this could be changed straightforwardly. Doing so would take on additional computational cost, but we are in \TF so it shouldn't hurt too much.
-
-\item We could fit all stars simultaneously, which would give a much better telluric template
 
 \item 1D extracted spectra. Our P operators are interpolators onto 1D data but they could be 2D interpolators! Little about the model equations would change, but implementation would become much trickier.
 
