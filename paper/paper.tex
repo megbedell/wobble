@@ -164,9 +164,11 @@ The exact implementation and validation of regularization in this model is furth
 
 Aside from this regularization to push model components to zero in the low-\SNR regime, the model makes no assumptions about the shape of the stellar or telluric spectra.
 We solve for spectral templates for each component as a series of control points with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing.
-In addition to keeping this model simple, linear, and largely convex, this means that no physical knowledge about the object being observed is needed to extract its \RVs.
+In addition to keeping this model simple, linear, and largely convex
+(\todo{MB -- what does ``largely'' mean here?}), this means that no physical knowledge about the object being observed is needed to extract its \RVs.
 
-For practical applications, the number of epochs $N$ must be large and span a significant fraction of the observing season.
+For practical applications, the number of epochs $N$ must be large (\todo{MB
+-- how large? 12? 50? 100? Probably good to give some sense}) and span a significant fraction of the observing season.
 If the number of spectra is small or if all spectra are taken over a very small range of time (e.g. a single night), it will be nearly impossible to disentangle the components of the model, as this process relies on the apparent Doppler shifting of the star(s) and Earth's atmosphere relative to each other.
 We will revisit this restriction in Section \ref{s:future}.
 
