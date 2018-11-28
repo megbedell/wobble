@@ -297,11 +297,19 @@ where $v_n$ and $v_r$ are the characteristic \RVs at epoch $n$ and order $r$, $\
 \label{s:implementation}
 
 The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, in \code{python} using \TF.
-\TF is a \todo{(DFM: write something technical here please)}.
-While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well.
+\TF is a model building framework that has been primarily designed for machine
+learning applications, but at its core \TF is fundamentally a collection of
+highly optimized routines for doing linear algebra and efficiently computing the
+derivatives of these models with respect to large numbers of parameters.
+\wobble can be represented in this framework so we have re-purposed \TF for our
+needs.
+By using this framework, we benefit from the high performance and scalability
+of the implementation, as well as the algorithms implemented within \TF for
+fitting large numbers of parameters to large datasets.
+%While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well.
 The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in \todo{30} minutes on a standard Mac desktop.
 
-Our code made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
+Our code is made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
 
 
 
