@@ -115,7 +115,7 @@ Our model requires no prior knowledge of the star or the Earth's atmosphere.
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs.
 
 Our approach is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals.
-In this sense, ours is a true forward model.
+%In this sense, ours is a true forward model.  -- this content-less (DFM)
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. a reliable instrumental calibration and no absorption cell.
 We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s).
@@ -124,7 +124,8 @@ In this sense our method is intended as a post-processing step, not a real-time 
 However, the implementation that we present here is designed for flexibility and easy extensibility, and we discuss potential ways to overcome these limitations.
 
 In Section \ref{s:methods}, we outline the model and its key underlying assumptions.
-We present an open-source implementation of this method in \python and \TF called \wobble.
+We present an open-source implementation of this method in \python and \TF
+\citep{Abadi15} called \wobble.
 In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733.
 We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}.
 We revisit many of the assumptions underlying \wobble in Section \ref{s:future} with a detailed look at the limitations of the current implementation.
@@ -143,7 +144,7 @@ We revisit these in Section \ref{s:future}.
 
 First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution.
 
-We assume that the spectra can be modeled as the product of a finite number of components.
+We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape.
 We choose to work in log(flux) space so that the data to be modeled are simply a sum of the component spectra.
 
@@ -181,12 +182,12 @@ This choice makes the Doppler shift an additive term, considerably simplifying t
 
 We model each data column $y_n$ as the sum of the stellar and telluric spectra:
 \begin{equation}
-y_n = y_{\star, n} + y_{t, n} + noise.
+y_n = y_{n}^\star + y_{n}^t + noise.
 \end{equation}
 
 The stellar spectrum contribution is:
 \begin{equation}
-y_{\star, n} = P(v_{obs, n}) \mu_{\star},
+y_{n}^\star = P(v_{obs, n}) \mu_{\star},
 \end{equation}
 where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu_{\star}$ is a spectral template with length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid of control points.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
@@ -199,7 +200,7 @@ The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity a
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{t, n} =  A_n(\mu_{t} + W_{t} z_n).
+y_{n}^t =  A_n(\mu_{t} + W_{t} z_n).
 \end{equation}
 In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$.
 $W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used.
@@ -208,7 +209,7 @@ The net telluric spectrum (mean + time-variable components) is weighted by the a
 
 We evaluate a log-likelihood for each epoch
 \begin{equation}
-\ln \mathcal{L}_n = \sum_{m} -0.5 (y_{m,n} - y'_{m,n})^T C_{m,n}^{-1} (y_{m,n}-y'_{m,n}),
+\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n}),
 \end{equation}
 comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data.
 
@@ -216,11 +217,11 @@ The number of free parameters in this model is large: we must optimize every gri
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}.
 
 L1 normalization adds a term to the log-likelihood that takes the form \todo{(TO DO: change notation to match literature)}:
-$$ L1(p, \lambda) = \lambda \sum_{i} | p_{i} | ,$$
+$$ L1(p, \lambda) = -\lambda \sum_{i} | p_{i} | ,$$
 where $p$ is the vector of parameters to be normalized (in this case $\mu_{{\star}}$, $\mu_{{t}}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
 
 Similarly, L2 normalization adds a term of the form:
-$$ L2(p, \lambda) = \lambda \sum_{i} p_{i}^2 .$$
+$$ L2(p, \lambda) = -\lambda \sum_{i} p_{i}^2 .$$
 
 The effectiveness of the regularization depends sensitively on the value of $\lambda$ used: if $\lambda$ is too high, real features will be lost as the parameters are forced to zero, whereas setting $\lambda$ too low will make the regularization ineffective, leaving the model vulnerable to overfitting.
 
