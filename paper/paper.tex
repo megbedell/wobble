@@ -24,14 +24,14 @@
 \affiliation{Center for Data Science, New York University, 60 Fifth Ave, New York, NY 10011, USA}
 \affiliation{Max-Planck-Institut f\"ur Astronomie, K\"onigstuhl 17, D-69117 Heidelberg}
 
-\author{Daniel Foreman-Mackey}
+\author[0000-0002-9328-5652]{Daniel Foreman-Mackey}
 \affiliation{\flatiron}
 
 \author[0000-0001-7516-8308]{Benjamin T. Montet}
 \altaffiliation{Sagan Fellow}
 \affiliation{\chicago}
 
-\author{Rodrigo Luger}
+\author[0000-0002-0296-3826]{Rodrigo Luger}
 \affiliation{\flatiron}
 
 \correspondingauthor{Megan Bedell}
@@ -115,7 +115,7 @@ Our model requires no prior knowledge of the star or the Earth's atmosphere.
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
 
 Our approach is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
-In this sense, ours is a true forward model.
+%In this sense, ours is a true forward model.  -- this content-less (DFM)
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. a reliable instrumental calibration and no absorption cell. 
 We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s). 
@@ -124,7 +124,8 @@ In this sense our method is intended as a post-processing step, not a real-time 
 However, the implementation that we present here is designed for flexibility and easy extensibility, and we discuss potential ways to overcome these limitations.
 
 In Section \ref{s:methods}, we outline the model and its key underlying assumptions. 
-We present an open-source implementation of this method in \python and \TF called \wobble. 
+We present an open-source implementation of this method in \python and \TF
+\citep{Abadi15} called \wobble.
 In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733. 
 We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}.
 We revisit many of the assumptions underlying \wobble in Section \ref{s:future} with a detailed look at the limitations of the current implementation. 
@@ -143,7 +144,7 @@ We revisit these in Section \ref{s:future}.
 
 First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution.
 
-We assume that the spectra can be modeled as the product of a finite number of components. 
+We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape. 
 We choose to work in log(flux) space so that the data to be modeled are simply a sum of the component spectra.
 
@@ -163,9 +164,11 @@ The exact implementation and validation of regularization in this model is furth
 
 Aside from this regularization to push model components to zero in the low-\SNR regime, the model makes no assumptions about the shape of the stellar or telluric spectra. 
 We solve for spectral templates for each component as a series of control points with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing. 
-In addition to keeping this model simple, linear, and largely convex, this means that no physical knowledge about the object being observed is needed to extract its \RVs. 
+In addition to keeping this model simple, linear, and largely convex
+(\todo{DFM says: what does ``largely'' mean here?}), this means that no physical knowledge about the object being observed is needed to extract its \RVs.
 
-For practical applications, the number of epochs $N$ must be large and span a significant fraction of the observing season. 
+For practical applications, the number of epochs $N$ must be large (\todo{MB
+-- how large? 12? 50? 100? Probably good to give some sense}) and span a significant fraction of the observing season.
 If the number of spectra is small or if all spectra are taken over a very small range of time (e.g. a single night), it will be nearly impossible to disentangle the components of the model, as this process relies on the apparent Doppler shifting of the star(s) and Earth's atmosphere relative to each other. 
 We will revisit this restriction in Section \ref{s:future}.
 
@@ -181,25 +184,31 @@ This choice makes the Doppler shift an additive term, considerably simplifying t
 
 We model each data column $y_n$ as the sum of the stellar and telluric spectra:
 \begin{equation}
-y_n = y_{\star, n} + y_{t, n} + noise.
+y_n = y_{n}^\star + y_{n}^t + noise.
 \end{equation}
 
 The stellar spectrum contribution is: 
 \begin{equation}
-y_{\star, n} = P(v_{obs, n}) \mu_{\star},
+y_{n}^\star = P(v_{obs, n}) \mu_{\star},
 \end{equation}
-where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu_{\star}$ is a spectral template with length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid of control points. 
+where $\mu_{\star}$ is a spectral template with length $M'$ corresponding to
+the length of an arbitrarily-chosen wavelength grid of control points, and
+$P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
+interpolates $\mu_\star$ into the observatory rest frame.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
 The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
+\todo{DFM says: feel free to cut this:} $P$ could be represented as a rectangular
+$M \times M'$ sparse matrix, but the dot product can be implemented
+efficiently using linear interpolation instead of instantiating the full matrix.
 
 The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity about its center of mass ($v_{\star, n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{t, n} =  A_n(\mu_{t} + W_{t} z_n).
+y_{n}^t =  A_n(\mu_{t} + W_{t} z_n).
 \end{equation}
 In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
 $W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used. 
@@ -208,7 +217,7 @@ The net telluric spectrum (mean + time-variable components) is weighted by the a
 
 We evaluate a log-likelihood for each epoch
 \begin{equation}
-\ln \mathcal{L}_n = \sum_{m} -0.5 (y_{m,n} - y'_{m,n})^T C_{m,n}^{-1} (y_{m,n}-y'_{m,n}),
+\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n}),
 \end{equation}
 comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data.
 
@@ -216,16 +225,16 @@ The number of free parameters in this model is large: we must optimize every gri
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
 
 L1 normalization adds a term to the log-likelihood that takes the form \todo{(TO DO: change notation to match literature)}:
-$$ L1(p, \lambda) = \lambda \sum_{i} | p_{i} | ,$$
+$$ L1(p, \lambda) = -\lambda \sum_{i} | p_{i} | ,$$
 where $p$ is the vector of parameters to be normalized (in this case $\mu_{{\star}}$, $\mu_{{t}}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
 
 Similarly, L2 normalization adds a term of the form:
-$$ L2(p, \lambda) = \lambda \sum_{i} p_{i}^2 .$$
+$$ L2(p, \lambda) = -\lambda \sum_{i} p_{i}^2 .$$
 
 The effectiveness of the regularization depends sensitively on the value of $\lambda$ used: if $\lambda$ is too high, real features will be lost as the parameters are forced to zero, whereas setting $\lambda$ too low will make the regularization ineffective, leaving the model vulnerable to overfitting. 
 
 We set regularization amplitudes for \wobble using a cross-validation scheme. 
-In brief, we set aside 12.5\% of the total epochs as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set). 
+In brief, we randomly select 12.5\% of the total epochs to set aside as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set).
 The resulting best-fit spectral templates and basis vectors are taken as fixed and the time-dependent terms only (\RVs and basis weights) are optimized for the validation epochs. 
 The $\chi^2$ for the validation epochs can then be adopted as a goodness-of-fit measurement for the $\lambda$ value, and the procedure is repeated for different $\lambda$s to choose the best regularization amplitude. 
 Because we have multiple regularization terms and multiple amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation.
@@ -262,7 +271,10 @@ Next, the templates are held fixed and the time-dependent parameters (stellar \R
 \todo{(HOGG: how could this be made convex too?)}
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
 
-The inverse variance uncertainty on the parameters is calculated as the Hessian, or the second derivative of the likelihood with respect to each parameter. \todo{(DFM: help me rephrase if needed?)}
+After convergence, we estimate the uncertainties on the parameters by
+approximating the likelihood function near its maximum as Gaussian where the
+covariance matrix is the negative inverse Hessian (or second derivative
+matrix) of the log likelihood function with respect to the parameters.
 
 \subsection{Combining Spectral Orders}
 \label{s:combining-orders}
@@ -285,11 +297,19 @@ where $v_n$ and $v_r$ are the characteristic \RVs at epoch $n$ and order $r$, $\
 \label{s:implementation}
 
 The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, in \code{python} using \TF. 
-\TF is a \todo{(DFM: write something technical here please)}. 
-While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well. 
+\TF is a model building framework that has been primarily designed for machine
+learning applications, but at its core \TF is fundamentally a collection of
+highly optimized routines for doing linear algebra and efficiently computing the
+derivatives of these models with respect to large numbers of parameters.
+\wobble can be represented in this framework so we have re-purposed \TF for our
+needs.
+By using this framework, we benefit from the high performance and scalability
+of the implementation, as well as the algorithms implemented within \TF for
+fitting large numbers of parameters to large datasets.
+%While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well.
 The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in \todo{30} minutes on a standard Mac desktop.
 
-Our code made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
+Our code is made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
 
 
 
@@ -409,6 +429,9 @@ Despite the extreme noise at the bluer end of the wavelength range, where \Mdwar
 As a sanity check, we compare the \wobble stellar template model with a high-resolution \PHOENIX model at \Mdwarf's previously measured spectral parameters \citep[\teff = 3200 K, \logg = 5.0, and \mh = $-0.5$;][and references therein]{Husser2013, Artigau2018}. 
 Even in the bluest regions, the features inferred by \wobble compare well with the \PHOENIX predictions in broad strokes (Figure \ref{fig:barnards_model}). 
 \todo{(TO DO: ask Travis Barman about opacity binning affecting the detailed features)} 
+\todo{DFM says: when I look at figure 5, I feel like the two spectra really don't
+look similar. I think this could use some more discussion about why we find
+this figure satisfying.}
 
 These results emphasize the potential value of \wobble data products for spectral characterization and model testing, particularly in the case of faint stars and M dwarfs, for which many spectra must be combined to get a reasonably detailed composite spectrum. 
 The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and marginalizing over unknown \RV shifts.
@@ -564,7 +587,11 @@ One important feature of \wobble is that it models all fluxes in the log-space.
 When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}. 
 If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply. 
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra. 
-If, however, the model needed to incorporate both additive and multiplicative components, major structural changes would be necessary and much of the optimization speed would be lost. 
+If, however, the model needed to incorporate both additive and multiplicative
+components, major structural changes would be necessary and much of the
+optimization speed would be lost \todo{DFM says: this is not obvious to me.
+We're not currently dependent on anything being convex. I don't think we
+should say this without trying it...}.
 This means that at present, additive components may only be easily modeled by either fixing or neglecting the multiplicative components. 
 \todo{(HOGG: say things about hacks - maybe in a footnote even?)}
 
@@ -654,7 +681,13 @@ We make \wobble freely available to the \RV community to be adapted for use with
 We highlight the versatility of the algorithm in Section \ref{s:future} with suggested changes and improvements for applications to different regimes. 
 It is our hope that openly shared development of next-generation \RV analysis techniques will enable the community as a whole to make full use of the information-rich data being produced by current and future \EPRV surveys.
 
-\software{\todo{TO DO! --} astropy, numpy, matplotlib, scipy, tensorflow}
+\software{%
+    astropy \citep{Astropy13, Astropy18},
+    numpy \citep{Van-Der-Walt:2011},
+    matplotlib \citep{Hunter:2007},
+    scipy \citep{Jones:2001},
+    tensorflow \citep{Abadi15}
+}
 
 \acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project.
