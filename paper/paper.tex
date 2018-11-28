@@ -191,7 +191,13 @@ The stellar spectrum contribution is:
 \begin{equation}
 y_{n}^\star = P(v_{obs, n}) \mu_{\star},
 \end{equation}
-where $P$ is an interpolation operator which applies a Doppler shift by velocity $v_n$ and $\mu_{\star}$ is a spectral template with length $M'$ corresponding to the length of an arbitrarily-chosen wavelength grid of control points.
+where $\mu_{\star}$ is a spectral template with length $M'$ corresponding to
+the length of an arbitrarily-chosen wavelength grid of control points, and
+$P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
+interpolates $\mu_\star$ into the observatory rest frame.
+\todo{MB -- feel free to cut this:} $P$ could be represented as a rectangular
+$M \times M'$ sparse matrix, but the dot product can be implemented
+efficiently using linear interpolation instead of instantiating the full matrix.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
