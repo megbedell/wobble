@@ -165,7 +165,7 @@ The exact implementation and validation of regularization in this model is furth
 Aside from this regularization to push model components to zero in the low-\SNR regime, the model makes no assumptions about the shape of the stellar or telluric spectra.
 We solve for spectral templates for each component as a series of control points with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing.
 In addition to keeping this model simple, linear, and largely convex
-(\todo{MB -- what does ``largely'' mean here?}), this means that no physical knowledge about the object being observed is needed to extract its \RVs.
+(\todo{DFM says: what does ``largely'' mean here?}), this means that no physical knowledge about the object being observed is needed to extract its \RVs.
 
 For practical applications, the number of epochs $N$ must be large (\todo{MB
 -- how large? 12? 50? 100? Probably good to give some sense}) and span a significant fraction of the observing season.
@@ -200,7 +200,7 @@ Because we work in log-wavelength space, the Doppler shift due to velocity $v$ i
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
 The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
-\todo{MB -- feel free to cut this:} $P$ could be represented as a rectangular
+\todo{DFM says: feel free to cut this:} $P$ could be represented as a rectangular
 $M \times M'$ sparse matrix, but the dot product can be implemented
 efficiently using linear interpolation instead of instantiating the full matrix.
 
@@ -429,6 +429,9 @@ Despite the extreme noise at the bluer end of the wavelength range, where \Mdwar
 As a sanity check, we compare the \wobble stellar template model with a high-resolution \PHOENIX model at \Mdwarf's previously measured spectral parameters \citep[\teff = 3200 K, \logg = 5.0, and \mh = $-0.5$;][and references therein]{Husser2013, Artigau2018}.
 Even in the bluest regions, the features inferred by \wobble compare well with the \PHOENIX predictions in broad strokes (Figure \ref{fig:barnards_model}).
 \todo{(TO DO: ask Travis Barman about opacity binning affecting the detailed features)}
+\todo{DFM says: when I look at figure 5, I feel like the two spectra really don't
+look similar. I think this could use some more discussion about why we find
+this figure satisfying.}
 
 These results emphasize the potential value of \wobble data products for spectral characterization and model testing, particularly in the case of faint stars and M dwarfs, for which many spectra must be combined to get a reasonably detailed composite spectrum.
 The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and marginalizing over unknown \RV shifts.
@@ -584,7 +587,11 @@ One important feature of \wobble is that it models all fluxes in the log-space.
 When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}.
 If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply.
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra.
-If, however, the model needed to incorporate both additive and multiplicative components, major structural changes would be necessary and much of the optimization speed would be lost.
+If, however, the model needed to incorporate both additive and multiplicative
+components, major structural changes would be necessary and much of the
+optimization speed would be lost \todo{DFM says: this is not obvious to me.
+We're not currently dependent on anything being convex. I don't think we
+should say this without trying it...}.
 This means that at present, additive components may only be easily modeled by either fixing or neglecting the multiplicative components.
 \todo{(HOGG: say things about hacks - maybe in a footnote even?)}
 
