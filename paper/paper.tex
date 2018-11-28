@@ -195,14 +195,14 @@ where $\mu_{\star}$ is a spectral template with length $M'$ corresponding to
 the length of an arbitrarily-chosen wavelength grid of control points, and
 $P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
 interpolates $\mu_\star$ into the observatory rest frame.
-\todo{MB -- feel free to cut this:} $P$ could be represented as a rectangular
-$M \times M'$ sparse matrix, but the dot product can be implemented
-efficiently using linear interpolation instead of instantiating the full matrix.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
 The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
+\todo{MB -- feel free to cut this:} $P$ could be represented as a rectangular
+$M \times M'$ sparse matrix, but the dot product can be implemented
+efficiently using linear interpolation instead of instantiating the full matrix.
 
 The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity about its center of mass ($v_{\star, n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
 
@@ -234,7 +234,7 @@ $$ L2(p, \lambda) = -\lambda \sum_{i} p_{i}^2 .$$
 The effectiveness of the regularization depends sensitively on the value of $\lambda$ used: if $\lambda$ is too high, real features will be lost as the parameters are forced to zero, whereas setting $\lambda$ too low will make the regularization ineffective, leaving the model vulnerable to overfitting.
 
 We set regularization amplitudes for \wobble using a cross-validation scheme.
-In brief, we set aside 12.5\% of the total epochs as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set).
+In brief, we randomly select 12.5\% of the total epochs to set aside as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set).
 The resulting best-fit spectral templates and basis vectors are taken as fixed and the time-dependent terms only (\RVs and basis weights) are optimized for the validation epochs.
 The $\chi^2$ for the validation epochs can then be adopted as a goodness-of-fit measurement for the $\lambda$ value, and the procedure is repeated for different $\lambda$s to choose the best regularization amplitude.
 Because we have multiple regularization terms and multiple amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation.
@@ -271,7 +271,10 @@ Next, the templates are held fixed and the time-dependent parameters (stellar \R
 \todo{(HOGG: how could this be made convex too?)}
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
 
-The inverse variance uncertainty on the parameters is calculated as the Hessian, or the second derivative of the likelihood with respect to each parameter. \todo{(DFM: help me rephrase if needed?)}
+After convergence, we estimate the uncertainties on the parameters by
+approximating the likelihood function near its maximum as Gaussian where the
+covariance matrix is the negative inverse Hessian (or second derivative
+matrix) of the log likelihood function with respect to the parameters.
 
 \subsection{Combining Spectral Orders}
 \label{s:combining-orders}
