@@ -110,9 +110,10 @@ class Model(object):
         # Set up optimizers
         self.updates = []
         for c in self.components:
-            c.opt_template = tf.train.AdamOptimizer(c.learning_rate_template).minimize(self.nll,
+            if not c.template_fixed:
+                c.opt_template = tf.train.AdamOptimizer(c.learning_rate_template).minimize(self.nll,
                             var_list=[c.template_ys])
-            self.updates.append(c.opt_template)
+                self.updates.append(c.opt_template)
             if not c.rvs_fixed:
                 c.dnll_dv = tf.gradients(self.nll, c.rvs)
                 c.opt_rvs = tf.train.AdamOptimizer(c.learning_rate_rvs).minimize(self.nll,
@@ -217,13 +218,15 @@ class Component(object):
                  L1_template=0., L2_template=0., L1_basis_vectors=0.,
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=1.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
-                 rvs_fixed=False, variable_bases=0, scale_by_airmass=False,
-                 template_xs=None, initialize_at_zero=False):
+                 rvs_fixed=False, template_fixed=False, variable_bases=0, 
+                 scale_by_airmass=False,
+                 template_xs=None, template_ys=None, initialize_at_zero=False):
         self.name = name
         self.r = r
         self.K = variable_bases # number of variable basis vectors
         self.N = len(starting_rvs)
         self.rvs_fixed = rvs_fixed
+        self.template_fixed = template_fixed
         self.scale_by_airmass = scale_by_airmass
         self.learning_rate_rvs = learning_rate_rvs
         self.learning_rate_template = learning_rate_template
@@ -244,6 +247,7 @@ class Component(object):
         self.starting_rvs = starting_rvs
         self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
         self.template_xs = template_xs
+        self.template_ys = template_ys
         self.initialize_at_zero = initialize_at_zero # initialize template ys to flat continuum
 
     def setup(self, data, r):
@@ -295,18 +299,19 @@ class Component(object):
             self.template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
                                    np.max(shifted_xs)+tiny*dx, dx)
                                    
-        if self.initialize_at_zero:
-            template_ys = np.zeros_like(self.template_xs)
-        else:
-            template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
+        if self.template_ys is None:
+            if self.initialize_at_zero:
+                template_ys = np.zeros_like(self.template_xs)
+            else:
+                template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
+            self.template_ys = template_ys
             
-        self.template_ys = template_ys
-        full_template = template_ys[None,:] + np.zeros((len(self.starting_rvs),len(template_ys)))
+        full_template = self.template_ys[None,:] + np.zeros((len(self.starting_rvs),len(self.template_ys)))
         if self.K > 0:
             # initialize basis components
-            resids = np.empty((len(self.starting_rvs),len(template_ys)))
+            resids = np.empty((len(self.starting_rvs),len(self.template_ys)))
             for n in range(len(self.starting_rvs)):
-                resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - template_ys
+                resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
             basis_weights = u[:, :self.K] * s[None, :self.K] # weights (N x K)

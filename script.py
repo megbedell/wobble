@@ -7,12 +7,12 @@ import h5py
 import os
 
 if __name__ == "__main__":
-    starname = 'HD189733'
+    starname = 'barnards'
     K_star = 0
-    K_t = 3    
+    K_t = 0    
     niter = 150 # for optimization
     plots = True
-    epochs = [0, 80] # to plot
+    epochs = [0, 50] # to plot
     movies = False
     
     star_reg_file = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
@@ -40,6 +40,10 @@ if __name__ == "__main__":
     start_time = time()
     orders = np.arange(72)
     data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders)
+    if True: # reload data and remove all post-upgrade spectra
+        upgrade = 2457174.5 # June 2015
+        e = data.epochs[data.dates < upgrade]
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, epochs=e)
     orders = np.copy(data.orders)
     results = wobble.Results(data=data)
     
@@ -65,7 +69,16 @@ if __name__ == "__main__":
         print("--- ORDER {0} ---".format(o))
         if plots:
             wobble.optimize_order(model, niter=niter, save_history=True, 
-                                  basename=plot_dir+'history', epochs=epochs, movies=movies)            
+                                  basename=plot_dir+'history', epochs=epochs, movies=movies) 
+            fig, ax = plt.subplots(1, 1, figsize=(8,5))
+            ax.plot(data.dates, results.star_rvs[r] + data.bervs - np.mean(results.star_rvs[r] + data.bervs), 
+                    'k.', alpha=0.8)
+            ax.plot(data.dates, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), 
+                    'r.', alpha=0.5)   
+            ax.set_ylabel('RV (m/s)', fontsize=14)     
+            ax.set_xlabel('BJD', fontsize=14)   
+            plt.savefig(plot_dir+'results_rvs_o{0}.png'.format(o))
+            plt.close(fig)           
             for e in epochs:
                 fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
                 xs = np.exp(data.xs[r][e])
@@ -118,8 +131,8 @@ if __name__ == "__main__":
         
     if plots:
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates, data.pipeline_rvs + data.bervs, c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates, results.star_time_rvs + data.bervs, c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
+        ax.scatter(data.dates, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
         ax.legend()
         ax.set_xticklabels([])
         ax2.scatter(data.dates, results.star_time_rvs - data.pipeline_rvs, c='k')
@@ -130,8 +143,8 @@ if __name__ == "__main__":
         plt.close(fig)
         
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs + data.bervs, c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates % 2.21857312, results.star_time_rvs + data.bervs, c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
+        ax.scatter(data.dates % 2.21857312, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
         ax.legend()
         ax.set_xticklabels([])
         ax2.scatter(data.dates % 2.21857312, results.star_time_rvs - data.pipeline_rvs, c='k')

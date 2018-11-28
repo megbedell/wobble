@@ -13,7 +13,7 @@ COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'l
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
 OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights'] # only present if component K > 0
-POST_COMPONENT_ATTRS = ['time_rvs', 'order_rvs', 'order_sigmas'] # these won't exist until post-processing
+POST_COMPONENT_ATTRS = ['time_rvs', 'time_sigmas', 'order_rvs', 'order_sigmas'] # these won't exist until post-processing
 
 class Results(object):
     """A read/writeable object which stores RV & template results across all orders. 
