@@ -70,7 +70,7 @@ These regions are then removed from analysis, leaving only seemingly telluric-fr
 
 This method has two significant issues. 
 The first is that removing sections of the spectrum can remove significant amounts of information about the star, lowering the precision at which we can measure the stellar radial velocity. 
-Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are abundant narrow spectral features that can be used to improve \RV precision \citep{Bottom2013}
+Many of the regions of significant telluric absorption lie in the red-optical and near-infrared, where there are abundant narrow spectral features that can be used to improve \RV precision \citep{Bottom2013}. 
 This is especially true for M dwarfs, which peak in emitted energy at $\approx 1 \mu$m and have many narrow molecular absorption features in their photospheres \citep{Figueira2016}. 
 Eliminating large chunks of these spectra will therefore significantly inhibit our ability to detect planets around M dwarfs through \RVs.
 
@@ -100,7 +100,7 @@ Work by \citet{Artigau2014} demonstrates that a Principal Component Analysis (\a
 Just as imperfect telluric modeling can be a noise source in \EPRV analyses, the choice of stellar template can also be a major source of error. 
 For stabilized, non-gas-cell \RV spectrographs, a standard approach has been to adopt a quasi-binary mask consisting of weighted top-hat functions at the expected locations of informative stellar absorption lines and cross-correlate this mask with the observed spectrum \citep[e.g.][]{Baranne1979, Pepe2002}. 
 This approach is limited by the accuracy of the mask, and since most masks are built for a broad category of spectral type rather than customized for the individual star in question, it is unlikely that this technique retrieves maximally precise \RVs. 
-Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined has been shown to be a superior approach for stars with complex spectra \citep{AngladaEscude2012}. 
+Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined has been shown to be a superior approach for stars with complex spectra \citep{AngladaEscude2012, Zechmeister2018}. 
 
 Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is a single observation taken for the purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
@@ -126,7 +126,7 @@ However, the implementation that we present here is designed for flexibility and
 In Section \ref{s:methods}, we outline the model and its key underlying assumptions. 
 We present an open-source implementation of this method in \python and \TF
 \citep{Abadi15} called \wobble.
-In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733. 
+In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the canonical planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733. 
 We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}.
 We revisit many of the assumptions underlying \wobble in Section \ref{s:future} with a detailed look at the limitations of the current implementation. 
 We outline potential ways of adapting \wobble\ for such cases as instruments with absorption cells, intrinsic time variability in the stellar spectrum, and lower-quality data. 
@@ -218,18 +218,23 @@ The net telluric spectrum (mean + time-variable components) is weighted by the a
 We evaluate a log-likelihood for each epoch
 \begin{equation}
 \ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n}),
+\label{eqn:lnlike}
 \end{equation}
-comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data.
+comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data. 
 
 The number of free parameters in this model is large: we must optimize every grid point in the mean spectral templates and telluric basis vectors along with the stellar \RV and the telluric basis weights for each epoch. 
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
 
-L1 normalization adds a term to the log-likelihood that takes the form \todo{(TO DO: change notation to match literature)}:
-$$ L1(p, \lambda) = -\lambda \sum_{i} | p_{i} | ,$$
+L1 normalization adds a term to the log-likelihood that takes the form:
+\begin{equation}
+\Lone{\lambda}{p} \equiv -\lambda \sum_{i} | p_{i} | ,
+\end{equation}
 where $p$ is the vector of parameters to be normalized (in this case $\mu_{{\star}}$, $\mu_{{t}}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
 
 Similarly, L2 normalization adds a term of the form:
-$$ L2(p, \lambda) = -\lambda \sum_{i} p_{i}^2 .$$
+\begin{equation}
+\Ltwo{\lambda}{p} \equiv -\lambda \sum_{i} p_{i}^2 .
+\end{equation}
 
 The effectiveness of the regularization depends sensitively on the value of $\lambda$ used: if $\lambda$ is too high, real features will be lost as the parameters are forced to zero, whereas setting $\lambda$ too low will make the regularization ineffective, leaving the model vulnerable to overfitting. 
 
@@ -239,12 +244,11 @@ The resulting best-fit spectral templates and basis vectors are taken as fixed a
 The $\chi^2$ for the validation epochs can then be adopted as a goodness-of-fit measurement for the $\lambda$ value, and the procedure is repeated for different $\lambda$s to choose the best regularization amplitude. 
 Because we have multiple regularization terms and multiple amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation.
 
-With regularization included, the final model likelihood is:
+With regularization included, the final model likelihood to be optimized is:
 \begin{equation}
 \begin{split}
-\ln \mathcal{L} = & \sum_{n} \sum_{m} -0.5 (y_{m,n} - y'_{m,n})^T C_{m,n}^{-1} (y_{m,n}-y'_{m,n})  \\
- & + L1(\mu_{\star}, \lambda_{L1, \mu_{\star}}) + L2(\mu_{\star}, \lambda_{L2, \mu_{\star}}) + L1(\mu_{t},  \lambda_{L1, \mu_{t}}) + L2(\mu_{t},  \lambda_{L2, \mu_{t}}) \\
- & + L1(W_t, \lambda_{L1, W_t}) + L2(W_t, \lambda_{L1, W_t}) + L2(z_t, 1.0) ,
+\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n})  + \Lone{\lambda_1}{\mu_{\star}} + \Ltwo{\lambda_2}{\mu_{\star}} \\
+ &  + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}}  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z_t} ,
 \end{split}
 \end{equation}
 where the regularization amplitude for the basis weights is arbitrarily set to 1.0 and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure. \todo{(HOGG: explain why regularization on basis weights is needed)} 
