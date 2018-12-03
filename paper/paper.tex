@@ -251,7 +251,11 @@ With regularization included, the final model likelihood to be optimized is:
  &  + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}}  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z_t} ,
 \end{split}
 \end{equation}
-where the regularization amplitude for the basis weights is arbitrarily set to 1.0 and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure. \todo{(HOGG: explain why regularization on basis weights is needed)} 
+\todp{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!)
+where the regularization amplitude on the basis weights is arbitrarily set to unity, and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure.
+The basis-weight regularization amplitude can be set arbitrarily to unity because there is a perfect degeneracy between amplifying the basis vectors and attenuating the basis weights.
+This regularization choice breaks that perfect degeneracy.
+The basis weights are regularized because we want the mean telluric spectrum to do most of the telluric work, and the variable basis to only pick up what it needs to,
 
 %In practice, the most effective regularization amplitudes can vary by orders of magnitude depending on the characteristics of the spectral region being used. 
 %For instance, both $\lambda_{L1, \mu_{t}}$ and $\lambda_{L2, \mu_{t}}$ need to be much higher when the spectra in question span relatively blue wavelengths with few actual telluric features to fit than they do for the near-infrared wavelength regions with strong telluric features. 
@@ -272,8 +276,10 @@ Once all parameters are initialized, we optimize them iteratively.
 The likelihood function is maximized first by varying the stellar and telluric templates (including the telluric basis vectors). 
 This step is a convex optimization, meaning that a global optimum for the template parameters should be reached under the condition of fixed time-dependent variables. 
 Next, the templates are held fixed and the time-dependent parameters (stellar \RVs and telluric basis weights) are varied to maximize the likelihood function again. 
-\todo{(HOGG: how could this be made convex too?)}
+Technically the velocities are location parameters and their optimization is not convex.
+However, once the velocities are known to a small fraction of a pixel (which they usually are, in practice, in advance of running \wobble), the linearized problem becomes convex at each iteration.
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
+This iterative procedure is equivalent to a full simultaneous optimization in the limit of many iteration to convergence.
 
 After convergence, we estimate the uncertainties on the parameters by
 approximating the likelihood function near its maximum as Gaussian where the
@@ -325,7 +331,7 @@ For the purposes of this work, we chose to test the performance of \wobble on ar
 Furthermore, its excellent instrumental stability and careful calibration make the data ideally suited to our method, which relies on having an accurate wavelength solution for every spectrum. 
 
 All data were obtained from the \acronym{ESO} public data archive in the form of ``\code{e2ds}'' spectra. 
-These data are blocks of 72 order by 4096 pixel extracted 1D spectra. 
+These data come as extracted 1D spectra, in blocks of 72 orders by 4096 pixels per order.
 The airmass of the observation and the calculated \BERV are both provided in the \acronym{FITS} header of the spectral data file. 
 We obtained wavelength solutions for each spectrum from the dedicated \HARPS calibration archive, also maintained by \acronym{ESO}. 
 \todo{Uncertainty estimates for each pixel were calculated as... [HOGG, help me fill this in - relation to \SNR and conversion to log]}
