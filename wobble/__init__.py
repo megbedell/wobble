@@ -1,5 +1,5 @@
 name = "wobble"
-from .utils import get_session, doppler
+from .utils import bin_data, get_session, doppler, fit_continuum
 from .interp import interp
 from .data import Data
 from .results import Results

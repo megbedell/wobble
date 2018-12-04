@@ -1,8 +1,10 @@
-scripts
-=======
+Helper Scripts
+==============
 
-.. toctree::
-   :maxdepth: 2
+Making the Data
+---------------
+.. automodule:: make_data
    
-   .. automodule:: make_data
-   .. automodule:: regularization
+Tuning Regularization Parameters
+--------------------------------
+.. automodule:: regularization

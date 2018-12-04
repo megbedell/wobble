@@ -3,34 +3,35 @@ wobble API
 
 .. automodule:: wobble
 
-wobble.Data
------------
+Data
+----
 
 .. autoclass:: wobble.Data
    :members:
 
-wobble.Model
-------------
+Model
+-----
 
 .. autoclass:: wobble.Model
    :members:
 
-wobble.Results
---------------
+.. autoclass:: wobble.Component
+   :members:
+
+Results
+-------
 
 .. autoclass:: wobble.Results
    :members:
-   
-wobble.History
---------------
 
 .. autoclass:: wobble.History
    :members:
 
-Other utilities
+Other Utilities
 ---------------
 
+.. autofunction:: wobble.utils.bin_data
+.. autofunction:: wobble.utils.doppler
 .. autofunction:: wobble.utils.fit_continuum
-
-.. automodule:: wobble.tf_utils
-   :members:
+.. autofunction:: wobble.utils.get_session
+.. autofunction:: wobble.interp.interp
