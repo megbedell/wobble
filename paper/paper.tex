@@ -251,7 +251,11 @@ With regularization included, the final model likelihood to be optimized is:
  &  + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}}  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z_t} ,
 \end{split}
 \end{equation}
-where the regularization amplitude for the basis weights is arbitrarily set to 1.0 and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure. \todo{(HOGG: explain why regularization on basis weights is needed)} 
+\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
+where the regularization amplitude on the basis weights is arbitrarily set to unity, and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure.
+The basis-weight regularization amplitude can be set arbitrarily to unity because there is a perfect degeneracy between amplifying the basis vectors and attenuating the basis weights.
+This regularization choice breaks that perfect degeneracy.
+The basis weights are regularized because we want the mean telluric spectrum to do most of the telluric work, and the variable basis to only pick up what it needs to,
 
 %In practice, the most effective regularization amplitudes can vary by orders of magnitude depending on the characteristics of the spectral region being used. 
 %For instance, both $\lambda_{L1, \mu_{t}}$ and $\lambda_{L2, \mu_{t}}$ need to be much higher when the spectra in question span relatively blue wavelengths with few actual telluric features to fit than they do for the near-infrared wavelength regions with strong telluric features. 
@@ -272,8 +276,10 @@ Once all parameters are initialized, we optimize them iteratively.
 The likelihood function is maximized first by varying the stellar and telluric templates (including the telluric basis vectors). 
 This step is a convex optimization, meaning that a global optimum for the template parameters should be reached under the condition of fixed time-dependent variables. 
 Next, the templates are held fixed and the time-dependent parameters (stellar \RVs and telluric basis weights) are varied to maximize the likelihood function again. 
-\todo{(HOGG: how could this be made convex too?)}
+Technically the velocities are location parameters and their optimization is not convex.
+However, once the velocities are known to a small fraction of a pixel (which they usually are, in practice, in advance of running \wobble), the linearized problem becomes convex at each iteration.
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
+This iterative procedure is equivalent to a full simultaneous optimization in the limit of many iteration to convergence.
 
 After convergence, we estimate the uncertainties on the parameters by
 approximating the likelihood function near its maximum as Gaussian where the
@@ -322,18 +328,24 @@ Our code is made open-source under the \acronym{MIT} license and is publicly ava
 
 For the purposes of this work, we chose to test the performance of \wobble on archival spectra from the High Accuracy Radial Velocity Planet Searcher (\HARPS) spectrograph \citep{Mayor2003}. 
 \HARPS has operated continuously since 2003 and as such has an extensive catalog of publicly available data. 
-Furthermore, its excellent instrumental stability and careful calibration make the data ideally suited to our method, which relies on having an accurate wavelength solution for every spectrum. 
+Furthermore, its excellent instrumental stability and precise calibration make the data ideally suited to our method, which relies on having an accurate wavelength solution for every spectrum. 
 
 All data were obtained from the \acronym{ESO} public data archive in the form of ``\code{e2ds}'' spectra. 
-These data are blocks of 72 order by 4096 pixel extracted 1D spectra. 
+These data come as extracted 1D spectra, in blocks of 72 orders by 4096 pixels per order.
 The airmass of the observation and the calculated \BERV are both provided in the \acronym{FITS} header of the spectral data file. 
-We obtained wavelength solutions for each spectrum from the dedicated \HARPS calibration archive, also maintained by \acronym{ESO}. 
-\todo{Uncertainty estimates for each pixel were calculated as... [HOGG, help me fill this in - relation to \SNR and conversion to log]}
+We obtained wavelength solutions for each spectrum from the dedicated \HARPS calibration archive, also maintained by \acronym{ESO}.
 
 Before running the above-described model optimization on the data, we first mask out any unreliably measured spectral regions and do a continuum normalization on each spectrum. 
 This masking is done by setting the inverse variance on the masked data point to zero, effectively removing it from the fit. 
 In brief, we mask pixels whose extracted flux is below zero as well as regions at the edges of the spectral orders where the local \SNR falls below 5. 
-After masking these data, we convert the flux to log space and continuum normalize by fitting a polynomial to an asymmetrically clipped subset of the data. 
+After masking these data, we convert the flux to log space and continuum normalize by fitting and subtracting a polynomial to an asymmetrically clipped subset of the data. 
+
+To each pixel in the normalized, logarithmic spectrum, we assign an uncertainty variance (squared error).
+Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data.
+\todo{BEDELL: Check this:}
+For each order we assign to each log flux an uncertainty variance that is the inverse of the mean signal-to-noise-squared of the pixels in that order (as reported by the \HARPS pipelines), scaled up or down by the raw linear flux observed in that pixel in the data prior to logging and normalizing.
+This is the best Poisson estimate we can make given that we are working in the log space, and we don't have individual-pixel uncertainty estimates.
+Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, the small bias acts in the flux direction, not the radial-velocity direction.
 
 The final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off a drift term specified in the data header, consistent with the standard \HARPS pipeline. \todo{(TO DO: make sure this is implemented!)}
 
@@ -541,14 +553,16 @@ We additionally outline some general changes or enhancements that could be made 
 \label{s:data-changes}
 
 In general, the data used in this work are high quality in terms of \SNR, spectral resolution, and quantity. 
-As demonstrated for the case of \Mdwarf, \wobble is limited in its operability when the data are at low \SNR. 
+As demonstrated for the case of \Mdwarf, \wobble is limited in its operability when the data are low in \SNR. 
 \wobble implicitly assumes Gaussian noise in logarithmic flux, which is not strictly accurate. 
-This may become a substantial issue at low \SNR, making \wobble a poor tool choice for accurate modeling of very low \SNR spectra. 
-\todo{(HOGG: maybe say something about how we could mitigate this with changes to continuum handling?)}
+This could become a substantial issue at low \SNR, making \wobble a poor tool choice for accurate modeling of very low \SNR spectra.
+At this point, it is also the case that our continuum-normalization method also does poorly at low \SNR, so there are various reasons \wobble is not optimal for faint sources or very short exposure times.
+However, the fact that the model is successful in the form of a linear additive model in the log space means that it could probably be converted to work as a multiplicative model in the linear space; that conversion and investigation is beyond the scope of the current work, which is optimized for performance on typical \HARPS observing campaigns.
 
 Our method may also fail at low spectral resolution. 
-In particular, if the stellar spectrum does not shift with respect to the telluric spectrum by at least a resolution element, it will become extremely challenging to disentangle the two components. 
-\todo{(HOGG: say other things about undersampled lines?)}
+In particular, if the stellar spectrum does not shift with respect to the telluric spectrum by at least a resolution element (naively this is expected to become a problem at resolutions below $10^4$), it could become challenging to disentangle the two components.
+That said, there still is a causal difference in the data space between signals that are fixed with respect to the star and signals that are fixed with respect to the atmosphere; in principle it is a question not purely of resolution but a combination of resolution and \SNR.
+Naively, at low resolution, the model is expected to work well when the total signal-to-noise in the data set (greatly) exceeds the dimensionless ratio of the line width to the radial-velocity variation.
 
 Along with minimum requirements on the spectral data quality, \wobble has some limitations driven by the number of spectra available and the sampling of those spectra. 
 Some minimum quantity of spectra are necessarily simply because the spectral templates contribute many free parameters, driving up quantity of data needed for inference. 
@@ -566,10 +580,11 @@ If the observations in question cover a range of different airmasses, it may be 
 Of course, absorption cells in general exist because the instantaneous calibration of the spectrograph in question is not reliable at the required \RV precision level. 
 This means that a gas cell instrument will generally violate other, more critical assumptions about the data quality. 
 
-It is likely that for such an instrument, our assumption that the wavelength solution is perfect does not hold. 
+It is likely that for such an instrument, our assumption that the wavelength solution is perfect does not hold; hence the cell. 
 One simple way to deal with this would be to allow the observatory rest frame component(s) of the model to change in \RV. 
 The stellar \RV measurement would then be differential with respect to the effective spectrograph \RV. 
-This effective spectrograph \RV may vary in different spectral orders or smaller wavelength regions. \todo{(HOGG: say a thing)} 
+This effective spectrograph \RV may vary in different spectral orders or smaller wavelength regions.
+The most extreme extension would be to include the full wavelength solution as model parameters, and optimize them along with the spectral components and radial velocities.
 \todo{(TO DO: add some citations to using tellurics for this)}
 
 %Spectral variability due to LSF changing? Additional parameters to the P operators, this would go into the non-convex optimization part (ask Hogg to throw in some words earlier on about location vs linear parameters)
@@ -588,7 +603,7 @@ There are some trade-offs associated with adding these components to the model, 
 
 One important feature of \wobble is that it models all fluxes in the log-space. 
 When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}. 
-If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply. 
+If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply.
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra. 
 If, however, the model needed to incorporate both additive and multiplicative
 components as free variables, larger structural changes would be needed in the code and the convexity of the template optimization would be lost. 
