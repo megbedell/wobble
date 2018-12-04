@@ -10,7 +10,8 @@ Welcome to wobble's documentation!
    :maxdepth: 3
    :caption: Contents:
    
-   source/wobble
+   api
+   scripts
 
 
 
