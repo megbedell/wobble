@@ -100,7 +100,10 @@ class Data(object):
             self.bervs = np.copy(f['bervs'])[self.epochs]
             self.drifts = np.copy(f['drifts'])[self.epochs]
             self.airms = np.copy(f['airms'])[self.epochs]
-            self.filelist = [a.decode('utf8') for a in np.copy(f['filelist'])[self.epochs]]
+            try:
+                self.filelist = [a.decode('utf8') for a in np.copy(f['filelist'])[self.epochs]]
+            except KeyError:
+                print("WARNING: data missing filelist.")
             self.R = len(orders) # number of orders
             self.orders = orders # indices of orders in origin_file
             self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)

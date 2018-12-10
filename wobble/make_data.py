@@ -135,7 +135,7 @@ if __name__ == "__main__":
         hdffile = '../data/wasp4_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)
         
-    if True: #Barnard's Star
+    if False: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
         
         if False: # check for missing wavelength files
@@ -148,9 +148,9 @@ if __name__ == "__main__":
         hdffile = '../data/barnards_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)     
         
-    if False:
-        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD4308/HARPS*ccf_G2_A.fits')
-        if True: # check for missing wavelength files
+    if True:
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD189733/HARPS*ccf_G2_A.fits')
+        if False: # check for missing wavelength files
             missing_files = missing_wavelength_files(ccf_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
