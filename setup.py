@@ -2,11 +2,18 @@
 
 import os
 import sys
-import tensorflow as tf
 from setuptools import setup, Extension
 
-compile_flags = tf.sysconfig.get_compile_flags()
-link_flags = tf.sysconfig.get_link_flags()
+# Read the docs hack
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+if on_rtd:
+    compile_flags = []
+    link_flags = []
+else:
+    import tensorflow as tf
+    compile_flags = tf.sysconfig.get_compile_flags()
+    link_flags = tf.sysconfig.get_link_flags()
+    
 compile_flags += ["-std=c++11"]
 if sys.platform == "darwin":
     compile_flags += ["-mmacosx-version-min=10.9"]

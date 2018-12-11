@@ -35,7 +35,8 @@ autodoc_mock_imports = [
     "scipy",
     "astropy",
     "pymc3",
-    "theano"
+    "theano",
+    "tensorflow"
 ]
 
 # -- General configuration ---------------------------------------------------
