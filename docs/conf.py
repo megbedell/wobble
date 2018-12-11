@@ -37,7 +37,8 @@ autodoc_mock_imports = [
     "pymc3",
     "theano",
     "tensorflow",
-    "h5py"
+    "h5py",
+    "tqdm"
 ]
 
 # -- General configuration ---------------------------------------------------
