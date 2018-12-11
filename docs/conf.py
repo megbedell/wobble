@@ -29,6 +29,15 @@ version = ''
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
 
+# Mock imports
+autodoc_mock_imports = [
+    "numpy",
+    "scipy",
+    "astropy",
+    "pymc3",
+    "theano",
+    "tensorflow"
+]
 
 # -- General configuration ---------------------------------------------------
 
