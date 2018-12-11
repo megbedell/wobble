@@ -96,14 +96,12 @@ class Data(object):
             self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
             self.flux_ivars = [f['ivars'][i][self.epochs,:] for i in orders] # ivars for linear fluxes
             self.pipeline_rvs = np.copy(f['pipeline_rvs'])[self.epochs]
+            self.pipeline_sigmas = np.copy(f['pipeline_sigmas'])[self.epochs]
             self.dates = np.copy(f['dates'])[self.epochs]
             self.bervs = np.copy(f['bervs'])[self.epochs]
             self.drifts = np.copy(f['drifts'])[self.epochs]
             self.airms = np.copy(f['airms'])[self.epochs]
-            try:
-                self.filelist = [a.decode('utf8') for a in np.copy(f['filelist'])[self.epochs]]
-            except KeyError:
-                print("WARNING: data missing filelist.")
+            self.filelist = [a.decode('utf8') for a in np.copy(f['filelist'])[self.epochs]]
             self.R = len(orders) # number of orders
             self.orders = orders # indices of orders in origin_file
             self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)

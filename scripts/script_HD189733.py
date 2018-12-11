@@ -120,4 +120,16 @@ if __name__ == "__main__":
         plt.savefig(plot_dir+'results_rvs.png')
         plt.close(fig)
         
+        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
+        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
+        ax.scatter(data.dates % 2.21857312, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
+        ax.legend()
+        ax.set_xticklabels([])
+        ax2.scatter(data.dates % 2.21857312, results.star_time_rvs - data.pipeline_rvs, c='k')
+        ax2.set_ylabel('Phase-folded Date')
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=0.05)
+        plt.savefig(plot_dir+'results_rvs_phased.png')
+        plt.close(fig)
+        
     print("total runtime:{0:.2f} minutes".format((time() - start_time)/60.0))

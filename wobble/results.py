@@ -7,7 +7,7 @@ T = tf.float64
 from .utils import get_session
 
 COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names', 
-                'bervs', 'pipeline_rvs', 'drifts', 'dates', 'airms']
+                'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
@@ -42,6 +42,7 @@ class Results(object):
             # get other convenient things
             self.bervs = data.bervs
             self.pipeline_rvs = data.pipeline_rvs
+            self.pipeline_sigmas = data.pipeline_sigmas
             self.dates = data.dates
             self.airms = data.airms
             self.drifts = data.drifts
