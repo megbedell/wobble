@@ -1,3 +1,4 @@
+tensorflow
 sphinx>=1.7.5
 pandoc
 jupyter
