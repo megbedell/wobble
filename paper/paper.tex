@@ -251,17 +251,11 @@ With regularization included, the final model likelihood to be optimized is:
  &  + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}}  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z_t} ,
 \end{split}
 \end{equation}
-\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
+%\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
 where the regularization amplitude on the basis weights is arbitrarily set to unity, and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure.
 The basis-weight regularization amplitude can be set arbitrarily to unity because there is a perfect degeneracy between amplifying the basis vectors and attenuating the basis weights.
 This regularization choice breaks that perfect degeneracy.
-The basis weights are regularized because we want the mean telluric spectrum to do most of the telluric work, and the variable basis to only pick up what it needs to,
-
-%In practice, the most effective regularization amplitudes can vary by orders of magnitude depending on the characteristics of the spectral region being used. 
-%For instance, both $\lambda_{L1, \mu_{t}}$ and $\lambda_{L2, \mu_{t}}$ need to be much higher when the spectra in question span relatively blue wavelengths with few actual telluric features to fit than they do for the near-infrared wavelength regions with strong telluric features. 
-%Similarly, the regularization amplitudes for the star tend to be higher for the G dwarf than they are for the M dwarf, which has far more absorption features in its spectra. 
-%Setting the regularization amplitudes is therefore a crucial first step when applying the \wobble model to data.
-
+The basis weights are regularized to encourage our desired outcome where the mean telluric spectrum contains as much telluric information as possible, while the variable basis picks up only the necessary time-variable changes.
 
 \subsection{Optimizing the Model}
 \label{s:optimizing}
@@ -341,13 +335,14 @@ In brief, we mask pixels whose extracted flux is below zero as well as regions a
 After masking these data, we convert the flux to log space and continuum normalize by fitting and subtracting a polynomial to an asymmetrically clipped subset of the data. 
 
 To each pixel in the normalized, logarithmic spectrum, we assign an uncertainty variance (squared error).
-Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data.
-\todo{BEDELL: Check this:}
-For each order we assign to each log flux an uncertainty variance that is the inverse of the mean signal-to-noise-squared of the pixels in that order (as reported by the \HARPS pipelines), scaled up or down by the raw linear flux observed in that pixel in the data prior to logging and normalizing.
-This is the best Poisson estimate we can make given that we are working in the log space, and we don't have individual-pixel uncertainty estimates.
+Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data. 
+For each order we assign to each log flux an uncertainty variance that is the inverse of the mean signal-to-noise-squared of the pixels in that order (as reported by the \HARPS pipelines), scaled up or down by the raw linear flux observed in that pixel in the data prior to logging and normalizing. 
+This is the best Poisson estimate we can make given that we are working in the log space, and we don't have individual-pixel uncertainty estimates. 
 Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, the small bias acts in the flux direction, not the radial-velocity direction.
 
-The final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off a drift term specified in the data header, consistent with the standard \HARPS pipeline. \todo{(TO DO: make sure this is implemented!)}
+If possible, the final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off an \RV drift term specified in the data header, consistent with the standard \HARPS pipeline. 
+This drift is calculated from the simultaneous reference lamp and is therefore only available in certain observing modes. 
+Its contribution to the \RV solution is consistently below 1 \ms, supporting our assumption that the wavelength solution provided by the \HARPS pipeline is generally accurate.
 
 Below we describe the results of applying this procedure and optimizing the \wobble model using \HARPS data for stars of different types: a G dwarf with a known planet, an \RV-quiet M dwarf, and an early-K dwarf undergoing a planetary transit event.
 
@@ -372,7 +367,7 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 \begin{figure}
 \centering
 \includegraphics[width=4in]{51peg_planet}
-\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered in the \wobble\ \RVs. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns \todo{(add numbers)}.  \todo{check on: The subtle trends seen near secondary eclipse (phase 0.75) are suggestive of contributions by reflected light from the planetary dayside.}}
+\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered in the \wobble\ \RVs. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns \todo{(add numbers)}.}
 \label{fig:51peg_planet}
 \end{figure}
 
@@ -400,7 +395,7 @@ Aside from this linear trend, \Mdwarf is commonly used as an \RV standard M dwar
 \begin{figure}
 \centering
 \includegraphics[width=5in]{barnards_rvs}
-\caption{Radial velocity measurements for \Mdwarf from \wobble (black) and from the standard \HARPS pipeline (red). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid blue line (top panel). Residuals away from the predicted trend are plotted in the lower panel. \todo{(TO DO: add error bars and change color scheme)}}
+\caption{Radial velocity measurements for \Mdwarf from \wobble (black circles) and from the standard \HARPS pipeline (purple squares). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid blue line (top panel). Residuals away from the predicted trend are plotted in the lower panel.}
 \label{fig:barnards_rvs}
 \end{figure}
 
@@ -408,14 +403,13 @@ The \RVs found by \wobble are in excellent agreement with the predicted secular 
 Using \gaia parallax and proper motion measurements and following the calculations outlined in \citet{Kurster2003}, we find a secular trend with a slope of 4.53 $\mathrm{m}~\mathrm{s}^{-1}~\mathrm{yr}^{-1}$, deviating from this linearity by less than 1 $\mathrm{cm}~\mathrm{s}^{-1}~\mathrm{yr}^{-2}$ during the decade of \HARPS observations \citep{gaia2016, gaia2018}. 
 
 After subtracting the secular \RV trend, the residuals have low dispersion, as expected for a quiet star with no planetary signals above $K \sim 1.2~\ms$ \citep{Choi2013, Ribas2018}. 
-The \acronym{RMS} scatter among \wobble\ \RVs is 2.0 \ms. 
-This compares favorably to the scatter of 2.5 \ms among \RVs produced by the standard closed-source \HARPS pipeline, although we note that many of the residuals have similar non-zero values in both independently produced RV estimates. 
+The \acronym{RMS} scatter among \wobble\ \RVs is \todo{2.0} \ms. 
+This compares favorably to the scatter of \todo{2.5} \ms among \RVs produced by the standard closed-source \HARPS pipeline, although we note that many of the residuals have similar non-zero values in both independently produced RV estimates. 
 It is possible that these deviations are a real physical effect in the stellar spectrum, but we caution that approximately \ms-level errors are likely being introduced by the barycentric correction. 
 Currently we assume that the \BERV provided by the native \HARPS pipeline is correct, but this will not hold true if the sky coordinates entered by the observer deviate from the actual on-sky location of the target. 
 This is especially likely to be the case for high proper motion targets like \Mdwarf. 
 Indeed, we do note a strong peak at year-long periods in a Lomb-Scargle periodogram of the residual \RVs. 
-Thus the \RV scatter derived in this work is only an approximate upper limit on the true precision achievable by \wobble. \todo{(TO DO: recalculate \BERV ourselves)} 
-%\todo{How does HARPS calculate the BERVs? If there is something like cirrus, where the apparent brightness of the star varies over the observation, it is plausible that the flux-weighted observation midpoint and the actual time midpoint are different enough to cause a m/s difference in the observations, too. Does HARPS have a way of accounting for this? (HIRES does estimate this, and they have shorter exposures on average).}
+Thus the \RV scatter derived in this work is only an approximate upper limit on the true precision achievable by \wobble. 
 
 Testing \wobble on the \Mdwarf data allows us to evaluate its performance in a significantly different regime: the mid-M dwarf spectra are far denser in spectral features than a Sun-like star, and individual observations are at a much lower \SNR than the 51 Peg observations used above, although the total number of spectra is greater. 
 The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
@@ -430,7 +424,7 @@ The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
 \begin{figure}
 \centering
 \includegraphics[width=6in]{barnards_model}
-\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. The spectral template derived by \wobble is shown as a red line, while a theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as a blue line. The \wobble model has been Doppler-shifted to match the rest-frame line positions. \todo{(FIX COLORS!)}}
+\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. Data for the highest-\SNR single observation are shown as black points, while the spectral template derived by \wobble from the full data set is shown as a red line. The theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as a purple line. The \wobble model and data have been Doppler-shifted by eye to match the rest-frame line positions, since \wobble does not deliver an absolute \RV. The data-driven \wobble model of the stellar spectrum shares general strong line locations and relative strengths with the \PHOENIX model, but in detail it delivers a much more accurate fit to the data than the theoretical M dwarf model achieves.}
 \label{fig:barnards_model}
 \end{figure}
 
@@ -587,7 +581,6 @@ This effective spectrograph \RV may vary in different spectral orders or smaller
 The most extreme extension would be to include the full wavelength solution as model parameters, and optimize them along with the spectral components and radial velocities.
 \todo{(TO DO: add some citations to using tellurics for this)}
 
-%Spectral variability due to LSF changing? Additional parameters to the P operators, this would go into the non-convex optimization part (ask Hogg to throw in some words earlier on about location vs linear parameters)
 Another way a less well-calibrated instrument may violate \wobble's assumptions is in the non-negligible variability of all spectral lines due to changes in the instrumental line spread function (\LSF). 
 In principle, if the changes to the \LSF were well-understood they could be hard-coded into linear operators like the $P$ operator used in Equation \ref{eqn:star}, leaving the essential equations of \wobble largely unchanged. 
 Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
@@ -602,8 +595,8 @@ They may also require more complex treatment of spectral variability.
 There are some trade-offs associated with adding these components to the model, which we discuss here.
 
 One important feature of \wobble is that it models all fluxes in the log-space. 
-When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}. 
-If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply.
+When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV. 
+If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply. 
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra. 
 If, however, the model needed to incorporate both additive and multiplicative
 components as free variables, larger structural changes would be needed in the code and the convexity of the template optimization would be lost. 
