@@ -4,19 +4,18 @@ import os
 import sys
 from setuptools import setup, Extension
 
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-if on_rtd:
+
+if os.environ.get('READTHEDOCS', None) == 'True':
     
     # Skip installing the C extension on ReadTheDocs
     extensions = []
     packages = ["wobble"]
     
 else:
-    
+
     import tensorflow as tf
     compile_flags = tf.sysconfig.get_compile_flags()
     link_flags = tf.sysconfig.get_link_flags()
-    
     compile_flags += ["-std=c++11"]
     if sys.platform == "darwin":
         compile_flags += ["-mmacosx-version-min=10.9"]
