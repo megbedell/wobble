@@ -310,7 +310,7 @@ By using this framework, we benefit from the high performance and scalability
 of the implementation, as well as the algorithms implemented within \TF for
 fitting large numbers of parameters to large datasets.
 %While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well.
-The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in \todo{30} minutes on a standard Mac desktop.
+The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in 60 minutes on a standard Mac desktop.
 
 Our code is made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
 
@@ -430,7 +430,7 @@ The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
 One consequence of working in the low-\SNR regime is that the power to resolve very small telluric features is reduced. 
 To keep the template spectra from overfitting the noise, the regularization amplitudes on the templates must be raised by several orders of magnitude relative to what was optimal for the 51 Peg fit above, particularly in orders where no strong spectral features are available. 
 This has the side effect of flattening out weak features if no strong lines are present in a given order. 
-As a result, we are able to retrieve fewer telluric lines in the bluer orders (compare the top panels of Figures \ref{fig:51peg_spectrum} and \ref{fig:barnards_spectrum} \todo{-- To do: check if there's a better example order}). 
+As a result, we are able to retrieve fewer telluric lines in the bluer orders (compare the middle panels of Figures \ref{fig:51peg_spectrum} and \ref{fig:barnards_spectrum}). 
 In redder orders, where the \SNR is higher and more strong telluric lines are present, the features are retrieved (bottom panel of Figure \ref{fig:barnards_spectrum}). 
 However, telluric variability was not able to be resolved in the overwhelming majority of orders; in fact, the results presented here were obtained with the tellurics model set to $K=0$ (no variability included). 
 We therefore caution that difficult-to-resolve microtellurics and time-variable features may not be reliably disentangled from the stellar spectrum when \wobble is applied to lower signal observations (\SNR $\lessapprox 50$ pixel$^{-1}$).
