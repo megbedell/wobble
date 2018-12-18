@@ -285,16 +285,15 @@ matrix) of the log likelihood function with respect to the parameters.
 
 Most \EPRV instruments are echelle spectrographs spanning many orders. 
 These orders are often treated as independent spectra when extracting \RVs, and the \RVs for each order are then combined in some manner to get a final time series. 
-
 We follow this precedent and optimize the \wobble model individually for each order. 
-While some \RV precision gain may be possible by inferring a global Doppler shift from all orders simultaneously, it is not clear that the gain would be worth the added computational expense, so we leave this for future work. 
+%While some \RV precision gain may be possible by inferring a global Doppler shift from all orders simultaneously, it is not clear that the gain would be worth the added computational expense, so we leave this for future work. 
 
 After obtaining an $N$-epoch set of observed stellar \RVs from each of the $R$ spectral orders, we combine them by modeling each \RV $v_{n,r}$ as a combination of time-dependent stellar \RV, order-dependent \RV offset, and a Gaussian noise term:
 \begin{equation}
 v_{n,r} = v_n + v_r + \mathcal{N}(0,\,\sigma_{n,r}^{2} + \delta_r^2 )\,,
 \end{equation}
 where $v_n$ and $v_r$ are the characteristic \RVs at epoch $n$ and order $r$, $\sigma_{n,r}$ is the estimated measurement uncertainty on $v_{n,r}$, and $\delta_r$ is an additional jitter term specific to order $r$. 
-The order-dependent \RV offset should be small (and indeed generally is consistent with zero in the solutions), but is included in the model to capture any color-dependent effects such as non-negligible atmospheric variability during the exposure \citep[see e.g.][]{Blackwell2017}. 
+The order-dependent \RV offset should be small and indeed generally is consistent with zero in the solutions.%, but is included in the model to capture any color-dependent effects such as non-negligible atmospheric variability during the exposure \citep[see e.g.][]{Blackman2017}. 
 
 \subsection{Implementation}
 \label{s:implementation}
@@ -310,7 +309,7 @@ By using this framework, we benefit from the high performance and scalability
 of the implementation, as well as the algorithms implemented within \TF for
 fitting large numbers of parameters to large datasets.
 %While it has primarily been used in the context of deep learning in the astronomical literature, its auto-differentiation and fast linear algebra capabilities make it valuable for this application as well.
-The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 spectra of 51 Peg runs in 60 minutes on a standard Mac desktop.
+The necessary optimizations over many parameters can be performed with high efficiency by \TF: the below-described analysis of 91 \HARPS spectra of 51 Peg, including the optimization of 72 spectral orders, runs in 60 minutes on a standard Mac desktop.
 
 Our code is made open-source under the \acronym{MIT} license and is publicly available on GitHub.\footnote{\url{https://www.github.com/megbedell/wobble}}
 
@@ -356,7 +355,9 @@ We ran \wobble on these archival data to test its performance on recovering a pl
 The 91 publicly available spectra in the \HARPS archive are largely concentrated on a few nights of intensive observing, but these nights are sufficiently spread out throughout the year for a wide enough range in \BERV to disentangle the stellar and telluric spectra. 
 Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the central wavelength regions of \HARPS.
 
-Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). \todo{(numbers here, address the structure in residuals)}
+Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). 
+We fit a Keplerian signal with six free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_p$, and \RV offset $c$) using a simple $\chi^2$ optimization with \code{scipy.optimize.leastsq}. 
+The resulting best-fit parameters for the \wobble \RVs are consistent with the literature values: $P = 4.2308$ d, $K = 55.9 \ms$, $e = 0.05$
 
 Fits to an individual spectrum are shown in Figure \ref{fig:51peg_spectrum}. 
 We emphasize that no \textit{a priori} information on e.g. expected spectral line positions and depths were used. 
@@ -366,7 +367,7 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 \begin{figure}
 \centering
 \includegraphics[width=4in]{51peg_planet}
-\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered in the \wobble\ \RVs. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns \todo{(add numbers)}.}
+\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered from the \wobble\ \RVs (left) and from the \HARPS standard pipeline. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns. Best-fit Keplerians for each data set are overplotted.}
 \label{fig:51peg_planet}
 \end{figure}
 
@@ -380,7 +381,7 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 \subsection{\Mdwarf}
 \label{s:Mdwarf}
 
-Next, we tested \wobble with 306 epochs of \Mdwarf spectra.
+Next, we tested \wobble with 237 epochs of \Mdwarf spectra. 
 \Mdwarf is a mid-M dwarf, and as such its output is low in the optical; the typical \SNR of the spectra in the central wavelength regions of \HARPS ranges from 20-50. 
 In practice, this means that the 7 bluest echelle orders were consistently masked and dropped from the fit in accordance with the \SNR criteria outlined previously. 
 Regardless, a large amount of data remained, allowing us to test \wobble's performance on observations with substantially different properties from the previous case.
@@ -402,8 +403,10 @@ The \RVs found by \wobble are in excellent agreement with the predicted secular 
 Using \gaia parallax and proper motion measurements and following the calculations outlined in \citet{Kurster2003}, we find a secular trend with a slope of 4.53 $\mathrm{m}~\mathrm{s}^{-1}~\mathrm{yr}^{-1}$, deviating from this linearity by less than 1 $\mathrm{cm}~\mathrm{s}^{-1}~\mathrm{yr}^{-2}$ during the decade of \HARPS observations \citep{gaia2016, gaia2018}. 
 
 After subtracting the secular \RV trend, the residuals have low dispersion, as expected for a quiet star with no planetary signals above $K \sim 1.2~\ms$ \citep{Choi2013, Ribas2018}. 
-The \acronym{RMS} scatter among \wobble\ \RVs is \todo{2.0} \ms. 
-This compares favorably to the scatter of \todo{2.5} \ms among \RVs produced by the standard closed-source \HARPS pipeline, although we note that many of the residuals have similar non-zero values in both independently produced RV estimates. 
+The \acronym{RMS} scatter among \wobble\ \RVs is 2.0 \ms. 
+This compares favorably to the scatter of 2.5 \ms among \RVs produced by the standard closed-source \HARPS pipeline. 
+
+We note that many of the residuals have similar non-zero values in both independently produced RV estimates. 
 It is possible that these deviations are a real physical effect in the stellar spectrum, but we caution that approximately \ms-level errors are likely being introduced by the barycentric correction. 
 Currently we assume that the \BERV provided by the native \HARPS pipeline is correct, but this will not hold true if the sky coordinates entered by the observer deviate from the actual on-sky location of the target. 
 This is especially likely to be the case for high proper motion targets like \Mdwarf. 
