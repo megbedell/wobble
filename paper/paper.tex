@@ -452,7 +452,12 @@ The \wobble algorithm is a simple yet robust method for doing such multi-spectra
 \begin{figure}
 \centering
 \includegraphics[width=5in]{hd189_rm}
-\caption{\RVs measured by \wobble for a single night of observations of the Hot Jupiter host HD 189733. The \RM is clearly seen as the planet transits the star. \todo{[blah blah starry blah]}}
+\caption{\RVs measured by \wobble for a single night of observations of the Hot 
+         Jupiter host HD 189733. The \RM is clearly seen as the planet transits 
+         the star. The top panel shows the data (black points), the maximum
+         likelihood fit using \starry (black curve), and 500 posterior samples
+         (orange lines). The bottom panel shows the residuals of the maximum
+         likelihood model fit.}
 \label{fig:hd189_rm}
 \end{figure}
 
@@ -469,8 +474,27 @@ We derived this template by running \wobble on the 51 Peg data with non-time-var
 The stellar spectrum of HD 189733 and its \RVs were left as free parameters.
 
 The resulting \RV signal retrieved by \wobble is shown in Figure \ref{fig:hd189_rm}. 
-We fit the signal using \starry \citep{Luger2018}. \todo{(RODRIGO: fill in a bit about methods)} 
-\todo{(comparison of retrieved parameters to previous work here)} 
+We fit the signal using \starry \citep{Luger2018}, which computes analytic occultation
+light curves for bodies whose surfaces can be decomposed into sums
+of spherical harmonics. Since the radial component of the velocity field of a 
+differentially rotating star can be expressed in terms of polynomials in 
+$x = \sin\theta\cos\phi$, $y = \sin\theta\sin\phi$, and $z=\cos\theta$, where
+$\theta$ is the polar angle and $\phi$ is the azimuthal angle \citep[c.f. Equation 91 in][]{Short2018},
+this velocity field may be expressed exactly in terms of spherical harmonics
+\citep{LugerBedell2019}.
+We therefore use \starry to fit for the equatorial rotational velocity, the inclination,
+the obliquity, and the shear due to differential rotation of the star, closely
+following the analysis performed in \citep{Cegla2016}.
+We infer a projected stellar obliquity $\lambda = -0.43 \pm 0.34^\circ$, in close agreement
+with the value reported in \citet{Cegla2016}. Our inferred values for the other parameters
+are broadly consistent with the results in \citet{Cegla2016}, except with significantly
+higher uncertainty due to the fact that we are unable to constrain the stellar inclination
+due to the $v\sin i$ degeneracy. We attribute the narrower posteriors in \citet{Cegla2016}
+as a difference in the choice of prior.
+\footnote{See \href{https://github.com/megbedell/wobble/tree/master/scripts/DifferentialRotationWithSphericalHarmonics.ipynb}{this interactive notebook} 
+          for a derivation of the spherical harmonic decomposition of the stellar velocity field. 
+          The notebook used to perform our analysis and produce Figure~\ref{fig:hd189_rm} can be found 
+          \href{https://github.com/megbedell/wobble/tree/master/scripts/HD189733bWithStarry.ipynb}{here}.}
 
 These results confirm that the \wobble method measures line asymmetries as \RV shifts in the same manner as traditional \RV analysis techniques. 
 While this is a useful approximation in the case of the \RM, in general the confusion of these two spectral changes is a major cause of correlated noise in \RV time series \citep[e.g.][]{}. \todo{citep}
