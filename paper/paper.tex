@@ -504,13 +504,13 @@ this velocity field may be expressed exactly in terms of spherical harmonics
 \citep{LugerBedell2019}.
 We therefore use \starry to fit for the equatorial rotational velocity, the inclination,
 the obliquity, and the shear due to differential rotation of the star, closely
-following the analysis performed in \citep{Cegla2016}.
+following the analysis performed in \citet{Cegla2016}.
 We infer a projected stellar obliquity $\lambda = -0.43 \pm 0.34^\circ$, in close agreement
 with the value reported in \citet{Cegla2016}. Our inferred values for the other parameters
 are broadly consistent with the results in \citet{Cegla2016}, except with significantly
 higher uncertainty due to the fact that we are unable to constrain the stellar inclination
 due to the $v\sin i$ degeneracy. We attribute the narrower posteriors in \citet{Cegla2016}
-as a difference in the choice of prior.
+to a difference in the choice of prior.
 \footnote{See \href{https://github.com/megbedell/wobble/tree/master/scripts/DifferentialRotationWithSphericalHarmonics.ipynb}{this interactive notebook} 
           for a derivation of the spherical harmonic decomposition of the stellar velocity field. 
           The notebook used to perform our analysis and produce Figure~\ref{fig:hd189_rm} can be found 
@@ -671,19 +671,20 @@ To avoid this degeneracy, we might instead represent the stellar spectrum with a
 \subsection{Basic Adjustments}
 \label{s:improvements}
 
-Even working within \wobble's current assumptions and running on \HARPS data, there are potential changes to be made to the implementation of \wobble that may improve its performance. 
+Even working within \wobble's current assumptions and running on \HARPS-like data, there are potential changes to be made to the implementation of \wobble that may improve its performance. 
 Many of these are quite basic and straightforward changes to be made within the existing framework of \wobble. 
-We discuss some of potential adjustments here.
+We discuss some potential adjustments here.
 
 Perhaps the most obvious shortcoming of \wobble is its reliance on regularization. 
 We chose this framework because it keeps the model convex and its implicit assumptions (that the spectra are a flat continuum by default) closely mirror our physical understanding. 
 However, setting the regularization amplitudes optimally is by far the computationally slowest and most unwieldy part of applying \wobble to a new data set. 
-In principle, as data sets get larger, regularization becomes less necessary. 
-One way to remove the need for telluric regularization might be to run on a data set that is composed of many different stars, each with their own individual spectra and \RVs but with a shared telluric component, so that the data informing the telluric lines is sufficiently large. 
-This could be done with relatively trivial changes to the \wobble code, although it would require strong computational resources.
+Dealing with the possibility of overfitting is an inevitable requirement of any model, especially one that relies on as many free parameters as \wobble. 
+That being said, in principle as data sets get larger, regularization becomes less crucial. 
+One way to lessen the need for telluric regularization might be to run on a data set that is composed of many different stars, each with their own individual spectra and \RVs but with a shared telluric component, so that the data informing the telluric lines is sufficiently large. 
+This could be done with relatively trivial changes to the \wobble code, although it would require considerable computational resources.
 
 One choice that \wobble makes differently from other data-driven \RV codes is the way we represent the underlying spectral components. 
-We use an extremely simple representation: a model grid of wavelengths and corresponding fluxes that gets linearly interpolated by the $P$ operator. 
+We use an extremely simple representation: a model grid of wavelengths and corresponding fluxes that gets linearly interpolated. 
 One possible improvement would be to go to a higher-order interpolation scheme. 
 Another approach would be a non-parameteric method like a Gaussian process \citep[as in][]{Czekala2017}. 
 A third approach would be to use a model that incorporates more physics: this could range from a model with fixed lines that may vary only in terms of common line profile parameters to a complex model including various atomic and molecular physics of the lines. 
