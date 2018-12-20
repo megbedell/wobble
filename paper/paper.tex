@@ -1,4 +1,4 @@
-\documentclass[modern]{aastex62}
+\documentclass[twocolumn]{aastex62}
 
 \include{preamble}
 \newcommand{\Mdwarf}{Barnard's Star\xspace} % or should it be Barnard's star? or GJ 699?
@@ -42,7 +42,7 @@
 Extreme-precision radial velocity (\EPRV) exoplanet surveys face considerable data analysis challenges in extracting maximally precise \RVs from spectra. 
 Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features which are not perfectly known. 
 Another major limitation on the achievable \RV precision is the need to adopt an imperfect stellar template against which to cross-correlate or otherwise match the observations. 
-In both cases, the precision-limiting reliance on external information can be sidestepped using the data itself. 
+In both cases, this precision-limiting reliance on external information can be sidestepped using the data itself. 
 % Aims
 Here we propose a data-driven method to simultaneously extract precise \RVs and infer the underlying stellar and telluric spectra using a linear model (in the log of flux). 
 The model employs a convex objective and convex regularization to keep the optimization of the spectral components fast. 
@@ -105,13 +105,15 @@ Deriving a custom spectral template by stacking all spectra iteratively as the \
 Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is a single observation taken for the purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
 Such data-driven templates have the benefit of being both customized to the star in question and high-\SNR without requiring observing overhead. 
-%\todo{(explain how this differs from what we'll do - v similar in spirit although ours is a full forward model with stellar spectrum as a latent variable)}
+
+Common to the issues of telluric correction and stellar template building is the fact that all of the necessary information about the unknown spectra is encoded in the data. 
+With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs.
 
 %\todo{(talk about lack of open-source code and difficulty of modifying \RV pipelines here?)}
 
-Here we develop a data-driven model to infer the telluric and stellar spectra and calculate the stellar \RV at each observed epoch. 
+Here we develop and implement such a data-driven model to infer the telluric and stellar spectra and calculate the stellar \RV at each observed epoch. 
 The telluric model component may vary with time in a low-dimensional manner, which is also inferred from the data. 
-Our model requires no prior knowledge of the star or the Earth's atmosphere. 
+Our model requires no prior knowledge of spectral features for the star or for the Earth's atmosphere. 
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
 
 Our approach is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
@@ -124,12 +126,10 @@ In this sense our method is intended as a post-processing step, not a real-time 
 However, the implementation that we present here is designed for flexibility and easy extensibility, and we discuss potential ways to overcome these limitations.
 
 In Section \ref{s:methods}, we outline the model and its key underlying assumptions. 
-We present an open-source implementation of this method in \python and \TF
-\citep{Abadi15} called \wobble.
+We present an open-source implementation of this method in \python and \TF called \wobble.
 In Section \ref{s:results}, we demonstrate \wobble's capabilities by applying our method to \HARPS archival data for three target stars: the canonical planet-hosting solar analog 51 Peg, the quiet M dwarf \Mdwarf, and the Hot Jupiter host HD 189733. 
-We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}.
-We revisit many of the assumptions underlying \wobble in Section \ref{s:future} with a detailed look at the limitations of the current implementation. 
-We outline potential ways of adapting \wobble\ for such cases as instruments with absorption cells, intrinsic time variability in the stellar spectrum, and lower-quality data. 
+We look further into the detailed time-variable telluric spectra inferred from these data in Section \ref{s:tellurics}. 
+We revisit many of the assumptions underlying \wobble in Section \ref{s:future} and outline potential ways of adapting \wobble\ for such cases as instruments with absorption cells, intrinsic time variability in the stellar spectrum, and lower-quality data. 
 Finally, we conclude with a brief summary in Section \ref{s:conclusion}.
 
 \section{Methods}
@@ -166,19 +166,19 @@ Aside from this regularization to push model components to zero in the low-\SNR 
 We solve for spectral templates for each component as a series of control points with no imposed correlations between them, meaning that the line spread function, covariances between lines arising from the same species, and other such physically expected correlations are not built into the model but must be learned in the process of optimizing. 
 In addition to keeping this model simple and linear, this means that no physical knowledge about the object being observed is needed to extract its \RVs.
 
-For practical applications, the number of epochs $N$ must be large ($N \gg N_{components}$). 
-This is a fundamental restriction rooted in the fact that every spectrum being modeled introduces a large number of free parameters to the model. 
-In most cases, these epochs will also need to span a significant fraction of the observing season. 
+To make our method practically feasible, we assume that the number of observations $N$ in the data set is large ($N \gg N_{components}$) and spread out across the observing season. 
+The quantity of spectra needed is a fundamental restriction rooted in the fact that every spectrum being modeled introduces a large number of free parameters to the model. 
+In most cases, the epochs of these observations will also need to span a significant fraction of the observing season. 
 In order to disentangle the stellar and telluric spectral components, the spectra must undergo Doppler shifts with respect to each other that are at least as large as a resolution element of the spectrograph. 
 For stars which do not physically undergo large \RV shifts over very short timescales, this means that it is necessary to observe the star over a significant fraction of the year to take advantage of the changes in the Earth's projected motion. 
-We will comment on ways to overcome this restriction in Section \ref{s:future}.
+We will comment on ways to overcome these restrictions in Section \ref{s:future}.
 
 Finally, we assume that, when the stellar and telluric components are properly optimized, only Gaussian noise remains. 
 
 \subsection{Model Specification}
 \label{s:model-eqns}
 
-We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. 
+We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. orange
 We also have a corresponding $M \times N$ matrix of wavelength solutions. 
 Again, the entries of this matrix are in logarithmic form ($\ln \lambda$). 
 This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.
@@ -190,13 +190,13 @@ y_n = y_{n}^\star + y_{n}^t + noise.
 
 The stellar spectrum contribution is: 
 \begin{equation}
-y_{n}^\star = P(v_{obs, n}) \mu_{\star},
+y_{n}^\star = P(v^{obs}_{n}) \mu^{\star},
 \label{eqn:star}
 \end{equation}
-where $\mu_{\star}$ is a spectral template with length $M'$ corresponding to
+where $\mu^{\star}$ is a spectral template with length $M'$ corresponding to
 the length of an arbitrarily-chosen wavelength grid of control points, and
 $P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
-interpolates $\mu_\star$ into the observatory rest frame.
+interpolates $\mu^\star$ into the observatory rest frame.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
  \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
@@ -204,13 +204,13 @@ Because we work in log-wavelength space, the Doppler shift due to velocity $v$ i
 The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
 $P$ could be represented as a rectangular $M \times M'$ sparse matrix, but the dot product can be implemented efficiently using linear interpolation instead of instantiating the full matrix.
 
-The apparent stellar \RV, $v_{obs, n}$, is a sum of the star's actual velocity about its center of mass ($v_{\star, n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
+The apparent stellar \RV, $v^{obs}_{n}$, is a sum of the star's actual velocity about its center of mass ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{n}^t =  A_n(\mu_{t} + W_{t} z_n).
+y_{n}^t =  A_n(\mu^{t} + W^{t} z_n).
 \end{equation}
-In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
+In addition to its mean spectrum $\mu^t$, the telluric component also includes a time-dependent term assembled from two variables: $W^t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
 $W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used. 
 For the purposes of this work we found good performance with $K$ set to 3, but this may vary for other applications. 
 The net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
@@ -229,7 +229,7 @@ L1 normalization adds a term to the log-likelihood that takes the form:
 \begin{equation}
 \Lone{\lambda}{p} \equiv -\lambda \sum_{i} | p_{i} | ,
 \end{equation}
-where $p$ is the vector of parameters to be normalized (in this case $\mu_{{\star}}$, $\mu_{{t}}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
+where $p$ is the vector of parameters to be normalized (in this case $\mu^{\star}$, $\mu^{t}$, or $W^{t}$) and $\lambda$ is the regularization amplitude.
 
 Similarly, L2 normalization adds a term of the form:
 \begin{equation}
@@ -247,8 +247,9 @@ Because we have multiple regularization terms and multiple amplitudes to set, we
 With regularization included, the final model likelihood to be optimized is:
 \begin{equation}
 \begin{split}
-\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n})  + \Lone{\lambda_1}{\mu_{\star}} + \Ltwo{\lambda_2}{\mu_{\star}} \\
- &  + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}}  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z_t} ,
+\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n})  \\
+ & + \Lone{\lambda_1}{\mu^{\star}} + \Ltwo{\lambda_2}{\mu^{\star}}   + \Lone{\lambda_3}{\mu^{t}} + \Ltwo{\lambda_4}{\mu^{t}} \\
+ &  + \Lone{\lambda_5}{W^t}  + \Ltwo{\lambda_6}{W^t} + \Lone{1.0}{z^t} ,
 \end{split}
 \end{equation}
 %\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
@@ -260,8 +261,8 @@ The basis weights are regularized to encourage our desired outcome where the mea
 \subsection{Optimizing the Model}
 \label{s:optimizing}
 
-As an initial guess, we set the star to be stationary, e.g. $v_{obs} = $ \BERV at all epochs. 
-We may then initialize the stellar spectrum $\mu_{\star}$ by Doppler-shifting the data and calculating the median flux across \BERV-corrected spectra in bins at each model wavelength $\lambda'$. 
+As an initial guess, we set the star to be stationary, e.g. $v^{obs} = $ \BERV at all epochs. 
+We may then initialize the stellar spectrum $\mu^{\star}$ by Doppler-shifting the data and calculating the median flux across \BERV-corrected spectra in bins at each model wavelength $\lambda'$. 
 The telluric template is initialized similarly by using the residuals after the stellar contribution has been removed, again binning in model wavelength (this time without applying any Doppler shift to the spectra) and taking the median values of each bin. 
 Finally, we initialize the telluric spectrum's basis vectors $W_t$ and weights $z_t$ by performing Principal Component Analysis (\acronym{PCA}) on the residuals after both the stellar spectrum and the mean telluric spectrum have been removed. 
 The $K$ highest eigenweights and their corresponding eigenvectors are taken as the basis weights and vectors. 
@@ -273,7 +274,7 @@ Next, the templates are held fixed and the time-dependent parameters (stellar \R
 Technically the velocities are location parameters and their optimization is not convex.
 However, once the velocities are known to a small fraction of a pixel (which they usually are, in practice, in advance of running \wobble), the linearized problem becomes convex at each iteration.
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
-This iterative procedure is equivalent to a full simultaneous optimization in the limit of many iteration to convergence.
+This iterative procedure is equivalent to a full simultaneous optimization in the limit of many iterations to convergence.
 
 After convergence, we estimate the uncertainties on the parameters by
 approximating the likelihood function near its maximum as Gaussian where the
@@ -298,7 +299,7 @@ The order-dependent \RV offset should be small and indeed generally is consisten
 \subsection{Implementation}
 \label{s:implementation}
 
-The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, in \code{python} using \TF. 
+The above-described model can be implemented in a variety of ways. We chose to build our code, \wobble, in \code{python} using \TF \citep{Abadi15}. 
 \TF is a model building framework that has been primarily designed for machine
 learning applications, but at its core \TF is fundamentally a collection of
 highly optimized routines for doing linear algebra and efficiently computing the
@@ -346,6 +347,29 @@ Below we describe the results of applying this procedure and optimizing the \wob
 
 \subsection{51 Pegasi}
 
+\begin{figure*}[ht!]
+\centering
+\includegraphics[width=5in]{51peg_planet}
+\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered from the \wobble\ \RVs (left) and from the \HARPS standard pipeline. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns. Maximum-likelihood Keplerians (solid orange lines) and 1-$\sigma$ posterior constraints (shaded orange regions) for each data set are overplotted.}
+\label{fig:51peg_planet}
+\end{figure*}
+
+\begin{deluxetable*}{cccc}
+\tablehead{
+\colhead{Parameter} & \colhead{Units} & \colhead{\wobble Fit} & \colhead{\HARPS Pipeline Fit}}
+\tablecaption{Orbital Parameters of 51 Pegasi b}
+\label{tbl:51peg}
+\startdata
+$K$ & m s$^{-1}$ & $55.57^{+2.28}_{-2.04}$ & $53.84^{+1.96}_{-2.20}$ \\
+$P$ & days & $4.2292^{+0.0003}_{-0.0003}$ & $4.2294^{+0.0003}_{-0.0003}$ \\
+$t_0$ & JD & $2456546.89^{+0.02}_{-0.02}$ & $2456546.94^{+0.01}_{-0.02}$ \\
+$e$ & $-$  & $0.03^{+0.02}_{-0.02}$ & $0.04^{+0.02}_{-0.02}$ \\
+$\omega$ & rad & $0.45^{+0.62}_{-1.00}$ & $-1.79^{+0.34}_{-0.32}$ \\
+$s$ & m s$^{-1}$ & $0.01^{+0.08}_{-0.01}$ & $0.74^{+0.06}_{-0.07}$ \\
+$m_p$ sin$i$ & $M_J$ & $0.41^{+0.02}_{-0.02}$ & $0.40^{+0.01}_{-0.02}$ \\
+\enddata
+\end{deluxetable*}
+
 For \wobble's first test, we chose the first known exoplanet host: 51 Pegasi. 
 This target is a Sun-like star hosting a planet with an orbital period of 4 days and a mass of 0.5 Jupiter masses \citep{Mayor1995}. 
 Its canonical status as the first exoplanet discovered means that large amounts of data exist for this system. 
@@ -356,32 +380,35 @@ The 91 publicly available spectra in the \HARPS archive are largely concentrated
 Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the central wavelength regions of \HARPS.
 
 Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). 
-We fit a Keplerian signal with six free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_p$, and \RV offset $c$) using a simple $\chi^2$ optimization with \code{scipy.optimize.leastsq}. 
-The resulting best-fit parameters for the \wobble \RVs are consistent with the literature values: $P = 4.2308$ d, $K = 55.9 \ms$, $e = 0.05$
+We fit a Keplerian signal with seven free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_0$, \RV offset $c$, and \RV jitter $s$) using the \code{exoplanet} package \citep{exoplanet}. 
+The resulting best-fit parameters for the \wobble\ \RVs are generally consistent with expectations based on literature values (Table \ref{tbl:51peg}). 
+The \RV uncertainties derived by \wobble appear accurate based on the negligible jitter in the fit, while the photon-noise-based \RV errors provided by the \HARPS pipeline are much smaller and require a significant jitter to achieve a good fit.
 
-Fits to an individual spectrum are shown in Figure \ref{fig:51peg_spectrum}. 
-We emphasize that no \textit{a priori} information on e.g. expected spectral line positions and depths were used. 
-The current realization of the \wobble algorithm treats each control point of the template spectra as independent and has no line shape parameterization included. 
-Nevertheless, the optimized stellar templates clearly reproduce the expected appearance of the spectra in a variety of regimes, from a crowded-line region to a sparser, continuum-dominated region to an extremely strong absorption line like the H$\alpha$ feature.
-
-\begin{figure}
-\centering
-\includegraphics[width=4in]{51peg_planet}
-\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered from the \wobble\ \RVs (left) and from the \HARPS standard pipeline. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns. Best-fit Keplerians for each data set are overplotted.}
-\label{fig:51peg_planet}
-\end{figure}
-
-\begin{figure}
+\begin{figure*}[t]
 \centering
 \includegraphics[width=5.3in]{51peg_multispectrum}
 \caption{Three example echelle orders at a randomly chosen epoch from the \HARPS observations of 51 Pegasi. Data are shown as dark circles, while the \wobble predictions for the stellar and telluric spectral contributions at this epoch are red and blue lines, respectively. Even in the presence of a strong stellar absorption feature such as the H$\alpha$ line (seen at 6561.5 \ang due to the star's Doppler shift at the plotted epoch), small telluric features are clearly recovered. Residuals after subtracting both star and telluric models are shown below each spectrum.}
 \label{fig:51peg_spectrum}
-\end{figure}
+\end{figure*}
+
+Fits to an individual spectrum are shown in Figure \ref{fig:51peg_spectrum}. 
+We emphasize that no \textit{a priori} information on e.g. expected spectral line positions and depths were used. 
+The \wobble algorithm as it is currently implemented treats each control point of the template spectra as independent and has no line shape parameterization included. 
+Nevertheless, the optimized stellar templates clearly reproduce the expected appearance of the spectra in a variety of regimes, from a crowded-line region to a sparser, continuum-dominated region to an extremely strong absorption line like the H$\alpha$ feature. 
+Moreover, telluric absorption features are recovered down to a very small amplitude.
 
 \subsection{\Mdwarf}
 \label{s:Mdwarf}
 
+\begin{figure*}
+\centering
+\includegraphics[width=5in]{barnards_rvs}
+\caption{Radial velocity measurements for \Mdwarf from \wobble (black circles) and from the standard \HARPS pipeline (blue squares). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid orange line (top panel). Residuals away from the predicted trend are plotted in the lower panel.}
+\label{fig:barnards_rvs}
+\end{figure*}
+
 Next, we tested \wobble with 237 epochs of \Mdwarf spectra. 
+We did not utilize the additional spectra taken after the \HARPS 2015 optical fiber upgrade, as these would need to be treated as an independent data set \citep{LoCurto2015}. 
 \Mdwarf is a mid-M dwarf, and as such its output is low in the optical; the typical \SNR of the spectra in the central wavelength regions of \HARPS ranges from 20-50. 
 In practice, this means that the 7 bluest echelle orders were consistently masked and dropped from the fit in accordance with the \SNR criteria outlined previously. 
 Regardless, a large amount of data remained, allowing us to test \wobble's performance on observations with substantially different properties from the previous case.
@@ -391,13 +418,6 @@ It is also the star with the highest known proper motion.
 Its trajectory translates to a projected secular change in \RV of approximately 4.5 $\mathrm{m}~\mathrm{s}^{-1}~\mathrm{yr}^{-1}$ \citep{Kurster2003}. 
 This trend has been observed in some data sets, including long-term \HARPS and \acronym{HIRES} observations, although \acronym{UVES} \RVs were inconsistent with the predicted linear slope \citep{Kurster2003, Bonfils2013, Choi2013, Montet2014}. 
 Aside from this linear trend, \Mdwarf is commonly used as an \RV standard M dwarf because little stellar activity has been observed and no planets discovered until very recently despite considerable \RV monitoring \citep{Ribas2018}. 
-
-\begin{figure}
-\centering
-\includegraphics[width=5in]{barnards_rvs}
-\caption{Radial velocity measurements for \Mdwarf from \wobble (black circles) and from the standard \HARPS pipeline (purple squares). The median \RV has been subtracted from each data set. The predicted secular change in \RV due to \Mdwarf's projected motion, calculated using \gaia properties, is shown as a solid blue line (top panel). Residuals away from the predicted trend are plotted in the lower panel.}
-\label{fig:barnards_rvs}
-\end{figure}
 
 The \RVs found by \wobble are in excellent agreement with the predicted secular motion (Figure \ref{fig:barnards_rvs}). 
 Using \gaia parallax and proper motion measurements and following the calculations outlined in \citet{Kurster2003}, we find a secular trend with a slope of 4.53 $\mathrm{m}~\mathrm{s}^{-1}~\mathrm{yr}^{-1}$, deviating from this linearity by less than 1 $\mathrm{cm}~\mathrm{s}^{-1}~\mathrm{yr}^{-2}$ during the decade of \HARPS observations \citep{gaia2016, gaia2018}. 
@@ -413,22 +433,22 @@ This is especially likely to be the case for high proper motion targets like \Md
 Indeed, we do note a strong peak at year-long periods in a Lomb-Scargle periodogram of the residual \RVs. 
 Thus the \RV scatter derived in this work is only an approximate upper limit on the true precision achievable by \wobble. 
 
-Testing \wobble on the \Mdwarf data allows us to evaluate its performance in a significantly different regime: the mid-M dwarf spectra are far denser in spectral features than a Sun-like star, and individual observations are at a much lower \SNR than the 51 Peg observations used above, although the total number of spectra is greater. 
-The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
-
-\begin{figure}
+\begin{figure*}[ht!]
 \centering
 \includegraphics[width=5.5in]{barnards_multispectrum}
 \caption{Example echelle orders at a randomly chosen epoch from the \HARPS observations of Barnard's Star, plotted as in Figure \ref{fig:51peg_spectrum}.}
 \label{fig:barnards_spectrum}
-\end{figure}
+\end{figure*}
 
-\begin{figure}
+\begin{figure*}
 \centering
 \includegraphics[width=6in]{barnards_model}
-\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. Data for the highest-\SNR single observation are shown as black points, while the spectral template derived by \wobble from the full data set is shown as a red line. The theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as a purple line. The \wobble model and data have been Doppler-shifted by eye to match the rest-frame line positions, since \wobble does not deliver an absolute \RV. The data-driven \wobble model of the stellar spectrum shares general strong line locations and relative strengths with the \PHOENIX model, but in detail it delivers a much more accurate fit to the data than the theoretical M dwarf model achieves.}
+\caption{A subset of the \Mdwarf spectrum including the sodium doublet at 4456-7 \ang. Data for the highest-\SNR single observation are shown as black points, while the spectral template derived by \wobble from the full data set is shown as a red line. The theoretical \PHOENIX model for an M dwarf with \teff = 3200 K, \logg = 5.0, and \mh = $-0.5$ is shown as an orange line. The \wobble model and data have been Doppler-shifted by eye to match the rest-frame line positions, since \wobble does not deliver an absolute \RV. The data-driven \wobble model of the stellar spectrum shares general strong line locations and relative strengths with the \PHOENIX model, but in detail it delivers a much more accurate fit to the data than the theoretical M dwarf model achieves.}
 \label{fig:barnards_model}
-\end{figure}
+\end{figure*}
+
+Testing \wobble on the \Mdwarf data allows us to evaluate its performance in a significantly different regime: the mid-M dwarf spectra are far denser in spectral features than a Sun-like star, and individual observations are at a much lower \SNR than the 51 Peg observations used above, although the total number of spectra is greater. 
+The resulting spectral fit is shown in Figure \ref{fig:barnards_spectrum}.
 
 One consequence of working in the low-\SNR regime is that the power to resolve very small telluric features is reduced. 
 To keep the template spectra from overfitting the noise, the regularization amplitudes on the templates must be raised by several orders of magnitude relative to what was optimal for the 51 Peg fit above, particularly in orders where no strong spectral features are available. 
@@ -442,14 +462,14 @@ Despite the extreme noise at the bluer end of the wavelength range, where \Mdwar
 As a sanity check, we compare the \wobble stellar template model with a high-resolution \PHOENIX model at \Mdwarf's previously measured spectral parameters \citep[\teff = 3200 K, \logg = 5.0, and \mh = $-0.5$;][and references therein]{Husser2013, Artigau2018}. 
 Even in the bluest regions, the placements and relative strengths of the large-amplitude features inferred by \wobble generally compare well with the \PHOENIX predictions (Figure \ref{fig:barnards_model}). 
 The \wobble model for \Mdwarf diverges from the theoretical models in the smaller absorption lines and in the degree of broadening for strong lines.  
-\todo{(TO DO: are these known model weaknesses? ask Travis Barman about opacity binning affecting the detailed features)} 
+%\todo{(TO DO: are these known model weaknesses? ask Travis Barman about opacity binning affecting the detailed features)} 
 
 These results emphasize the potential value of \wobble data products for spectral characterization and model testing, particularly in the case of faint stars and M dwarfs, for which many spectra must be combined to get a reasonably detailed composite spectrum. 
 The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and marginalizing over unknown \RV shifts.
 
 \subsection{HD 189733}
 
-\begin{figure}
+\begin{figure*}
 \centering
 \includegraphics[width=5in]{hd189_rm}
 \caption{\RVs measured by \wobble for a single night of observations of the Hot 
@@ -459,7 +479,7 @@ The \wobble algorithm is a simple yet robust method for doing such multi-spectra
          (orange lines). The bottom panel shows the residuals of the maximum
          likelihood model fit.}
 \label{fig:hd189_rm}
-\end{figure}
+\end{figure*}
 
 While the majority of \EPRV measurements are made for the purposes of observing stellar reflex motion due to planetary orbits, several other applications to exoplanet characterization exist for such high-precision time-series spectra. 
 One of these uses is measuring the \RM, in which the apparent stellar \RV is observed during planetary transit as a way of mapping the stellar surface and learning the spin-orbit inclination of the system \citep[e.g.][]{Queloz2000, Winn2005}. 
@@ -497,7 +517,7 @@ as a difference in the choice of prior.
           \href{https://github.com/megbedell/wobble/tree/master/scripts/HD189733bWithStarry.ipynb}{here}.}
 
 These results confirm that the \wobble method measures line asymmetries as \RV shifts in the same manner as traditional \RV analysis techniques. 
-While this is a useful approximation in the case of the \RM, in general the confusion of these two spectral changes is a major cause of correlated noise in \RV time series \citep[e.g.][]{}. \todo{citep}
+While this is a useful approximation in the case of the \RM, in general the confusion of these two spectral changes is a major cause of correlated noise in \RV time series \citep[e.g.][]{Queloz2001}. 
 The simplicity and extensibility of the \wobble method is useful in this regard, as the model could be modified to fit line asymmetries and true Doppler shifts as separate parameters. 
 This would help to disentangle signals caused by photospheric features like starspots from the \RV signal due to reflex motion in a planetary system. 
 We discuss this prospect further in Section \ref{s:future}.
@@ -506,12 +526,12 @@ We discuss this prospect further in Section \ref{s:future}.
 \section{Telluric Features}
 \label{s:tellurics}
 
-\begin{figure}
+\begin{figure*}[h!]
 \centering
 \includegraphics[width=6.5in]{telluric_comparison}
 \caption{Fits to a 15-\ang region with substantial telluric contamination for 51 Peg (left) and \Mdwarf (right). The upper panels show the \wobble best-fit telluric spectrum (blue line), best-fit stellar spectrum (red line), data (black points), and the sum of the telluric and stellar model predictions (black line). Residuals to the fit are shown in the lower panels. Although the fits to each data set were performed entirely independently, the optimized telluric spectra are nearly identical, demonstrating that \wobble successfully finds an accurate representation of the common telluric absorption spectrum.}
 \label{fig:telluric_comparison}
-\end{figure}
+\end{figure*}
 
 In the above analyses, telluric spectra were inferred independently for the 51 Peg and \Mdwarf data sets. 
 However, in principle the telluric features should be common to all \HARPS spectra, an assumption that we used for the case of HD 189733. 
@@ -527,12 +547,12 @@ A more robust, albeit more computationally expensive, approach would be to fit m
 Given enough spectra, this approach should yield an incredibly detailed model of telluric features and their time variability. 
 We leave such an effort to future work. 
 
-\begin{figure}
+\begin{figure*}
 \centering
 \includegraphics[width=5in]{telluric_standard}
 \caption{Comparison of telluric spectrum derived by \wobble analysis of 51 Peg spectra (upper panel) and the spectrum observed with a telluric standard star (lower panel) around an H$_2$O absorption band. No telluric standard star data was used in determining the \wobble telluric template. The \wobble method delivers a very high \SNR telluric spectrum with no overhead observing time required.}
 \label{fig:telluric_standard}
-\end{figure}
+\end{figure*}
 
 As another test of our derived telluric spectra, we compared the mean template from 51 Peg to an observation of the telluric standard star HR 3090 taken by \HARPS at an \SNR of 130. 
 As shown in Figure \ref{fig:telluric_standard}, the spectra agree well. 
@@ -543,12 +563,12 @@ Of course, one strength of a telluric standard star is that its spectrum can cap
 For this reason, we included time-variable components in the model. 
 A physical interpretation of these components should be possible.
 
-\begin{figure}
+\begin{figure*}
 \centering
 \includegraphics[width=5in]{telluric_basis2}
 \caption{Example of the mean telluric spectral template in a small wavelength region (upper panel) and the three basis vectors used to capture the time-variable contributions to the spectrum, staggered by an arbitrary offset for display (lower panel).}
 \label{fig:telluric_basis}
-\end{figure}
+\end{figure*}
 
 An example of the inferred variability from the 51 Peg analysis is shown in Figure \ref{fig:telluric_basis}. 
 There is clearly coherent structure in the variations. 
@@ -714,7 +734,8 @@ It is our hope that openly shared development of next-generation \RV analysis te
     numpy \citep{Van-Der-Walt:2011},
     matplotlib \citep{Hunter:2007},
     scipy \citep{Jones:2001},
-    tensorflow \citep{Abadi15}
+    tensorflow \citep{Abadi15}, 
+    exoplanet \citep{exoplanet}
 }
 
 \acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
