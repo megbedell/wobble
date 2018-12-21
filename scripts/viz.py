@@ -131,18 +131,25 @@ widgets.FloatSlider(
 # Load RV data for HD 189733 from Bedell, corrected for the baseline
 xo_189, rv_189 = np.loadtxt("HD189733_sample.txt", unpack=True)
 
-
-# Create a global starry map
-map = starry.Map(5)
-
+# Create the global starry maps
+map_Iv_plus_I = starry.Map(5)
+map_I = starry.Map(2)
 
 def visualize_func(veq=1, inc=90, obl=0, alpha=0, u1=0, u2=0, yo=0, ro=0.1):
+    """Interactive visualization of the RM effect."""
+    # Map resolution for plotting
     res = 300
-    map[:3, :] = (veq * 1.e3) * get_ylm_coeffs(inc, obl, alpha)
-    map[0, 0] = (veq * 1.e3) * 1e-15
-    map[1] = u1
-    map[2] = u2
     
+    # Set the map coefficients
+    map_Iv_plus_I[:3, :] = get_ylm_coeffs(inc=inc, obl=obl, alpha=alpha, veq=veq * 1.e3)
+    map_Iv_plus_I[0, 0] = 1
+    map_Iv_plus_I[1] = u1
+    map_Iv_plus_I[2] = u2
+    map_I[0, 0] = 1
+    map_I[1] = u1
+    map_I[2] = u2
+    
+    # Check if LD is physical
     if (u1 + u2) > 1 or (u1 + 2 * u2) < 0 or u1 < 0:
         u1slider.style.handle_color = "#FF0000"
         u2slider.style.handle_color = "#FF0000"
@@ -150,8 +157,10 @@ def visualize_func(veq=1, inc=90, obl=0, alpha=0, u1=0, u2=0, yo=0, ro=0.1):
         u1slider.style.handle_color = "#FFFFFF"
         u2slider.style.handle_color = "#FFFFFF"
     
+    # Plot the brightness-weighted velocity field
     x, y = np.meshgrid(np.linspace(-1, 1, res), np.linspace(-1, 1, res))
-    img = np.array([map(x=x[j], y=y[j]) for j in range(res)]) / 1.e3
+    img = np.array([map_Iv_plus_I(x=x[j], y=y[j]) - 
+                    map_I(x=x[j], y=y[j]) for j in range(res)]) * (np.pi / 1.e3)
     fig = pl.figure(figsize=(15, 8))
     axim = pl.axes((0, 0.05, 0.3, 0.8))
     axcb = pl.axes((0, 0.85, 0.3, 0.03))
@@ -169,13 +178,17 @@ def visualize_func(veq=1, inc=90, obl=0, alpha=0, u1=0, u2=0, yo=0, ro=0.1):
     axim.axhline(yo + 0.5 * ro, color='k', ls='--', alpha=0.5)
     axim.axhline(yo - 0.5 * ro, color='k', ls='--', alpha=0.5)
     
+    # Compute the RM effect amplitude
     xo = np.linspace(-1 - 2 * ro, 1 + 2 * ro, 1000)
-    rv = map.flux(xo=xo, yo=yo, ro=ro) / np.pi
-    axrm.plot(xo, rv)
+    Iv_plus_I = map_Iv_plus_I.flux(xo=xo, yo=yo, ro=ro)
+    I = map_I.flux(xo=xo, yo=yo, ro=ro)
+    RM = (Iv_plus_I - I) / I
+    
+    # Plot it
+    axrm.plot(xo, RM)
     axrm.set_xlabel(r"Occultor x position [$R_\star$]", fontsize=16)
     axrm.set_ylabel("Radial velocity [m /s]", fontsize=16)
     axrm.set_title("The Rossiter-McLaughlin effect", fontsize=20)
-
     axrm.plot(xo_189, rv_189, '.')
 
 
