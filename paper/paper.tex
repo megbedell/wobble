@@ -366,7 +366,6 @@ $t_0$ & JD & $2456546.89^{+0.02}_{-0.02}$ & $2456546.94^{+0.01}_{-0.02}$ \\
 $e$ & $-$  & $0.03^{+0.02}_{-0.02}$ & $0.04^{+0.02}_{-0.02}$ \\
 $\omega$ & rad & $0.45^{+0.62}_{-1.00}$ & $-1.79^{+0.34}_{-0.32}$ \\
 $s$ & m s$^{-1}$ & $0.01^{+0.08}_{-0.01}$ & $0.74^{+0.06}_{-0.07}$ \\
-$m_p$ sin$i$ & $M_J$ & $0.41^{+0.02}_{-0.02}$ & $0.40^{+0.01}_{-0.02}$ \\
 \enddata
 \end{deluxetable*}
 
@@ -381,8 +380,9 @@ Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the centr
 
 Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). 
 We fit a Keplerian signal with seven free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_0$, \RV offset $c$, and \RV jitter $s$) using the \code{exoplanet} package \citep{exoplanet}. 
-The resulting best-fit parameters for the \wobble\ \RVs are generally consistent with expectations based on literature values (Table \ref{tbl:51peg}). 
-The \RV uncertainties derived by \wobble appear accurate based on the negligible jitter in the fit, while the photon-noise-based \RV errors provided by the \HARPS pipeline are much smaller and require a significant jitter to achieve a good fit.
+The resulting best-fit parameters for the two data sets are generally consistent (Table \ref{tbl:51peg}), and both are comparable to literature values \citep{Mayor1995, Naef2004, Butler2006}. 
+The \RV uncertainties derived by \wobble appear accurate based on the negligible jitter in the fit, while the photon-noise-based \RV errors provided by the \HARPS pipeline are much smaller and require a significant jitter to achieve a good fit. 
+These results confirm that \wobble is able to extract \RVs with similar precision to the closed-source \HARPS pipeline for Sun-like stars.
 
 \begin{figure*}[t]
 \centering
@@ -471,7 +471,7 @@ The \wobble algorithm is a simple yet robust method for doing such multi-spectra
 
 \begin{figure*}
 \centering
-\includegraphics[width=5in]{hd189_rm}
+\includegraphics[width=6in]{hd189_rm}
 \caption{\RVs measured by \wobble for a single night of observations of the Hot 
          Jupiter host HD 189733. The \RM is clearly seen as the planet transits 
          the star. The top panel shows the data (black points), the maximum
@@ -513,7 +513,7 @@ due to the $v\sin i$ degeneracy. We attribute the narrower posteriors in \citet{
 to a difference in the choice of prior.
 \footnote{See \href{https://github.com/megbedell/wobble/tree/master/scripts/DifferentialRotationWithSphericalHarmonics.ipynb}{this interactive notebook} 
           for a derivation of the spherical harmonic decomposition of the stellar velocity field. 
-          The notebook used to perform our analysis and produce Figure~\ref{fig:hd189_rm} can be found 
+          The notebook used to perform our analysis and produce Figure~\ref{fig:hd189_rm}, along with the full posterior constraints we obtain, can be found 
           \href{https://github.com/megbedell/wobble/tree/master/scripts/HD189733bWithStarry.ipynb}{here}.}
 
 These results confirm that the \wobble method measures line asymmetries as \RV shifts in the same manner as traditional \RV analysis techniques. 
