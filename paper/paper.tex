@@ -178,7 +178,7 @@ Finally, we assume that, when the stellar and telluric components are properly o
 \subsection{Model Specification}
 \label{s:model-eqns}
 
-We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. orange
+We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. 
 We also have a corresponding $M \times N$ matrix of wavelength solutions. 
 Again, the entries of this matrix are in logarithmic form ($\ln \lambda$). 
 This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.
@@ -475,7 +475,7 @@ The \wobble algorithm is a simple yet robust method for doing such multi-spectra
 \caption{\RVs measured by \wobble for a single night of observations of the Hot 
          Jupiter host HD 189733. The \RM is clearly seen as the planet transits 
          the star. The top panel shows the data (black points), the maximum
-         likelihood fit using \starry (black curve), and 500 posterior samples
+         likelihood fit using \starry (black line), and 500 posterior samples
          (orange lines). The bottom panel shows the residuals of the maximum
          likelihood model fit.}
 \label{fig:hd189_rm}
@@ -736,7 +736,8 @@ It is our hope that openly shared development of next-generation \RV analysis te
     matplotlib \citep{Hunter:2007},
     scipy \citep{Jones:2001},
     tensorflow \citep{Abadi15}, 
-    exoplanet \citep{exoplanet}
+    exoplanet \citep{exoplanet},
+    starry \citep{Luger2018}
 }
 
 \acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
