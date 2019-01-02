@@ -63,8 +63,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
                        training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
     tensor_names = ['L2_template', 'L2_template', 'L1_template',
-                     'L1_template'] # HACK - this is needed bc TF appends garbage to the end of the tensor name
-    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # HACK
+                     'L1_template'] # this isonly  needed bc TF appends garbage to the end of the tensor name
+    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # ^ same
     if K_star > 0:
         tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
                                                     training_model.components[0].L1_basis_vectors_tensor])
