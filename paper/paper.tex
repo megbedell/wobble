@@ -351,8 +351,6 @@ Its contribution to the \RV solution is usually below 1 \ms, supporting our assu
 
 Below we describe the results of applying this procedure and optimizing the \wobble model using \HARPS data for stars of different types: a G dwarf with a known planet, an \RV-quiet M dwarf, and an early-K dwarf undergoing a planetary transit event.
 
-\subsection{51 Pegasi}
-
 \begin{figure*}[ht!]
 \centering
 \includegraphics[width=5in]{51peg_planet}
@@ -375,6 +373,8 @@ $s$ & m s$^{-1}$ & $0.01^{+0.08}_{-0.01}$ & $0.74^{+0.06}_{-0.07}$ \\
 \enddata
 \end{deluxetable*}
 
+\subsection{51 Pegasi}
+
 For \wobble's first test, we chose the first known exoplanet host: 51 Pegasi. 
 This target is a Sun-like star hosting a planet with an orbital period of 4 days and a mass of 0.5 Jupiter masses \citep{Mayor1995}. 
 Its canonical status as the first exoplanet discovered means that large amounts of data exist for this system. 
@@ -384,12 +384,6 @@ We ran \wobble on these archival data to test its performance on recovering a pl
 The 91 publicly available spectra in the \HARPS archive are largely concentrated on a few nights of intensive observing, but these nights are sufficiently spread out throughout the year for a wide enough range in \BERV to disentangle the stellar and telluric spectra. 
 Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the central wavelength regions of \HARPS.
 
-Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). 
-We fit a Keplerian signal with seven free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_0$, \RV offset $c$, and \RV jitter $s$) using the \code{exoplanet} package \citep{exoplanet}. 
-The resulting best-fit parameters for the two data sets are generally consistent (Table \ref{tbl:51peg}), and both are comparable to literature values \citep{Mayor1995, Naef2004, Butler2006}. 
-The \RV uncertainties derived by \wobble appear accurate based on the negligible jitter in the fit, while the photon-noise-based \RV errors provided by the \HARPS pipeline are much smaller and require a significant jitter to achieve a good fit. 
-These results confirm that \wobble is able to extract \RVs with similar precision to the closed-source \HARPS pipeline for Sun-like stars.
-
 \begin{figure*}[t]
 \centering
 \includegraphics[width=5.3in]{51peg_multispectrum}
@@ -397,13 +391,20 @@ These results confirm that \wobble is able to extract \RVs with similar precisio
 \label{fig:51peg_spectrum}
 \end{figure*}
 
+Despite the sparse phase coverage available across the planetary orbit, we recover a signal at the expected period and semi-amplitude in the \RVs (Figure \ref{fig:51peg_planet}). 
+We fit a Keplerian signal with seven free parameters (period $P$, \RV semi-amplitude $K$, eccentricity $e$, argument of periastron $\omega$, time of periastron $T_0$, \RV offset $c$, and \RV jitter $s$) using the \code{exoplanet} package \citep{exoplanet}. 
+The resulting best-fit parameters for the two data sets are generally consistent (Table \ref{tbl:51peg}), and both are comparable to literature values \citep{Mayor1995, Naef2004, Butler2006}. 
+The \RV uncertainties derived by \wobble appear accurate based on the negligible jitter in the fit, while the photon-noise-based \RV errors provided by the \HARPS pipeline are much smaller and require a significant jitter to achieve a good fit. 
+These results confirm that \wobble is able to extract \RVs with similar precision to the closed-source \HARPS pipeline for Sun-like stars.
+
+
 Fits to an individual spectrum are shown in Figure \ref{fig:51peg_spectrum}. 
 We emphasize that no \textit{a priori} information on e.g. expected spectral line positions and depths were used. 
 The \wobble algorithm as it is currently implemented treats each control point of the template spectra as independent and has no line shape parameterization included. 
 Nevertheless, the optimized stellar templates clearly reproduce the expected appearance of the spectra in a variety of regimes, from a crowded-line region to a sparser, continuum-dominated region to an extremely strong absorption line like the H$\alpha$ feature. 
 Moreover, telluric absorption features are recovered down to a very small amplitude.
 
-It is worthy of note that the stellar spectral model shown in Figure \ref{51peg_multispectrum} is an extremely high-\SNR spectrum of 51 Peg. 
+It is worthy of note that the stellar spectral model shown in Figure \ref{fig:51peg_spectrum} is an extremely high-\SNR spectrum of 51 Peg. 
 This template spectrum is essentially a time-averaged composite spectrum. 
 Both it and its residuals as a function of time are scientifically valuable outputs of the \wobble method.
 
