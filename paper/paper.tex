@@ -602,12 +602,12 @@ They may also require more complex treatment of spectral variability.
 There are some trade-offs associated with adding these components to the model, which we discuss here.
 
 One important feature of \wobble is that it models all fluxes in the log-space. 
-When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and computationally tractable \todo{(HOGG: edit plz)}. 
+When the model consists solely of multiplicative components, as is the case for a single star + telluric absorption, this choice makes the optimization convex at fixed \RV and therefore computationally tractable; it makes possible our iterative optimization scheme.
 If we chose instead to convert the $y$ data vectors to linear fluxes and use a model consisting only of additive components, the same equations and algorithms would apply.
 Example applications of such a model might be a multiple star system or a faint star with substantial sky background present in the observed spectra. 
 If, however, the model needed to incorporate both additive and multiplicative
 components as free variables, larger structural changes would be needed in the code and the convexity of the template optimization would be lost. 
-Further tests would be needed to determine whether this loss of convexity would slow down the optimization. 
+Further tests would be needed to determine whether this loss of convexity would slow down the optimization or make finding good optima hard or impossible; it seems likely that it will slow the code but not be impossible.
 
 One extra model component that is at present both simpler to implement and perhaps more important to the results than generic additive components is the spectral continuum. 
 We have assumed that our simple continuum normalization is good, but this is certainly not true at a detailed level. 
@@ -629,7 +629,12 @@ This \PCA-like approach may be quite effective, since stellar features with simi
 It does, however, introduce potential degeneracies between the inferred stellar variability and the Doppler shift. 
 To avoid this degeneracy, we might instead represent the stellar spectrum with an explicit parameterization of the line profile and restrict variability to the line depths, widths, and skews; such a change would fall along the same lines as the global \LSF parameterization proposed in Section \ref{s:data-changes}.
 
-\todo{(HOGG: Bayesian version of \wobble?)}
+Finally, \wobble, while it optimizes a sensible objective function with good properties, it has no good bayesian interpretation:
+The regularizations (especially the L1) do not make much sense as prior beliefs, and the output is a point estimate, not a probability or probability density.
+Furthermore, we may at some point want \RV measurements that are the result of \emph{marginalizing out} the spectral ant telluric models.
+This would be the principled Bayesian thing to do!
+Right now we don't expect a full subjective Bayesian treatment to be computationally possible.
+However, there certainly has been interesting work in this area, and it might become possible in the near future \todo{BEDELL: CITE CZEKALA, maybe others?}.
 
 
 \subsection{Basic Adjustments}
