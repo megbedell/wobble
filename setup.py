@@ -2,29 +2,39 @@
 
 import os
 import sys
-import tensorflow as tf
 from setuptools import setup, Extension
 
-compile_flags = tf.sysconfig.get_compile_flags()
-link_flags = tf.sysconfig.get_link_flags()
-compile_flags += ["-std=c++11"]
-if sys.platform == "darwin":
-    compile_flags += ["-mmacosx-version-min=10.9"]
 
+if os.environ.get('READTHEDOCS', None) == 'True':
+    
+    # Skip installing the C extension on ReadTheDocs
+    extensions = []
+    packages = ["wobble"]
+    
+else:
 
-extensions = [
-    Extension(
-        "wobble.interp.interp_op",
-        sources=[
-            "wobble/interp/interp_op.cc",
-            "wobble/interp/interp_rev_op.cc",
-        ],
-        include_dirs=["wobble/interp"],
-        language="c++",
-        extra_compile_args=compile_flags,
-        extra_link_args=link_flags,
-    ),
-]
+    import tensorflow as tf
+    compile_flags = tf.sysconfig.get_compile_flags()
+    link_flags = tf.sysconfig.get_link_flags()
+    compile_flags += ["-std=c++11"]
+    if sys.platform == "darwin":
+        compile_flags += ["-mmacosx-version-min=10.9"]
+
+    extensions = [
+        Extension(
+            "wobble.interp.interp_op",
+            sources=[
+                "wobble/interp/interp_op.cc",
+                "wobble/interp/interp_rev_op.cc",
+            ],
+            include_dirs=["wobble/interp"],
+            language="c++",
+            extra_compile_args=compile_flags,
+            extra_link_args=link_flags,
+        ),
+    ]
+    
+    packages = ["wobble", "wobble.interp"]
 
 setup(
     name="wobble",
@@ -33,7 +43,7 @@ setup(
     author="Megan Bedell",
     author_email="mbedell@flatironinstitute.org",
     description="precise radial velocities with tellurics",
-    packages=["wobble", "wobble.interp"],
+    packages=packages,
     ext_modules=extensions,
     zip_safe=True,
 )

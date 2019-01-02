@@ -7,27 +7,40 @@ import h5py
 import os
 
 if __name__ == "__main__":
-    starname = 'HD189733'
+    starname = '51peg'
     K_star = 0
     K_t = 0    
-    niter = 100 # for optimization
+    niter = 150 # for optimization
     plots = True
-    epochs = [0, 20] # to plot
+    epochs = [0, 50] # to plot
     movies = False
     
-    plot_dir = 'results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
+    star_reg_file = '../wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
+    tellurics_reg_file = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
+    plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
+    
+    if False:
+        # quick test on two orders
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30,56])
+        results = wobble.Results(data=data)
+        for r in range(data.R):
+            model = wobble.Model(data, results, r)
+            model.add_star('star', variable_bases=K_star, 
+                            regularization_par_file=star_reg_file,
+                            learning_rate_template=0.01, learning_rate_rvs=1.)
+            model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
+                                regularization_par_file=tellurics_reg_file,
+                                learning_rate_template=0.01)
+            wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
+                                  basename='results/test', epochs=epochs, movies=movies)
+        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
+        assert False
     
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
     start_time = time()
     orders = np.arange(72)
-    e = [ 0,  1,  6,  7,  9, 17, 18, 19, 21, 23, 24, 26, 30, 33, 34, 35, 36,
-       37, 38, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 53, 55, 56, 61,
-       66, 69, 70, 72, 73, 75] # night of August 28, 2007
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, epochs=e)
-    orders = np.copy(data.orders)
+    data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders)
     results = wobble.Results(data=data)
-    
-    results_51peg = wobble.Results(filename='/Users/mbedell/python/wobble/results/results_51peg_Kstar0_Kt0.hdf5')
     
     print("data loaded")
     print("time elapsed: {0:.2f} min".format((time() - start_time)/60.0))
@@ -43,16 +56,15 @@ if __name__ == "__main__":
     for r,o in enumerate(orders):
         model = wobble.Model(data, results, r)
         model.add_star('star', variable_bases=K_star, 
-                        regularization_par_file=None, 
+                        regularization_par_file=star_reg_file, 
                         learning_rate_template=star_learning_rate)
         model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
-                            learning_rate_template=telluric_learning_rate,
-                            template_fixed=True, template_xs=results_51peg.tellurics_template_xs[o],
-                            template_ys=results_51peg.tellurics_template_ys[o]) # assumes all orders are there for 51 Peg
+                            regularization_par_file=tellurics_reg_file, 
+                            learning_rate_template=telluric_learning_rate)
         print("--- ORDER {0} ---".format(o))
         if plots:
             wobble.optimize_order(model, niter=niter, save_history=True, 
-                                  basename=plot_dir+'history', epochs=epochs, movies=movies)
+                                  basename=plot_dir+'history', epochs=epochs, movies=movies) 
             fig, ax = plt.subplots(1, 1, figsize=(8,5))
             ax.plot(data.dates, results.star_rvs[r] + data.bervs - np.mean(results.star_rvs[r] + data.bervs), 
                     'k.', alpha=0.8)
@@ -61,7 +73,7 @@ if __name__ == "__main__":
             ax.set_ylabel('RV (m/s)', fontsize=14)     
             ax.set_xlabel('BJD', fontsize=14)   
             plt.savefig(plot_dir+'results_rvs_o{0}.png'.format(o))
-            plt.close(fig)          
+            plt.close(fig)           
             for e in epochs:
                 fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
                 xs = np.exp(data.xs[r][e])
@@ -98,24 +110,16 @@ if __name__ == "__main__":
     print("final RVs calculated.")
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
         
-    results_file = 'results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    results_file = '../results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
     results.write(results_file)
         
     print("results saved as: {0}".format(results_file))
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
-    
-    star_rvs = np.copy(results.star_time_rvs)
-    if starname=='hip54287':  # cut off post-upgrade epochs
-        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs[:-5] + data.bervs[:-5])))
-        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs[:-5] + data.bervs[:-5])))
-    else:
-        print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs + data.bervs)))
-        print("wobble std = {0:.3f} m/s".format(np.std(star_rvs + data.bervs)))
         
     if plots:
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates, data.pipeline_rvs + data.bervs, c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates, results.star_time_rvs + data.bervs, c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
+        ax.scatter(data.dates, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
         ax.legend()
         ax.set_xticklabels([])
         ax2.scatter(data.dates, results.star_time_rvs - data.pipeline_rvs, c='k')
@@ -126,11 +130,11 @@ if __name__ == "__main__":
         plt.close(fig)
         
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs + data.bervs, c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates % 2.21857312, results.star_time_rvs + data.bervs, c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates % 4.2308, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
+        ax.scatter(data.dates % 4.2308, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
         ax.legend()
         ax.set_xticklabels([])
-        ax2.scatter(data.dates % 2.21857312, results.star_time_rvs - data.pipeline_rvs, c='k')
+        ax2.scatter(data.dates % 4.2308, results.star_time_rvs - data.pipeline_rvs, c='k')
         ax2.set_ylabel('Phase-folded Date')
         fig.tight_layout()
         fig.subplots_adjust(hspace=0.05)

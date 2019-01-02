@@ -26,13 +26,18 @@ def read_data_from_fits(filelist, e2ds=False):
     ivars = [np.zeros((N,M)) for r in range(R)]
     xs = [np.zeros((N,M)) for r in range(R)]
     empty = np.array([], dtype=int)
-    pipeline_rvs, dates, bervs, airms, drifts = np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N)
+    pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N)
     for n,f in enumerate(filelist):
-        print(f)
         sp = fits.open(f)
         if not e2ds:
-            pipeline_rvs[n] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
-            drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
+            try:
+                pipeline_rvs[n] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
+                pipeline_sigmas[n] = sp[0].header['HIERARCH ESO DRS CCF NOISE'] * 1.e3 # m/s
+                drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
+            except KeyError:
+                print("WARNING: {0} does not appear to be a stellar CCF file. Skipping this one.".format(f))
+                empty = np.append(empty, n)
+                continue
         dates[n] = sp[0].header['HIERARCH ESO DRS BJD']        
         bervs[n] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
         airms[n] = sp[0].header['HIERARCH ESO TEL AIRM START']
@@ -59,8 +64,9 @@ def read_data_from_fits(filelist, e2ds=False):
         xs[r] = np.delete(xs[r], empty, axis=0)
     
     pipeline_rvs = np.delete(pipeline_rvs, empty)
-    bervs = np.delete(bervs, empty)
+    pipeline_sigmas = np.delete(pipeline_sigmas, empty)
     dates = np.delete(dates, empty)
+    bervs = np.delete(bervs, empty)
     airms = np.delete(airms, empty)
     drifts = np.delete(drifts, empty)
     
@@ -68,7 +74,7 @@ def read_data_from_fits(filelist, e2ds=False):
     pipeline_rvs -= bervs  
     pipeline_rvs -= np.mean(pipeline_rvs)
         
-    return data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts
+    return data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts
     
 def savfile_to_filelist(savfile, destination_dir='../data/'):
     # copies CCF + E2DS files to destination_dir and returns a list of the CCFs
@@ -98,12 +104,13 @@ def missing_wavelength_files(filelist):
     return np.unique(missing_files)
     
     
-def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, filenames, hdffile):
+def write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, filenames, hdffile):
     h = h5py.File(hdffile, 'w')
     dset = h.create_dataset('data', data=data)
     dset = h.create_dataset('ivars', data=ivars)
     dset = h.create_dataset('xs', data=xs)
     dset = h.create_dataset('pipeline_rvs', data=pipeline_rvs)
+    dset = h.create_dataset('pipeline_sigmas', data=pipeline_sigmas)
     dset = h.create_dataset('dates', data=dates)
     dset = h.create_dataset('bervs', data=bervs)
     dset = h.create_dataset('airms', data=airms)
@@ -115,25 +122,11 @@ def write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, filen
 
 if __name__ == "__main__":
         
-    if False: #51 Peg
-        ccf_filelist = np.genfromtxt('51peg_ccf_filelist.txt', dtype=None, encoding=None)
-        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+    if True: #51 Peg
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/51peg/HARPS*ccf_G2_A.fits')
+        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)
-        
-    if False: #WASP-4
-        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/WASP-4/HARPS*ccf_G2_A.fits')
-        for f in glob.glob('/Users/mbedell/python/wobble/data/WASP-4/HARPS*ccf_*5_A.fits'):
-            ccf_filelist.append(f) # HACK
-        if True: # check for missing wavelength files
-            missing_files = missing_wavelength_files(ccf_filelist)
-            np.savetxt('missing_files.txt', missing_files, fmt='%s')
-            print('{0} missing wavelength files for WASP-4'.format(len(missing_files)))
-            
-        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
-
-        hdffile = '../data/wasp4_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)
+        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
         
     if True: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
@@ -143,27 +136,26 @@ if __name__ == "__main__":
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files for Barnard\'s Star'.format(len(missing_files)))
             
-        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
-
+        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/barnards_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)     
+        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)     
         
-    if False:
-        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD4308/HARPS*ccf_G2_A.fits')
-        if True: # check for missing wavelength files
+    if True: # HD189733
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD189733/HARPS*ccf_*_A.fits')
+        if False: # check for missing wavelength files
             missing_files = missing_wavelength_files(ccf_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
-        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/HD189733_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, ccf_filelist, hdffile)
+        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
         
-    if False:
+    if False: # telluric standard
         e2ds_filelist = glob.glob('/Users/mbedell/python/wobble/data/telluric/HARPS*e2ds_A.fits')
         if True: # check for missing wavelength files
             missing_files = missing_wavelength_files(e2ds_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
-        data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts = read_data_from_fits(e2ds_filelist, e2ds=True)
+        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(e2ds_filelist, e2ds=True)
         hdffile = '../data/telluric_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, dates, bervs, airms, drifts, e2ds_filelist, hdffile)
+        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, e2ds_filelist, hdffile)

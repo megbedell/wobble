@@ -312,7 +312,7 @@ def plot_pars_from_file(filename, basename, orders=np.arange(72)):
 
         
 if __name__ == "__main__":
-    # tune these keywords:
+    # change these keywords:
     starname = 'barnards'
     orders = np.arange(72)
     K_star = 0 # number of variable components for stellar spectrum
@@ -321,16 +321,16 @@ if __name__ == "__main__":
     plot = True
     verbose = True
     
-    
-    plot_dir = 'regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
+    # create directory for plots if it doesn't exist:
+    plot_dir = '../regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
     if not os.path.exists(plot_dir):
         os.makedirs(plot_dir)
-    R = len(orders)
     
     # create HDF5 files if they don't exist:
     regularization_par = ['L1_template', 'L2_template', 
                           'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
-    star_filename = 'wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
+    R = len(orders)
+    star_filename = '../wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     if not os.path.isfile(star_filename):
         with h5py.File(star_filename,'w') as f:
             f.create_dataset('L1_template', data=np.zeros(R)+1.e-2)
@@ -338,10 +338,9 @@ if __name__ == "__main__":
             if K_star > 0:
                 f.create_dataset('L1_basis_vectors', data=np.zeros(R)+1.e5)
                 f.create_dataset('L2_basis_vectors', data=np.zeros(R)+1.e6)
-                f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble
-                
+                f.create_dataset('L2_basis_weights', data=np.ones(R)) # never tuned, just need to pass to wobble                
 
-    tellurics_filename = 'wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
+    tellurics_filename = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     if not os.path.isfile(tellurics_filename):                
         with h5py.File(tellurics_filename,'w') as f:
             if tellurics_template_fixed:
@@ -368,10 +367,10 @@ if __name__ == "__main__":
         validation_epochs = np.random.choice(e, len(e)//8, replace=False)
         training_epochs = np.delete(e, validation_epochs)
      
-    training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=orders, 
+    training_data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders, 
                         epochs=training_epochs, min_snr=3)
     training_results = wobble.Results(training_data)
-    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='data/', orders=training_data.orders, 
+    validation_data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=training_data.orders, 
                           epochs=validation_epochs, min_snr=1) # HACK
     validation_results = wobble.Results(validation_data)
     assert len(training_data.orders) == len(validation_data.orders), "Number of orders used is not the same between training and validation data."
@@ -380,16 +379,17 @@ if __name__ == "__main__":
     
     # improve each order's regularization:
     for r,o in enumerate(orders): # r is an index into the (cleaned) data. o is an index into the 72 orders (and the file tracking them).
-        print('---- STARTING ORDER {0} ----'.format(o))
-        print("starting values:")
-        print("star:")
-        with h5py.File(star_filename, 'r') as f:
-            for key in list(f.keys()):
-                print("{0}: {1:.0e}".format(key, f[key][o]))
-        print("tellurics:")
-        with h5py.File(tellurics_filename, 'r') as f:
-            for key in list(f.keys()):
-                print("{0}: {1:.0e}".format(key, f[key][o]))
+        if verbose:
+            print('---- STARTING ORDER {0} ----'.format(o))
+            print("starting values:")
+            print("star:")
+            with h5py.File(star_filename, 'r') as f:
+                for key in list(f.keys()):
+                    print("{0}: {1:.0e}".format(key, f[key][o]))
+            print("tellurics:")
+            with h5py.File(tellurics_filename, 'r') as f:
+                for key in list(f.keys()):
+                    print("{0}: {1:.0e}".format(key, f[key][o]))
         improve_order_regularization(r, o, star_filename, tellurics_filename,
                                          training_data, training_results,
                                          validation_data, validation_results,
@@ -397,17 +397,17 @@ if __name__ == "__main__":
                                          basename='{0}o{1}'.format(plot_dir, o), 
                                          K_star=K_star, K_t=K_t, L1=True, L2=True,
                                          tellurics_template_fixed=tellurics_template_fixed)
-                                         
-        print('---- ORDER {0} COMPLETE ({1}/{2}) ----'.format(o,r,len(orders)-1))
-        print("best values:")
-        print("star:")
-        with h5py.File(star_filename, 'r') as f:
-            for key in list(f.keys()):
-                print("{0}: {1:.0e}".format(key, f[key][o]))
-        print("tellurics:")
-        with h5py.File(tellurics_filename, 'r') as f:
-            for key in list(f.keys()):
-                print("{0}: {1:.0e}".format(key, f[key][o]))        
+        if verbose:                                 
+            print('---- ORDER {0} COMPLETE ({1}/{2}) ----'.format(o,r,len(orders)-1))
+            print("best values:")
+            print("star:")
+            with h5py.File(star_filename, 'r') as f:
+                for key in list(f.keys()):
+                    print("{0}: {1:.0e}".format(key, f[key][o]))
+            print("tellurics:")
+            with h5py.File(tellurics_filename, 'r') as f:
+                for key in list(f.keys()):
+                    print("{0}: {1:.0e}".format(key, f[key][o]))        
 
     # save some summary plots:
     plot_pars_from_file(star_filename, 'regularization/{0}_star_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)

@@ -96,6 +96,7 @@ class Data(object):
             self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
             self.flux_ivars = [f['ivars'][i][self.epochs,:] for i in orders] # ivars for linear fluxes
             self.pipeline_rvs = np.copy(f['pipeline_rvs'])[self.epochs]
+            self.pipeline_sigmas = np.copy(f['pipeline_sigmas'])[self.epochs]
             self.dates = np.copy(f['dates'])[self.epochs]
             self.bervs = np.copy(f['bervs'])[self.epochs]
             self.drifts = np.copy(f['drifts'])[self.epochs]
