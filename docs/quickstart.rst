@@ -37,6 +37,7 @@ A newly created wobble.Model object must be populated with one or more spectral 
 
 .. code-block:: python
 
+	results = wobble.Results(data=data)
 	for r in range(len(data.orders)):
 		model = wobble.Model(data, results, r)
 		model.add_star('star')
@@ -54,3 +55,42 @@ Once all echelle orders have been modeled and optimized, we can automatically co
 
 Accessing *wobble* Outputs
 --------------------------
+
+All of the outputs from *wobble* are stored in the wobble.Results object. You can download example results files corresponding to the above data files here: `51 Peg <https://www.dropbox.com/s/em4irz97zxqopx4/results_51peg_Kstar0_Kt3.hdf5?dl=0>`_, `Barnard's Star <https://www.dropbox.com/s/ymcu2awo1v05rps/results_barnards_Kstar0_Kt0.hdf5?dl=0>`_, `HD 189733 <https://www.dropbox.com/s/wz4ij56sfvwa037/results_HD189733_Kstar0_Kt0.hdf5?dl=0>`_.
+
+A saved wobble.Results object can be loaded up from disk:
+
+.. code-block:: python
+
+	results = wobble.Results(filename='results.hdf5')
+	print(results.component_names)
+	
+The names of the components are needed to access the associated attributes of each component. For example, let's say that two components are called 'star' and 'tellurics,' as in the example above. We can plot the mean templates for the two components in order `r` as follows:
+
+.. code-block:: python
+
+	import matplotlib.pyplot as plt
+	plt.plot(np.exp(results.star_template_xs[r]), np.exp(results.star_template_ys[r]), 
+			 label='star')
+	plt.plot(np.exp(results.tellurics_template_xs[r]), np.exp(results.tellurics_template_ys[r]),
+		 	label='tellurics')
+	plt.xlabel('Wavelength (Ang)')
+	plt.ylabel('Normalized Flux')
+	plt.legend()
+	plt.show()
+	
+And we can plot the RV time series for the star as follows:
+
+.. code-block:: python
+
+	plt.errorbar(results.dates, results.star_time_rvs + results.bervs, 
+				 results.star_time_sigmas, 'k.')
+	plt.xlabel('RV (m/s)')
+	plt.ylabel('JD')
+	plt.show()
+	
+Note that in the above example we had to explicitly add in barycentric corrections to the RVs. *wobble* does not do this within the Results object by default, as the true measured RV from the data is a velocity in the observatory rest frame.
+
+Other useful quantities stored in the Results object include `results.ys_predicted`, which is an order R by epoch N by pixel M array of `y'` model predictions in the data space, and `results.[component name]_ys_predicted`, which is a same-sized array storing the contribution of a given component to the model prediction.
+
+See the `notebook used to generate figures for the paper <https://github.com/megbedell/wobble/blob/master/paper/figures/make_figures.ipynb>`_ for further examples.

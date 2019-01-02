@@ -13,6 +13,8 @@
 \graphicspath{ {figures/} }
 \DeclareGraphicsExtensions{.pdf,.eps,.png}
 
+%@arxiver{telluric_comparison.pdf}
+
 \title{\textsc{\wobble: a data-driven method for precision radial velocities}}
 
 \author[0000-0001-9907-7742]{Megan Bedell}
@@ -42,7 +44,7 @@
 Extreme-precision radial velocity (\EPRV) exoplanet surveys face considerable data analysis challenges in extracting maximally precise \RVs from spectra. 
 Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features which are not perfectly known. 
 Another major limitation on the achievable \RV precision is the need to adopt an imperfect stellar template against which to cross-correlate or otherwise match the observations. 
-In both cases, this precision-limiting reliance on external information can be sidestepped using the data itself. 
+In both cases, precision-limiting reliance on external information can be sidestepped using the data directly. 
 % Aims
 Here we propose a data-driven method to simultaneously extract precise \RVs and infer the underlying stellar and telluric spectra using a linear model (in the log of flux). 
 The model employs a convex objective and convex regularization to keep the optimization of the spectral components fast. 
@@ -50,7 +52,7 @@ We implement this method in \wobble, an open-source \python package which uses \
 In this work, we demonstrate the performance of \wobble on archival \HARPS spectra.
 % Results
 We recover the canonical exoplanet 51 Pegasi b, detect the secular \RV evolution of the M dwarf \Mdwarf, and retrieve the \RM for the Hot Jupiter HD 189733b. 
-We also present extremely high-\SNR composite stellar spectra and detailed time-variable telluric spectra derived from these data. 
+The method additionally produces extremely high-\SNR composite stellar spectra and detailed time-variable telluric spectra, which we also present here. 
 \end{abstract}
 
 \keywords{atmospheric effects, methods: data analysis, planets and satellites: detection, stars: individual (51 Pegasi, Barnard's Star, HD 189733), techniques: radial velocities}
@@ -153,7 +155,7 @@ This assumption is physically motivated in the sense that a relatively small num
 It is also needed in a practical sense, since every additional dimension over which the telluric spectrum can vary adds several thousand more free parameters to the model.
 
 We assume that the stellar spectrum is invariant with time. 
-This assumption does not hold true in detail and will be revisited in Section \ref{s:future}. 
+This assumption does not hold true in detail and we comment on this in Section \ref{s:model-changes}. 
 
 We assume that both the stellar and telluric spectra are approximately located at zero in logarithmic flux (or unity in linear) with small deviations due to absorption lines. 
 As a result of this assumption, we are able to apply L1 and L2 regularization to the spectral templates. 
@@ -173,7 +175,7 @@ In order to disentangle the stellar and telluric spectral components, the spectr
 For stars which do not physically undergo large \RV shifts over very short timescales, this means that it is necessary to observe the star over a significant fraction of the year to take advantage of the changes in the Earth's projected motion. 
 We will comment on ways to overcome these restrictions in Section \ref{s:future}.
 
-Finally, we assume that, when the stellar and telluric components are properly optimized, only Gaussian noise remains. 
+Finally, we assume that, when the stellar and telluric components are properly optimized, any remaining noise may be approximated as Gaussian. 
 
 \subsection{Model Specification}
 \label{s:model-eqns}
@@ -239,10 +241,14 @@ Similarly, L2 normalization adds a term of the form:
 The effectiveness of the regularization depends sensitively on the value of $\lambda$ used: if $\lambda$ is too high, real features will be lost as the parameters are forced to zero, whereas setting $\lambda$ too low will make the regularization ineffective, leaving the model vulnerable to overfitting. 
 
 We set regularization amplitudes for \wobble using a cross-validation scheme. 
-In brief, we randomly select 12.5\% of the total epochs to set aside as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set).
+In brief, we randomly select 12.5\% of the total epochs to set aside as a validation set and, using some value of $\lambda$, run the model optimization on the remaining epochs (the training set). 
 The resulting best-fit spectral templates and basis vectors are taken as fixed and the time-dependent terms only (\RVs and basis weights) are optimized for the validation epochs. 
 The $\chi^2$ for the validation epochs can then be adopted as a goodness-of-fit measurement for the $\lambda$ value, and the procedure is repeated for different $\lambda$s to choose the best regularization amplitude. 
-Because we have multiple regularization terms and multiple amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation.
+In theory, we might wish to regularize using an optimization metric based on \RV accuracy rather than $\chi^2$ over pixels; however, the lack of known ``ground truth'' in the \RV behavior of stars makes this not currently feasible. 
+
+Since we have multiple regularization amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation. 
+Generally speaking, the L2 regularization tends to be stricter than L1 and the telluric components are more strongly regularized than the stellar components, so we aim to roughly go from most to least sensitive regularization component when tuning the amplitudes.
+We found that good performance came from tuning the L2 regularization amplitudes for the mean telluric and stellar spectra, followed by the L1 regularization amplitudes for the same, followed by L2 and L1 for the time-variable telluric basis vectors. 
 
 With regularization included, the final model likelihood to be optimized is:
 \begin{equation}
@@ -397,6 +403,10 @@ The \wobble algorithm as it is currently implemented treats each control point o
 Nevertheless, the optimized stellar templates clearly reproduce the expected appearance of the spectra in a variety of regimes, from a crowded-line region to a sparser, continuum-dominated region to an extremely strong absorption line like the H$\alpha$ feature. 
 Moreover, telluric absorption features are recovered down to a very small amplitude.
 
+It is worthy of note that the stellar spectral model shown in Figure \ref{51peg_multispectrum} is an extremely high-\SNR spectrum of 51 Peg. 
+This template spectrum is essentially a time-averaged composite spectrum. 
+Both it and its residuals as a function of time are scientifically valuable outputs of the \wobble method.
+
 \subsection{\Mdwarf}
 \label{s:Mdwarf}
 
@@ -465,7 +475,7 @@ The \wobble model for \Mdwarf diverges from the theoretical models in the smalle
 %\todo{(TO DO: are these known model weaknesses? ask Travis Barman about opacity binning affecting the detailed features)} 
 
 These results emphasize the potential value of \wobble data products for spectral characterization and model testing, particularly in the case of faint stars and M dwarfs, for which many spectra must be combined to get a reasonably detailed composite spectrum. 
-The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and marginalizing over unknown \RV shifts.
+The \wobble algorithm is a simple yet robust method for doing such multi-spectra stacking while preserving telluric-contaminated regions and accounting for unknown \RV shifts.
 
 \subsection{HD 189733}
 
@@ -668,13 +678,6 @@ This \PCA-like approach may be quite effective, since stellar features with simi
 It does, however, introduce potential degeneracies between the inferred stellar variability and the Doppler shift. 
 To avoid this degeneracy, we might instead represent the stellar spectrum with an explicit parameterization of the line profile and restrict variability to the line depths, widths, and skews; such a change would fall along the same lines as the global \LSF parameterization proposed in Section \ref{s:data-changes}.
 
-Finally, \wobble, while it optimizes a sensible objective function with good properties, it has no good bayesian interpretation:
-The regularizations (especially the L1) do not make much sense as prior beliefs, and the output is a point estimate, not a probability or probability density.
-Furthermore, we may at some point want \RV measurements that are the result of \emph{marginalizing out} the spectral ant telluric models.
-This would be the principled Bayesian thing to do!
-Right now we don't expect a full subjective Bayesian treatment to be computationally possible.
-However, there certainly has been interesting work in this area, and it might become possible in the near future \todo{BEDELL: CITE CZEKALA, maybe others?}.
-
 \subsection{Basic Adjustments}
 \label{s:improvements}
 
@@ -703,6 +706,12 @@ In reality, every stellar \RV should be informed by all spectral orders simultan
 Implementing this would take on some extra computational cost, but being in \TF will help to mitigate this. 
 However, the reality of color-dependent atmospheric dispersion effects means that in practice each order may have a slightly different effective \RV, since the flux-weighted average observation times will be different \citep{Blackman2017}. 
 Thus for some situations allowing the orders to have independent \RV estimates may be the best choice.
+
+While \wobble optimizes a sensible objective function with good properties, it has no direct Bayesian interpretation. 
+The regularizations (especially the L1) do not make much sense as prior beliefs, and the output is a point estimate, not a probability or probability density. 
+Furthermore, we may at some point want \RV measurements that are the result of \emph{marginalizing out} the spectral and telluric models. 
+Right now we don't expect such a full subjective Bayesian treatment to be computationally possible.
+However, there certainly has been interesting work in this area, and it might become possible in the near future \citep{Czekala2015}.
 
 Finally, a change that is quite major but worth stating regardless is the possibility of fitting the data directly in the 2D domain. 
 Widely used methods of extracting 1D spectra almost certainly sacrifice some degree of spectral information \citep{Bolton2010}.
@@ -750,7 +759,7 @@ It is our hope that openly shared development of next-generation \RV analysis te
 }
 
 \acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
-We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project.
+We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
 This research has made use of the services of the ESO Science Archive Facility. 
 

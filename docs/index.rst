@@ -6,7 +6,7 @@
 .. image:: wobble.png
 	:align: center
 
-*wobble* is an open-source python implementation of a data-driven method for deriving stellar spectra, telluric spectra, and extremely precise radial velocities simultaneously without reliance on spectral models.
+*wobble* (pronounced `*(/wäb.lā/)* <http://astro.uchicago.edu/~bmontet/wobble.mp3>`_) is an open-source python implementation of a data-driven method for deriving stellar spectra, telluric spectra, and extremely precise radial velocities simultaneously without reliance on spectral models.
 
 
 Documentation
