@@ -17,7 +17,7 @@ Input Data
 
 Running *wobble* on a generic data set will require some restructuring of the data. If these data are in the standard HARPS *e2ds* format, they can be restructured using the :doc:`make_data.py script <scripts>`.
 
-If you just want some example data for testing purposes, try grabbing one of these premade data sets: `51 Peg <https://www.dropbox.com/s/a9hxhlr8gxrt9hc/51peg_e2ds.hdf5?dl=0>`_, `Barnard's Star <https://www.dropbox.com/s/mc7ahjsg0nkexx7/barnards_e2ds.hdf5?dl=0>`_, `HD 189733 <https://www.dropbox.com/s/pnmz9iq1alih3qj/HD189733_e2ds.hdf5?dl=0>`_.
+If you just want some example data for testing purposes, try grabbing one of these premade data sets: `51 Peg <https://www.dropbox.com/s/w1bgbnk80g0l1o9/51peg_e2ds.hdf5?dl=0>`_, `Barnard's Star <https://www.dropbox.com/s/mc7ahjsg0nkexx7/barnards_e2ds.hdf5?dl=0>`_, `HD 189733 <https://www.dropbox.com/s/pnmz9iq1alih3qj/HD189733_e2ds.hdf5?dl=0>`_.
 
 Once the data are saved as an HDF5 file of the correct format, they are loaded as:
 
