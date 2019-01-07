@@ -57,6 +57,8 @@ class Model(object):
         """Add a component with RVs initialized to zero in the barycentric-corrected rest frame."""
         if starting_rvs is None:
             starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
+        kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
+                                                       'default_star.hdf5')
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):
@@ -66,7 +68,8 @@ class Model(object):
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
-        #kwargs['initialize_at_zero'] = kwargs.get('initialize_at_zero', True)
+        kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
+                                                       'default_t.hdf5')
         self.add_component(name, starting_rvs, **kwargs)
         
     def add_continuum(self, degree, **kwargs):

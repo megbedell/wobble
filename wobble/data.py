@@ -29,6 +29,9 @@ class Data(object):
         Number of pixels to additionally mask on either side of a bad high pixel.
     min_snr : `float` (default `5.`)
         Mean SNR below which which we discard sections of data.
+    log_flux : `bool` (default `True`)
+        Determines whether fitting will happen using logarithmic flux (default) 
+        or linear flux.
     """
     def __init__(self, filename, filepath='../data/', 
                     orders = None, 
@@ -36,7 +39,8 @@ class Data(object):
                     min_flux = 1.,
                     max_norm_flux = 2.,
                     padding = 2,
-                    min_snr = 5.):
+                    min_snr = 5.,
+                    log_flux = True):
         self.origin_file = filepath+filename
         self.read_data(orders=orders, epochs=epochs)
         self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
@@ -67,6 +71,10 @@ class Data(object):
         # log and normalize:
         self.ys = np.log(self.fluxes) 
         self.continuum_normalize() 
+        
+        # HACK - optionally un-log it:
+        if not log_flux:
+            self.ys = np.exp(self.ys)
                 
         # mask out high pixels:
         for r in range(self.R):
