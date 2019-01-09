@@ -42,35 +42,47 @@ class Model(object):
             string += '{0} variable basis components'.format(c.K)
         return string
 
-    def add_component(self, name, starting_rvs, **kwargs):
+    def add_component(self, name, starting_rvs, epochs=None, **kwargs):
         """Add a new Component object to the model."""
         if np.isin(name, self.component_names):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
-        c = Component(name, self.r, starting_rvs, **kwargs)
+        if epochs is None: # component is used in all data epochs
+            epoch_mask = np.ones(self.data.N).astype('bool')
+        else:
+            assert len(epochs) == len(starting_rvs), "ERROR: mismatch in numbers of epochs and starting_rvs"
+            epoch_mask = np.isin(np.arange(self.data.N), epochs)
+            full_rvs = np.zeros(self.data.N) + np.nan
+            full_rvs[epochs] = starting_rvs
+            starting_rvs = full_rvs # now data_N-length with NaNs at unused epochs for initialization
+        c = Component(name, self.r, starting_rvs, epoch_mask, **kwargs)
         self.components.append(c)
         self.component_names.append(name)
         if not np.isin(name, self.results.component_names):
             self.results.add_component(c)
 
-    def add_star(self, name, starting_rvs=None, **kwargs):
+    def add_star(self, name, starting_rvs=None, epochs=None, **kwargs):
         """Add a component with RVs initialized to zero in the barycentric-corrected rest frame."""
         if starting_rvs is None:
-            starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
+            starting_rvs = -1. * np.copy(self.data.bervs)
+            if epochs is not None:
+                starting_rvs = starting_rvs[epochs]
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
-                                                       'default_star.hdf5')
-        self.add_component(name, starting_rvs, **kwargs)
+                                                       'regularization/default_star.hdf5')
+        self.add_component(name, starting_rvs, epochs=epochs, **kwargs)
 
-    def add_telluric(self, name, starting_rvs=None, **kwargs):
+    def add_telluric(self, name, starting_rvs=None, epochs=None, **kwargs):
         """Add a component with RVs initialized to zero in the observatory rest frame."""
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
+            if epochs is not None:
+                starting_rvs = starting_rvs[epochs]
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
-                                                       'default_t.hdf5')
-        self.add_component(name, starting_rvs, **kwargs)
+                                                       'regularization/default_t.hdf5')
+        self.add_component(name, starting_rvs, epochs=None, **kwargs)
         
     def add_continuum(self, degree, **kwargs):
         if np.isin("continuuum", self.component_names):
@@ -217,7 +229,7 @@ class Component(object):
     """
     Generic class for an additive component in the spectral model. 
     """
-    def __init__(self, name, r, starting_rvs, regularization_par_file=None,
+    def __init__(self, name, r, starting_rvs, epoch_mask, regularization_par_file=None,
                  L1_template=0., L2_template=0., L1_basis_vectors=0.,
                  L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=1.,
                  learning_rate_template=0.01, learning_rate_basis=0.01,
@@ -227,7 +239,6 @@ class Component(object):
         self.name = name
         self.r = r
         self.K = variable_bases # number of variable basis vectors
-        self.N = len(starting_rvs)
         self.rvs_fixed = rvs_fixed
         self.template_fixed = template_fixed
         self.scale_by_airmass = scale_by_airmass
@@ -247,6 +258,7 @@ class Component(object):
                         setattr(self, par, np.copy(f[par][r])) # overwrite with value from file
             except:
                 print('Regularization parameter file {0} not recognized; using keywords instead.'.format(regularization_par_file))
+        self.epoch_mask = epoch_mask
         self.starting_rvs = starting_rvs
         self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
         self.template_xs = template_xs
@@ -255,6 +267,7 @@ class Component(object):
 
     def setup(self, data, r):
         """Do TensorFlow magic in prep for optimizing"""
+        self.starting_rvs[np.isnan(self.starting_rvs)] = 0. # because introducing NaNs to synth will fail
         self.rvs = tf.Variable(self.starting_rvs, dtype=T, name='rvs_'+self.name)
         self.template_xs = tf.constant(self.template_xs, dtype=T, name='template_xs_'+self.name)
         self.template_ys = tf.Variable(self.template_ys, dtype=T, name='template_ys_'+self.name)
@@ -289,18 +302,26 @@ class Component(object):
             self.synth = interp(shifted_xs, expand_inner(self.template_xs), full_template)
         if self.scale_by_airmass:
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)
+        
+        # Zero out unused epochs    
+        A = np.diag(self.epoch_mask.astype('float'))
+        self.synth = tf.matmul(tf.constant(A, dtype=T), self.synth)
 
 
     def initialize_template(self, data_xs, data_ys, data_ivars):
-        """Doppler-shift data into component rest frame, subtract off other components,
-        and average to make a composite spectrum.
+        """Doppler-shift data into component rest frame and average 
+        to make a composite spectrum. Returns residuals after removing this 
+        component from the data.
+        
+        NOTE: if epochs are masked out, this code relies on their RVs being NaNs.
         """
+        N = len(self.starting_rvs)
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
         if self.template_xs is None:
             dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
             tiny = 10.
-            self.template_xs = np.arange(np.min(shifted_xs)-tiny*dx,
-                                   np.max(shifted_xs)+tiny*dx, dx)
+            self.template_xs = np.arange(np.nanmin(shifted_xs)-tiny*dx,
+                                   np.nanmax(shifted_xs)+tiny*dx, dx)
                                    
         if self.template_ys is None:
             if self.initialize_at_zero:
@@ -309,21 +330,28 @@ class Component(object):
                 template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
             self.template_ys = template_ys
             
-        full_template = self.template_ys[None,:] + np.zeros((len(self.starting_rvs),len(self.template_ys)))
+        full_template = self.template_ys[None,:] + np.zeros((N,len(self.template_ys)))
         if self.K > 0:
             # initialize basis components
-            resids = np.empty((len(self.starting_rvs),len(self.template_ys)))
-            for n in range(len(self.starting_rvs)):
-                resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
+            resids = np.empty((np.sum(self.epoch_mask),len(self.template_ys)))
+            i = 0
+            for n in range(N): # populate resids with informative epochs
+                if self.epoch_mask[n]: # this epoch contains the component
+                    resids[i] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
+                    i += 1
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
             basis_weights = u[:, :self.K] * s[None, :self.K] # weights (N x K)
-            self.basis_vectors = basis_vectors
-            self.basis_weights = basis_weights
             full_template += np.dot(basis_weights, basis_vectors)
+            self.basis_vectors = basis_vectors
+            # pad out basis_weights with NaNs for data epochs not used:
+            basis_weights_all = np.zeros((len(self.starting_rvs), self.K))
+            basis_weights_all[self.epoch_mask,:] = basis_weights
+            self.basis_weights = basis_weights_all
         data_resids = np.copy(data_ys)
-        for n in range(len(self.starting_rvs)):
-            data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
+        for n in range(N):
+            if self.epoch_mask[n]:
+                data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
         return data_resids
         
 class Continuum(Component):

@@ -75,6 +75,7 @@ class Data(object):
         # HACK - optionally un-log it:
         if not log_flux:
             self.ys = np.exp(self.ys)
+            self.ivars = self.flux_ivars
                 
         # mask out high pixels:
         for r in range(self.R):
