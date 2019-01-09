@@ -10,7 +10,7 @@ Installation
 
 	git clone https://github.com/megbedell/wobble.git
 	cd wobble
-	python setup.py install
+	python setup.py develop
 
 Input Data
 ----------
