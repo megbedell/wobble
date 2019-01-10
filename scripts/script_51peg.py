@@ -20,8 +20,8 @@ if __name__ == "__main__":
     plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
     
     if False:
-        # quick test on two orders
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30,56])
+        # quick test on single order
+        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[56])
         results = wobble.Results(data=data)
         for r in range(data.R):
             model = wobble.Model(data, results, r)
@@ -31,9 +31,10 @@ if __name__ == "__main__":
             model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
                                 regularization_par_file=tellurics_reg_file,
                                 learning_rate_template=0.01)
-            wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
-                                  basename='results/test', epochs=epochs, movies=movies)
-        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
+            wobble.optimize_order(model, niter=niter, save_history=False, rv_uncertainties=False,
+                                  template_uncertainties=False, basename='../results/test', 
+                                  epochs=epochs, movies=movies)
+        results.write('../results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
         assert False
     
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
