@@ -178,6 +178,7 @@ class Model(object):
         # copy over the outputs to Results:
         for c in self.components:
             self.results.update(c)
+        self.results.ys_predicted[self.r] = session.run(self.synth)
         # save optimization plots:
         if save_history:
             history.save_plots(basename, **kwargs)
@@ -311,6 +312,7 @@ class Component(object):
         """Doppler-shift data into component rest frame, subtract off other components,
         and average to make a composite spectrum.
         """
+        N = len(self.starting_rvs)
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
         if self.template_xs is None:
             dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
@@ -329,8 +331,8 @@ class Component(object):
         full_template = self.template_ys[None,:] + np.zeros((len(self.starting_rvs),len(self.template_ys)))
         if self.K > 0:
             # initialize basis components
-            resids = np.empty((len(self.starting_rvs),len(self.template_ys)))
-            for n in range(len(self.starting_rvs)):
+            resids = np.empty((N,len(self.template_ys)))
+            for n in range(N):
                 resids[n] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
@@ -339,7 +341,7 @@ class Component(object):
             self.basis_weights = basis_weights
             full_template += np.dot(basis_weights, basis_vectors)
         data_resids = np.copy(data_ys)
-        for n in range(len(self.starting_rvs)):
+        for n in range(N):
             data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
         return data_resids
         

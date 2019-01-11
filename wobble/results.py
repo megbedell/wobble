@@ -35,6 +35,7 @@ class Results(object):
             self.component_names = []
             self.R = data.R
             self.N = data.N
+            self.ys_predicted = [0 for r in range(self.R)]
             # get everything we'd need to reconstruct the data used:
             self.orders = data.orders
             self.origin_file = data.origin_file
@@ -119,7 +120,8 @@ class Results(object):
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            all_order_attrs = []
+            self.ys_predicted = [0 for r in range(self.R)]
+            all_order_attrs = ['ys_predicted']
             for name in self.component_names:
                 basename = name + '_'
                 for attr in POST_COMPONENT_ATTRS:
@@ -150,18 +152,14 @@ class Results(object):
         with h5py.File(filename,'w') as f:            
             for r in range(self.R):
                 g = f.create_group('order{0}'.format(r))
+                g.create_dataset('ys_predicted', data=self.ys_predicted[r])
                 for n in self.component_names:
                     g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
                     attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
+                    if np.any(np.ravel(getattr(self, n+'_K')) > 0):
+                        attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                     for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])
-                    opt_attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
-                    for attr in opt_attrs:
-                        try:
-                            test = getattr(self, n+'_'+attr)[r]
-                            g.create_dataset(n+'_'+attr, data=test)
-                        except KeyError: # if attribute doesn't exist, move on
-                            continue
             for n in self.component_names:
                 for attr in POST_COMPONENT_ATTRS:
                     try:

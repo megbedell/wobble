@@ -33,7 +33,7 @@ class Data(object):
         Determines whether fitting will happen using logarithmic flux (default) 
         or linear flux.
     """
-    def __init__(self, filename, filepath='../data/', 
+    def __init__(self, filename, filepath='', 
                     orders = None, 
                     epochs = None,
                     min_flux = 1.,
@@ -41,8 +41,8 @@ class Data(object):
                     padding = 2,
                     min_snr = 5.,
                     log_flux = True):
-        self.origin_file = filepath+filename
-        self.read_data(orders=orders, epochs=epochs)
+        origin_file = filepath+filename
+        self.read_data(origin_file, orders=orders, epochs=epochs)
         self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         
         orders = np.asarray(self.orders)
@@ -75,6 +75,7 @@ class Data(object):
         # HACK - optionally un-log it:
         if not log_flux:
             self.ys = np.exp(self.ys)
+            self.ivars = self.flux_ivars
                 
         # mask out high pixels:
         for r in range(self.R):
@@ -85,10 +86,11 @@ class Data(object):
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
             
-    def read_data(self, orders = None, epochs = None):
+    def read_data(self, origin_file, orders = None, epochs = None):
         """Read origin file and set up data attributes from it"""
         # TODO: add asserts to check data are finite, no NaNs, non-negative ivars, etc
-        with h5py.File(self.origin_file) as f:
+        with h5py.File(origin_file) as f:
+            self.origin_file = origin_file
             if orders is None:
                 orders = np.arange(len(f['data']))
             if epochs is None:
