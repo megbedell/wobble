@@ -19,7 +19,7 @@ if __name__ == "__main__":
     tellurics_reg_file = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
     
-    if False:
+    if True:
         # quick test on two orders
         data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30,56])
         results = wobble.Results(data=data)

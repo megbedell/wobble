@@ -6,7 +6,7 @@ T = tf.float64
 
 from .utils import get_session
 
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_files', 'epochs', 'component_names', 'ys_predicted',
+COMMON_ATTRS = ['R', 'N', 'orders', 'origin_files', 'epochs', 'component_names',
                 'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms', 'epoch_groups'] # common across all components
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
@@ -120,6 +120,8 @@ class Results(object):
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
+            self.origin_files = [a.decode('utf8') for a in self.origin_files] # h5py workaround
+            self.ys_predicted = [0 for r in range(self.R)]
             all_order_attrs = ['ys_predicted']
             for name in self.component_names:
                 basename = name + '_'
@@ -168,6 +170,7 @@ class Results(object):
                     except:
                         continue
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
+            self.origin_files = [a.encode('utf8') for a in self.origin_files] # h5py workaround
             for attr in COMMON_ATTRS:
                 f.create_dataset(attr, data=getattr(self, attr))                    
                 

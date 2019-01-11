@@ -306,9 +306,8 @@ class Component(object):
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)
         
         # Zero out unused epochs    
-        A = np.diag(self.epoch_mask.astype('float'))
-        self.synth = tf.matmul(tf.constant(A, dtype=T), self.synth)
-
+        A = tf.constant(self.epoch_mask.astype('float'), dtype=T)
+        self.synth = tf.einsum('n,nm->nm', A, self.synth)
 
     def initialize_template(self, data_xs, data_ys, data_ivars):
         """Doppler-shift data into component rest frame and average 
