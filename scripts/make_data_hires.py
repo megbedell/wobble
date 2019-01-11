@@ -5,6 +5,8 @@ import math
 import glob
 from astropy.io import fits
 
+from make_data import write_data
+
 
 def read_data(filelist):
     N = len(filelist)  # number of epochs 
@@ -34,21 +36,8 @@ def read_data(filelist):
     #        skip_header=1, delimiter=',') # hackity hack hack
     true_rvs = np.genfromtxt('/Users/mbedell/python/wobble/data/keckrv_bedell/kic7108883_predicted_rv.csv', usecols=(1), delimiter=',')
     true_rvs *= 1.e3 # m/s
-    return data, ivars, xs, true_rvs, dates, bervs, airm, drift
-    
-
-
-def write_data(data, ivars, xs, true_rvs, dates, bervs, airm, drift, hdffile):
-    h = h5py.File(hdffile, 'w')
-    dset = h.create_dataset('data', data=data)
-    dset = h.create_dataset('ivars', data=ivars)
-    dset = h.create_dataset('xs', data=xs)
-    dset = h.create_dataset('true_rvs', data=true_rvs) # pipeline RVs for star relative to SS barycenter
-    dset = h.create_dataset('dates', data=dates)
-    dset = h.create_dataset('bervs', data=bervs) # barycentric RV relative to observatory frame
-    dset = h.create_dataset('airm', data=airm)
-    dset = h.create_dataset('drift', data=drift)
-    h.close()
+    true_sigmas = np.zeros_like(true_rvs) # HACK
+    return data, ivars, xs, true_rvs, true_sigmas, dates, bervs, airm, drift
     
 
 if __name__ == "__main__":
@@ -56,7 +45,7 @@ if __name__ == "__main__":
     data_dir = "/Users/mbedell/python/wobble/data/keckrv_bedell/"
     starname = 'KIC7108883'
     filelist = glob.glob(data_dir+starname+'_b*.fits')
-    data, ivars, xs, true_rvs, dates, bervs, airm, drift = read_data(filelist)
+    data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data(filelist)
 
     hdffile = '../data/'+starname+'.hdf5'
-    write_data(data, ivars, xs, true_rvs, dates, bervs, airm, drift, hdffile)
+    write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, filelist, hdffile)
