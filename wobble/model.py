@@ -186,6 +186,7 @@ class Model(object):
         # copy over the outputs to Results:
         for c in self.components:
             self.results.update(c)
+        self.results.ys_predicted[self.r] = session.run(self.synth)
         # save optimization plots:
         if save_history:
             history.save_plots(basename, **kwargs)
@@ -247,7 +248,8 @@ class Component(object):
         self.learning_rate_basis = learning_rate_basis
         regularization_par = ['L1_template', 'L2_template']
         if self.K > 0:
-            regularization_par = np.append(regularization_par, ['L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'])
+            regularization_par = np.append(regularization_par, 
+                                    ['L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'])
         self.regularization_par = regularization_par
         for par in regularization_par:
             setattr(self, par, eval(par)) # set to input values/defaults

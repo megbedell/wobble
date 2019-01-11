@@ -6,11 +6,11 @@ T = tf.float64
 
 from .utils import get_session
 
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names', 
-                'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders
+COMMON_ATTRS = ['R', 'N', 'orders', 'origin_files', 'epochs', 'component_names', 'ys_predicted',
+                'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms', 'epoch_groups'] # common across all components
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
-OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
+OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # only exist if K>0
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
 OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights'] # only present if component K > 0
 POST_COMPONENT_ATTRS = ['time_rvs', 'time_sigmas', 'order_rvs', 'order_sigmas'] # these won't exist until post-processing
@@ -35,17 +35,19 @@ class Results(object):
             self.component_names = []
             self.R = data.R
             self.N = data.N
+            self.ys_predicted = [0 for r in range(self.R)]
             # get everything we'd need to reconstruct the data used:
             self.orders = data.orders
-            self.origin_file = data.origin_file
+            self.origin_files = data.origin_files
             self.epochs = data.epochs
+            self.epoch_groups = data.epoch_groups
             # get other convenient things
             self.bervs = data.bervs
             self.pipeline_rvs = data.pipeline_rvs
             self.pipeline_sigmas = data.pipeline_sigmas
             self.dates = data.dates
             self.airms = data.airms
-            self.drifts = data.drifts
+            self.drifts = data.drifts            
             return
         if data is None:
             self.read(filename)
@@ -118,7 +120,7 @@ class Results(object):
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            all_order_attrs = []
+            all_order_attrs = ['ys_predicted']
             for name in self.component_names:
                 basename = name + '_'
                 for attr in POST_COMPONENT_ATTRS:
@@ -151,10 +153,11 @@ class Results(object):
         with h5py.File(filename,'w') as f:            
             for r in range(self.R):
                 g = f.create_group('order{0}'.format(r))
+                g.create_dataset('ys_predicted', data=self.ys_predicted[r])
                 for n in self.component_names:
                     g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
                     attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
-                    if np.any(np.array(getattr(self, n+'_K')) > 0):
+                    if np.any(np.ravel(getattr(self, n+'_K')) > 0):
                         attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                     for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])

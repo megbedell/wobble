@@ -33,7 +33,7 @@ class Data(object):
         Determines whether fitting will happen using logarithmic flux (default) 
         or linear flux.
     """
-    def __init__(self, filename, filepath='../data/', 
+    def __init__(self, filename, filepath='', 
                     orders = None, 
                     epochs = None,
                     min_flux = 1.,
@@ -41,8 +41,8 @@ class Data(object):
                     padding = 2,
                     min_snr = 5.,
                     log_flux = True):
-        self.origin_file = filepath+filename
-        self.read_data(orders=orders, epochs=epochs)
+        origin_file = filepath+filename
+        self.read_data(origin_file, orders=orders, epochs=epochs)
         self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         
         orders = np.asarray(self.orders)
@@ -86,10 +86,10 @@ class Data(object):
                 bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
             
-    def read_data(self, orders = None, epochs = None):
+    def read_data(self, origin_file, orders = None, epochs = None):
         """Read origin file and set up data attributes from it"""
         # TODO: add asserts to check data are finite, no NaNs, non-negative ivars, etc
-        with h5py.File(self.origin_file) as f:
+        with h5py.File(origin_file) as f:
             if orders is None:
                 orders = np.arange(len(f['data']))
             if epochs is None:
@@ -114,6 +114,8 @@ class Data(object):
             self.R = len(orders) # number of orders
             self.orders = orders # indices of orders in origin_file
             self.ivars = [self.fluxes[i]**2 * self.flux_ivars[i] for i in range(self.R)] # ivars for log(fluxes)
+            self.origin_files = [origin_file]
+            self.epoch_groups = [list(np.arange(self.N))] # indices into this object with data from this origin file
     
     def mask_low_pixels(self, min_flux = 1., padding = 2, min_snr = 5.):
         """Set ivars to zero for pixels and edge regions that are bad."""
@@ -166,4 +168,20 @@ class Data(object):
                     self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
                 except:
                     print("ERROR: Data: order {0}, epoch {1} could not be continuum normalized!".format(r,n))
+                    
+    def append(self, data2):
+        """Append another dataset to the current one(s)."""
+        assert self.R == data2.R, "ERROR: Number of orders must be the same."
+        for attr in ['dates', 'bervs', 'pipeline_rvs', 'pipeline_sigmas', 
+                        'airms', 'drifts', 'filelist', 'origin_files']:
+            setattr(self, attr, np.append(getattr(self, attr), getattr(data2, attr)))
+        for attr in ['fluxes', 'xs', 'flux_ivars', 'ivars', 'ys']:
+            attr1 = getattr(self, attr)
+            attr2 = getattr(data2, attr)
+            full_attr = [np.append(attr1[i], attr2[i], axis=0) for i in range(self.R)]
+            setattr(self, attr, full_attr)
+        self.epochs = [self.epochs, data2.epochs] # this is a hack that needs to be fixed
+        self.epoch_groups.append((self.N + data2.epochs))
+        self.N = self.N + data2.N
+        
                 

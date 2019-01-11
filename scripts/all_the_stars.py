@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 import copy
 
 if __name__ == "__main__":
-    data1 = wobble.Data('51peg_e2ds.hdf5', filepath='../data/', orders=[53])
+    data = wobble.Data('51peg_e2ds.hdf5', filepath='../data/', orders=[53])
     data2 = wobble.Data('barnards_e2ds.hdf5', filepath='../data/', orders=[53])
+    data.append(data2)
+    '''
     assert len(data1.orders) == len(data2.orders)
     data = copy.deepcopy(data1)
     for attr in ['dates', 'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'airms', 'drifts', 'filelist', 'origin_file']:
@@ -17,6 +19,7 @@ if __name__ == "__main__":
         setattr(data, attr, data_attr)
     data.epoch_groups = [data1.epochs, data1.N + data2.epochs]
     data.N = data1.N + data2.N
+    '''
     
     results = wobble.Results(data=data)
     r = 0
@@ -34,7 +37,7 @@ if __name__ == "__main__":
     plt.plot(np.exp(results.star1_template_xs[r]), np.exp(results.star1_template_ys[r]), label='star1', alpha=0.8)
     plt.plot(np.exp(results.star2_template_xs[r]), np.exp(results.star2_template_ys[r]), label='star2', alpha=0.8)
     plt.plot(np.exp(results.tellurics_template_xs[r]), np.exp(results.tellurics_template_ys[r]), label='tellurics')
-    plt.plot(np.exp(data2.xs[0][0] + np.log(wobble.doppler(results.star2_rvs[0][data1.N], tensors=False))), 
+    plt.plot(np.exp(data2.xs[0][0] + np.log(wobble.doppler(results.star2_rvs[0][data.epoch_groups[1][0]], tensors=False))), 
              np.exp(data2.ys[0][0]), 'k.', alpha=0.7)
     plt.legend(fontsize=14)
     plt.xlim([5728,5733])

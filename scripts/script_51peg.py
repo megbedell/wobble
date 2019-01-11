@@ -32,8 +32,8 @@ if __name__ == "__main__":
                                 regularization_par_file=tellurics_reg_file,
                                 learning_rate_template=0.01)
             wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
-                                  basename='results/test', epochs=epochs, movies=movies)
-        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
+                                  basename='../results/test', epochs=epochs, movies=movies)
+        results.write('../results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
         assert False
     
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
