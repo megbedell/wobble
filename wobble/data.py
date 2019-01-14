@@ -102,6 +102,7 @@ class Data(object):
                 for e in epochs:
                     assert (e >= 0) & (e < len(f['dates'])), \
                         "epoch #{0} is not in datafile {1}".format(e, self.origin_file)
+            self.epoch_groups = [list(np.arange(self.N))]
             self.fluxes = [f['data'][i][self.epochs,:] for i in orders]
             self.xs = [np.log(f['xs'][i][self.epochs,:]) for i in orders]
             self.flux_ivars = [f['ivars'][i][self.epochs,:] for i in orders] # ivars for linear fluxes
@@ -167,4 +168,19 @@ class Data(object):
                     self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
                 except:
                     print("ERROR: Data: order {0}, epoch {1} could not be continuum normalized!".format(r,n))
+                    
+    def append(self, data2):
+        """Append another dataset to the current one(s)."""
+        assert self.R == data2.R, "ERROR: Number of orders must be the same."
+        for attr in ['dates', 'bervs', 'pipeline_rvs', 'pipeline_sigmas', 
+                        'airms', 'drifts', 'filelist', 'origin_file']:
+            setattr(self, attr, np.append(getattr(self, attr), getattr(data2, attr)))
+        for attr in ['fluxes', 'xs', 'flux_ivars', 'ivars', 'ys']:
+            attr1 = getattr(self, attr)
+            attr2 = getattr(data2, attr)
+            full_attr = [np.append(attr1[i], attr2[i], axis=0) for i in range(self.R)]
+            setattr(self, attr, full_attr)
+        self.epochs = [self.epochs, data2.epochs] # this is a hack that needs to be fixed
+        self.epoch_groups.append((self.N + data2.epochs))
+        self.N = self.N + data2.N
                 
