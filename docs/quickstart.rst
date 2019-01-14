@@ -41,7 +41,7 @@ A newly created wobble.Model object must be populated with one or more spectral 
 	for r in range(len(data.orders)):
 		model = wobble.Model(data, results, r)
 		model.add_star('star')
-		model.add_tellurics('tellurics')
+		model.add_telluric('tellurics')
 		wobble.optimize_order(model)
 		
 Note that in the above code, we're overwriting the `model` variable at each order. This is fine because all parameters are automatically stored inside the `results` object at the end of each optimization.
