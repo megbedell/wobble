@@ -283,19 +283,20 @@ class Component(object):
 
     def setup(self, data, r):
         """Do TensorFlow magic in prep for optimizing"""
+        self.starting_rvs[np.isnan(self.starting_rvs)] = 0. # because introducing NaNs to synth will fail
+        
+        # Make some TENSORS (hell yeah)
         self.rvs = tf.Variable(self.starting_rvs, dtype=T, name='rvs_'+self.name)
         self.template_xs = tf.constant(self.template_xs, dtype=T, name='template_xs_'+self.name)
         self.template_ys = tf.Variable(self.template_ys, dtype=T, name='template_ys_'+self.name)
         if self.K > 0:
             self.basis_vectors = tf.Variable(self.basis_vectors, dtype=T, name='basis_vectors_'+self.name)
             self.basis_weights = tf.Variable(self.basis_weights, dtype=T, name='basis_weights_'+self.name)
-
         self.data_xs = tf.constant(data.xs[r], dtype=T, name='data_xs_'+self.name)
 
         # Set up the regularization
         for name in self.regularization_par:
             setattr(self, name+'_tensor', tf.constant(getattr(self,name), dtype=T, name=name+'_'+self.name))
-
         self.nll = self.L1_template_tensor * tf.reduce_sum(tf.abs(self.template_ys))
         self.nll += self.L2_template_tensor * tf.reduce_sum(self.template_ys**2)
         if self.K > 0:
@@ -303,7 +304,7 @@ class Component(object):
             self.nll += self.L2_basis_vectors_tensor * tf.reduce_sum(self.basis_vectors**2)
             self.nll += self.L2_basis_weights_tensor * tf.reduce_sum(self.basis_weights**2)
 
-        # Apply doppler
+        # Apply doppler and synthesize component model predictions
         shifted_xs = self.data_xs + tf.log(doppler(self.rvs[:, None]))
         inner_zeros = tf.zeros(shifted_xs.shape[:-1], dtype=T)
         expand_inner = lambda x: x + inner_zeros[..., None]
@@ -315,10 +316,11 @@ class Component(object):
             full_template = self.template_ys[None,:] + tf.matmul(self.basis_weights,
                                                                 self.basis_vectors)
             self.synth = interp(shifted_xs, expand_inner(self.template_xs), full_template)
+            
+        # Apply other scaling factors to model
         if self.scale_by_airmass:
-            self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)
-        
-        A = tf.constant(self.epoch_mask.astype('float'), dtype=T)
+            self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)        
+        A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
         self.synth = tf.einsum('n,nm->nm', A, self.synth)
 
 
