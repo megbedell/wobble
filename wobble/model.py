@@ -9,6 +9,9 @@ from .utils import bin_data, doppler, get_session
 from .interp import interp
 from .history import History
 
+import os
+pwd = os.path.dirname(os.path.realpath(__file__))+'/'
+
 class Model(object):
     """
     Keeps track of all components in the model.
@@ -63,7 +66,7 @@ class Model(object):
         if starting_rvs is None:
             starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
-                                                       'default_star.hdf5')
+                                                       pwd+'regularization/default_star.hdf5')
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):
@@ -74,7 +77,7 @@ class Model(object):
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
-                                                       'default_t.hdf5')
+                                                       pwd+'regularization/default_t.hdf5')
         self.add_component(name, starting_rvs, **kwargs)
         
     def add_continuum(self, degree, **kwargs):
