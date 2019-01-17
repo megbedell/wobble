@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import pdb
+import matplotlib.pyplot as plt
 
 from .utils import fit_continuum
 
@@ -40,7 +41,8 @@ class Data(object):
                     max_norm_flux = 2.,
                     padding = 2,
                     min_snr = 5.,
-                    log_flux = True):
+                    log_flux = True,
+                    **kwargs):
         origin_file = filepath+filename
         self.read_data(origin_file, orders=orders, epochs=epochs)
         self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
@@ -70,7 +72,7 @@ class Data(object):
             
         # log and normalize:
         self.ys = np.log(self.fluxes) 
-        self.continuum_normalize() 
+        self.continuum_normalize(**kwargs) 
         
         # HACK - optionally un-log it:
         if not log_flux:
@@ -160,12 +162,21 @@ class Data(object):
                     break
 
         
-    def continuum_normalize(self, **kwargs):
+    def continuum_normalize(self, plot_continuum=False, plot_dir='../results/', **kwargs):
         """Continuum-normalize all spectra using a polynomial fit. Takes kwargs of utils.fit_continuum"""
         for r in range(self.R):
             for n in range(self.N):
                 try:
-                    self.ys[r][n] -= fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
+                    fit = fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
+                    if plot_continuum:
+                        fig, ax = plt.subplots(1, 1, figsize=(8,5))
+                        ax.scatter(self.xs[r][n], self.ys[r][n], marker=".", alpha=0.5, c='k', s=40)
+                        mask = self.ivars[r][n] <= 1.e-8
+                        ax.scatter(self.xs[r][n][mask], self.ys[r][n][mask], marker=".", alpha=1., c='white', s=20)                        
+                        ax.plot(self.xs[r][n], fit)
+                        fig.savefig(plot_dir+'continuum_o{0}_e{1}.png'.format(r, n))
+                        plt.close(fig)
+                    self.ys[r][n] -= fit
                 except:
                     print("ERROR: Data: order {0}, epoch {1} could not be continuum normalized!".format(r,n))
                     
