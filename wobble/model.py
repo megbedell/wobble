@@ -226,7 +226,7 @@ class Model(object):
                     iterator = range(N_var)
                 for n in iterator: # get d2nll/drv2 from gradients
                     grid = np.tile(best_values, (N_grid,1))
-                    grid[:,n] += np.linspace(-1.e2, 1.e2, N_grid) * best_values[n] # vary by 1% - may fail in some cases
+                    grid[:,n] += np.linspace(-1.e1, 1.e1, N_grid) * best_values[n] # vary by 10% - may fail in some cases
                     dnll_dattr_grid = [session.run(getattr(c,'dnll_d{0}'.format(attr)), 
                                                     feed_dict={getattr(c,attr):g})[0][n] for g in grid]
                     # fit a slope with linear algebra
