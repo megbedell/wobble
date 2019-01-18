@@ -38,7 +38,7 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     else:
         training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
-    training_model.optimize(niter=0, verbose=verbose, uncertainties=False)
+    training_model.optimize(niter=0, verbose=verbose, rv_uncertainties=False)
     
     if plot:
         n = 0 # epoch to plot
@@ -206,7 +206,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     session = wobble.utils.get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
-    training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, uncertainties=False)
+    training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, rv_uncertainties=False)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
