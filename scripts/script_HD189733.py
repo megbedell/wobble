@@ -55,7 +55,7 @@ if __name__ == "__main__":
         print("--- ORDER {0} ---".format(o))
         if plots:
             wobble.optimize_order(model, niter=niter, save_history=True, 
-                                  basename=plot_dir+'history', movies=movies)
+                                  basename=plot_dir+'history', epochs_to_plot=epochs, movies=movies)
             fig, ax = plt.subplots(1, 1, figsize=(8,5))
             ax.plot(data.dates, results.star_rvs[r] + data.bervs - np.mean(results.star_rvs[r] + data.bervs), 
                     'k.', alpha=0.8)

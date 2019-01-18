@@ -122,13 +122,13 @@ def write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, air
 
 if __name__ == "__main__":
         
-    if True: #51 Peg
+    if False: #51 Peg
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/51peg/HARPS*ccf_G2_A.fits')
         data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
         
-    if True: #Barnard's Star
+    if False: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
         
         if False: # check for missing wavelength files
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         hdffile = '../data/barnards_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)     
         
-    if True: # HD189733
+    if False: # HD189733
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD189733/HARPS*ccf_*_A.fits')
         if False: # check for missing wavelength files
             missing_files = missing_wavelength_files(ccf_filelist)
@@ -159,3 +159,13 @@ if __name__ == "__main__":
         data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(e2ds_filelist, e2ds=True)
         hdffile = '../data/telluric_e2ds.hdf5'
         write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, e2ds_filelist, hdffile)
+
+    if True: # beta hyi
+        ccf_filelist = glob.glob('/mnt/ceph/users/mbedell/wobble/betahyi/HARPS*ccf_*_A.fits')
+        if True: # check for missing wavelength files
+            missing_files = missing_wavelength_files(ccf_filelist)
+            np.savetxt('missing_files.txt', missing_files, fmt='%s')
+            print('{0} missing wavelength files'.format(len(missing_files)))
+        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        hdffile = '/mnt/ceph/users/mbedell/wobble/betahyi_e2ds.hdf5'
+        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
