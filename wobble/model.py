@@ -67,13 +67,14 @@ class Model(object):
             starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
                                                        pwd+'regularization/default_star.hdf5')
+        kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):
         """Add a component with RVs initialized to zero in the observatory rest frame."""
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
-        kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
+        kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.01)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
@@ -271,7 +272,7 @@ class Component(object):
                 with h5py.File(regularization_par_file,'r') as f:
                     for par in regularization_par:
                         setattr(self, par, np.copy(f[par][r])) # overwrite with value from file
-            except:
+            except: # TODO: allow use of keywords to be explicitly specified
                 print('Regularization parameter file {0} not recognized; using keywords instead.'.format(regularization_par_file))
         self.starting_rvs = starting_rvs
         self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
