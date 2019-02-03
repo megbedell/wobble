@@ -6659,7 +6659,7 @@ in single column styles.
 ``the latest edit identifies the problem unambiguously: \mag is a tex
 primitive, and shouldn't be redefined. why this didn't appear in the
 logs you posted is beyond me, but if you rename your command to (say)
-\Mag it should stop having a problem. � barbara beeton Feb 22''
+\Mag it should stop having a problem. ? barbara beeton Feb 22''
 
 \mag is a tex primitive, and it is expecting to be followed by a
 number.
@@ -6829,7 +6829,6 @@ Deleted recent definition of \appendix, returned to earlier version
 with additions.
 
 ================
-
 
 
 

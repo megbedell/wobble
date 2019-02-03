@@ -16,7 +16,7 @@ As an example, let's say that you have a set of HARPS spectra and their correspo
 	import glob
 	filelist = glob.glob('/path/to/files/HARPS*ccf_*_A.fits') # list all star CCF files
 	data = read_data_from_fits(filelist)
-	write_data(*pars, filelist, '../data/filename.hdf5')
+	write_data(*data, filelist, '../data/filename.hdf5')
 	
 Now the data are formatted, saved, and ready to be loaded with:
 
@@ -42,3 +42,8 @@ Tuning Regularization Parameters
 Regularization is an important part of `wobble`'s functionality. To get the best possible results for any given data set, the regularization strengths should be tuned to suit these data. We do this with a cross-validation scheme.
 
 The `regularization.py script <https://github.com/megbedell/wobble/blob/master/scripts/regularization.py>`_ provides a framework for executing this cross-validation and saving the results in a *wobble*-friendly format.
+
+Running *wobble*
+----------------
+
+Once the data have been processed and the regularization amplitudes have been set, running *wobble* should be a straightforward procedure. An overview can be found in the Quickstart section. As further examples, the scripts used to run the three analyses performed in the paper can be found under `script_51peg.py <https://github.com/megbedell/wobble/blob/master/scripts/script_51peg.py>`_, `script_barnards.py <https://github.com/megbedell/wobble/blob/master/scripts/script_barnards.py>`_, and `script_HD189733.py <https://github.com/megbedell/wobble/blob/master/scripts/script_HD189733.py>`_.

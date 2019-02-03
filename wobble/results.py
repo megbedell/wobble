@@ -8,7 +8,7 @@ from .utils import get_session
 
 COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names', 
                 'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders
-COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
+COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'template_ivars', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
@@ -35,6 +35,7 @@ class Results(object):
             self.component_names = []
             self.R = data.R
             self.N = data.N
+            self.ys_predicted = [0 for r in range(self.R)]
             # get everything we'd need to reconstruct the data used:
             self.orders = data.orders
             self.origin_file = data.origin_file
@@ -79,6 +80,7 @@ class Results(object):
         setattr(self, basename+'ivars_rvs', np.empty((self.R,self.N)) + np.nan)
         setattr(self, basename+'template_xs', [0 for r in range(self.R)])
         setattr(self, basename+'template_ys', [0 for r in range(self.R)])
+        setattr(self, basename+'template_ivars', [0 for r in range(self.R)])
         if c.K > 0:
             setattr(self, basename+'basis_vectors', [0 for r in range(self.R)])
             setattr(self, basename+'basis_weights', [0 for r in range(self.R)])
@@ -118,7 +120,8 @@ class Results(object):
                 setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            all_order_attrs = []
+            self.ys_predicted = [0 for r in range(self.R)]
+            all_order_attrs = ['ys_predicted']
             for name in self.component_names:
                 basename = name + '_'
                 for attr in POST_COMPONENT_ATTRS:
@@ -129,11 +132,9 @@ class Results(object):
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
                 attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
+                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS)
+                attrs = np.append(attrs, opt_attrs)
                 for attr in attrs:
-                    setattr(self, basename+attr, [0 for r in range(self.R)])
-                    all_order_attrs.append(basename+attr)
-                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS) # only exist if K>0
-                for attr in opt_attrs:
                     try: # if attribute exists in hdf5, set it up
                         test = f['order0'][basename+attr]
                         setattr(self, basename+attr, [0 for r in range(self.R)])
@@ -151,10 +152,11 @@ class Results(object):
         with h5py.File(filename,'w') as f:            
             for r in range(self.R):
                 g = f.create_group('order{0}'.format(r))
+                g.create_dataset('ys_predicted', data=self.ys_predicted[r])
                 for n in self.component_names:
                     g.create_dataset(n+'_ys_predicted', data=getattr(self, n+'_ys_predicted')[r])
                     attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
-                    if np.any(np.array(getattr(self, n+'_K')) > 0):
+                    if np.any(np.ravel(getattr(self, n+'_K')) > 0):
                         attrs = np.append(attrs, np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS))
                     for attr in attrs:
                         g.create_dataset(n+'_'+attr, data=getattr(self, n+'_'+attr)[r])

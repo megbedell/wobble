@@ -150,7 +150,7 @@ class History(object):
         return ani  
         
                 
-    def save_plots(self, basename, epochs=[0,50], movies=True):
+    def save_plots(self, basename, epochs_to_plot=[0,50], movies=True):
         plt.scatter(np.arange(len(self.nll_history)), self.nll_history)
         ax = plt.gca()
         ax.set_yscale('log')

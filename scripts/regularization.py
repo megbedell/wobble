@@ -38,7 +38,7 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     else:
         training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
-    training_model.optimize(niter=0, verbose=verbose, uncertainties=False)
+    training_model.optimize(niter=0, verbose=verbose, rv_uncertainties=False)
     
     if plot:
         n = 0 # epoch to plot
@@ -63,8 +63,8 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
                        training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
     tensor_names = ['L2_template', 'L2_template', 'L1_template',
-                     'L1_template'] # HACK - this is needed bc TF appends garbage to the end of the tensor name
-    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # HACK
+                     'L1_template'] # this isonly  needed bc TF appends garbage to the end of the tensor name
+    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # ^ same
     if K_star > 0:
         tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
                                                     training_model.components[0].L1_basis_vectors_tensor])
@@ -206,7 +206,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     session = wobble.utils.get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
-    training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, uncertainties=False)
+    training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, rv_uncertainties=False)
     validation_dict = {**regularization_dict}
     for c in validation_model.components:
         validation_dict[getattr(c, 'template_xs')] = getattr(training_model.results, 
