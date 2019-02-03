@@ -19,23 +19,6 @@ if __name__ == "__main__":
     tellurics_reg_file = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
     plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
     
-    if False:
-        # quick test on two orders
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30,56])
-        results = wobble.Results(data=data)
-        for r in range(data.R):
-            model = wobble.Model(data, results, r)
-            model.add_star('star', variable_bases=K_star, 
-                            regularization_par_file=star_reg_file,
-                            learning_rate_template=0.01, learning_rate_rvs=1.)
-            model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
-                                regularization_par_file=tellurics_reg_file,
-                                learning_rate_template=0.01)
-            wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
-                                  basename='results/test', epochs=epochs, movies=movies)
-        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
-        assert False
-    
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
     start_time = time()
     orders = np.arange(72)
@@ -69,7 +52,7 @@ if __name__ == "__main__":
         print("--- ORDER {0} ---".format(o))
         if plots:
             wobble.optimize_order(model, niter=niter, save_history=True, 
-                                  basename=plot_dir+'history', epochs=epochs, movies=movies) 
+                                  basename=plot_dir+'history', movies=movies, epochs_to_plot=epochs) 
             fig, ax = plt.subplots(1, 1, figsize=(8,5))
             ax.plot(data.dates, results.star_rvs[r] + data.bervs - np.mean(results.star_rvs[r] + data.bervs), 
                     'k.', alpha=0.8)
