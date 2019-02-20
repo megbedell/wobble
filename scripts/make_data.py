@@ -1,9 +1,7 @@
 import numpy as np
 from scipy.io.idl import readsav
 from scipy.interpolate import interp1d
-from harps_hacks import read_harps
 import h5py
-import math
 from astropy.io import fits
 import shutil
 import glob
@@ -13,15 +11,96 @@ def dimensions(instrument):
     if instrument == 'HARPS':
         M = 4096 # pixels per order
         R = 72 # orders
+    elif instrument == 'HARPS-N':
+        M = 4096 # pixels per order
+        R = 69 # orders
     else:
-        print("instrument not recognized. valid options are: HARPS")
+        print("instrument not recognized. valid options are: HARPS, HARPS-N")
         return
     return M, R
+    
+def read_spec_2d(spec_file, blaze=False, flat=False):
+    '''Read a HARPS 2D spectrum file from the ESO pipeline
 
-def read_data_from_fits(filelist, e2ds=False):
+    Parameters
+    ----------
+    spec_file : string
+    name of the fits file with the data (e2ds format)
+    blaze : boolean
+    if True, then divide out the blaze function from flux
+    flat : boolean
+    if True, then divide out the flatfield from flux
+    
+    Returns
+    -------
+    wave : np.ndarray (shape n_orders x 4096)
+    wavelength (in Angstroms)
+    flux : np.ndarray (shape n_orders x 4096)
+    flux value 
+    '''
+    path = spec_file[0:str.rfind(spec_file,'/')+1]
+    sp = fits.open(spec_file)
+    header = sp[0].header
+    flux = sp[0].data
+    try:
+        wave_file = header['HIERARCH ESO DRS CAL TH FILE']
+    except KeyError: # HARPS-N
+        wave_file = header['HIERARCH TNG DRS CAL TH FILE']
+    wave_file = str.replace(wave_file, 'e2ds', 'wave') # just in case of header mistake..
+                                                       # ex. HARPS.2013-03-13T09:20:00.346_ccf_M2_A.fits
+    try:
+        ww = fits.open(path+wave_file)
+        wave = ww[0].data
+    except:
+        print("Wavelength solution file {0} not found!".format(wave_file))
+        return
+    if blaze:
+        blaze_file = header['HIERARCH ESO DRS BLAZE FILE']
+        bl = fits.open(path+blaze_file)
+        blaze = bl[0].data
+        flux /= blaze
+    if flat:
+        flat_file = header['HIERARCH ESO DRS CAL FLAT FILE']
+        fl = fits.open(path+flat_file)
+        flat = fl[0].data
+        flux /= flat
+    return wave, flux
+    
+def read_snr(filename, instrument='HARPS'):
+    '''Parse SNR from header of a HARPS(-S or -N) file from the ESO or TNG pipelines
+
+    Parameters
+    ----------
+    filename : string
+    name of the fits file with the data (can be ccf, e2ds, s1d)
+
+    Returns
+    -------
+    snr : np.ndarray
+    SNR values taken near the center of each order
+    '''
+    sp = fits.open(filename)
+    header = sp[0].header
+    
+    if instrument=='HARPS':
+        n_orders = 72
+    elif instrument=='HARPS-N':
+        n_orders = 69
+    else:
+        print("ERROR: instrument {0} not recognized.".format(instrument))
+        return
+    snr = np.arange(n_orders, dtype=np.float)
+    for i in np.nditer(snr, op_flags=['readwrite']):
+        if instrument=='HARPS':
+            i[...] = header['HIERARCH ESO DRS SPE EXT SN{0}'.format(str(int(i)))]
+        elif instrument=='HARPS-N':
+            i[...] = header['HIERARCH TNG DRS SPE EXT SN{0}'.format(str(int(i)))]
+    return snr
+
+def read_data_from_fits(filelist, instrument='HARPS', e2ds=False):
     # input : a list of CCF filenames
     N = len(filelist)  # number of epochs    
-    M, R = dimensions('HARPS')
+    M, R = dimensions(instrument)
     data = [np.zeros((N,M)) for r in range(R)]
     ivars = [np.zeros((N,M)) for r in range(R)]
     xs = [np.zeros((N,M)) for r in range(R)]
@@ -31,26 +110,36 @@ def read_data_from_fits(filelist, e2ds=False):
         sp = fits.open(f)
         if not e2ds:
             try:
-                pipeline_rvs[n] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
-                pipeline_sigmas[n] = sp[0].header['HIERARCH ESO DRS CCF NOISE'] * 1.e3 # m/s
-                drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
+                if instrument == 'HARPS':
+                    pipeline_rvs[n] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
+                    pipeline_sigmas[n] = sp[0].header['HIERARCH ESO DRS CCF NOISE'] * 1.e3 # m/s
+                    drifts[n] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']  
+                elif instrument == 'HARPS-N':
+                    pipeline_rvs[n] = sp[0].header['HIERARCH TNG DRS CCF RVC'] * 1.e3 # m/s
+                    pipeline_sigmas[n] = sp[0].header['HIERARCH TNG DRS CCF NOISE'] * 1.e3 # m/s
+                    drifts[n] = sp[0].header['HIERARCH TNG DRS DRIFT RV USED']
             except KeyError:
                 print("WARNING: {0} does not appear to be a stellar CCF file. Skipping this one.".format(f))
                 empty = np.append(empty, n)
                 continue
-        dates[n] = sp[0].header['HIERARCH ESO DRS BJD']        
-        bervs[n] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
-        airms[n] = sp[0].header['HIERARCH ESO TEL AIRM START']
+        if instrument == 'HARPS':
+            dates[n] = sp[0].header['HIERARCH ESO DRS BJD']        
+            bervs[n] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
+            airms[n] = sp[0].header['HIERARCH ESO TEL AIRM START']
+        elif instrument == 'HARPS-N':
+            dates[n] = sp[0].header['HIERARCH TNG DRS BJD']        
+            bervs[n] = sp[0].header['HIERARCH TNG DRS BERV'] * 1.e3 # m/s
+            airms[n] = sp[0].header['AIRMASS']            
         
         spec_file = str.replace(f, 'ccf_G2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds') 
         try:
-            wave, spec = read_harps.read_spec_2d(spec_file)
+            wave, spec = read_spec_2d(spec_file)
         except:
             empty = np.append(empty, n)
             continue
-        snrs = read_harps.read_snr(f) # HACK
+        snrs = read_snr(f, instrument=instrument) # HACK
         # save stuff
         for r in range(R):
             data[r][n,:] = spec[r,:]
@@ -78,6 +167,7 @@ def read_data_from_fits(filelist, e2ds=False):
     
 def savfile_to_filelist(savfile, destination_dir='../data/'):
     # copies CCF + E2DS files to destination_dir and returns a list of the CCFs
+    # MB personal use only - I have a lot of old IDL files!
     s = readsav(savfile)
     filelist = []
     files = [f.decode('utf8') for f in s.files]
@@ -90,6 +180,8 @@ def savfile_to_filelist(savfile, destination_dir='../data/'):
     return filelist
     
 def missing_wavelength_files(filelist):
+    # loop through files and make sure that their wavelength solutions exist
+    # return list of all missing wavelength solution files
     missing_files = []
     for f in filelist:
         path = f[0:str.rfind(f,'/')+1]
@@ -124,9 +216,9 @@ if __name__ == "__main__":
         
     if False: #51 Peg
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/51peg/HARPS*ccf_G2_A.fits')
-        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        d = read_data_from_fits(ccf_filelist)
         hdffile = '../data/51peg_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
+        write_data(*d, ccf_filelist, hdffile)
         
     if False: #Barnard's Star
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/barnards/HARPS*ccf_M2_A.fits')
@@ -136,9 +228,9 @@ if __name__ == "__main__":
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files for Barnard\'s Star'.format(len(missing_files)))
             
-        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        d = read_data_from_fits(ccf_filelist)
         hdffile = '../data/barnards_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)     
+        write_data(*d, ccf_filelist, hdffile)     
         
     if False: # HD189733
         ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/HD189733/HARPS*ccf_*_A.fits')
@@ -146,9 +238,9 @@ if __name__ == "__main__":
             missing_files = missing_wavelength_files(ccf_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
-        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
+        d = read_data_from_fits(ccf_filelist)
         hdffile = '../data/HD189733_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
+        write_data(*d, ccf_filelist, hdffile)
         
     if False: # telluric standard
         e2ds_filelist = glob.glob('/Users/mbedell/python/wobble/data/telluric/HARPS*e2ds_A.fits')
@@ -156,16 +248,24 @@ if __name__ == "__main__":
             missing_files = missing_wavelength_files(e2ds_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
-        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(e2ds_filelist, e2ds=True)
+        d = read_data_from_fits(e2ds_filelist, e2ds=True)
         hdffile = '../data/telluric_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, e2ds_filelist, hdffile)
+        write_data(*d, e2ds_filelist, hdffile)
 
-    if True: # beta hyi
-        ccf_filelist = glob.glob('/mnt/ceph/users/mbedell/wobble/betahyi/HARPS*ccf_*_A.fits')
-        if True: # check for missing wavelength files
+    if False: # beta hyi
+        #ccf_filelist = glob.glob('/mnt/ceph/users/mbedell/wobble/betahyi/HARPS*ccf_*_A.fits')
+        ccf_filelist = glob.glob('/Users/mbedell/python/wobble/data/betahyi_20050907/HARPS*ccf_G2_A.fits') 
+        if False: # check for missing wavelength files
             missing_files = missing_wavelength_files(ccf_filelist)
             np.savetxt('missing_files.txt', missing_files, fmt='%s')
             print('{0} missing wavelength files'.format(len(missing_files)))
-        data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts = read_data_from_fits(ccf_filelist)
-        hdffile = '/mnt/ceph/users/mbedell/wobble/betahyi_e2ds.hdf5'
-        write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, ccf_filelist, hdffile)
+        d = read_data_from_fits(ccf_filelist)
+        #hdffile = '/mnt/ceph/users/mbedell/wobble/betahyi_e2ds.hdf5'
+        hdffile = '/Users/mbedell/python/wobble/data/betahyi_20050907_e2ds.hdf5'
+        write_data(*d, ccf_filelist, hdffile)
+
+    if True: #BP's star
+        ccf_filelist = glob.glob('/Users/mbedell/python/video/data/*/HARPN*ccf_K5_A.fits')
+        d = read_data_from_fits(ccf_filelist, instrument='HARPS-N')
+        hdffile = '/Users/mbedell/python/video/data/video_e2ds.hdf5'
+        write_data(*d, ccf_filelist, hdffile)
