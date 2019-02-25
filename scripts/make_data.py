@@ -16,7 +16,7 @@ def dimensions(instrument):
         R = 69 # orders
     else:
         print("instrument not recognized. valid options are: HARPS, HARPS-N")
-        return
+        assert False
     return M, R
     
 def read_spec_2d(spec_file, blaze=False, flat=False):

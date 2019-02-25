@@ -168,17 +168,18 @@ class Data(object):
             for n in range(self.N):
                 try:
                     fit = fit_continuum(self.xs[r][n], self.ys[r][n], self.ivars[r][n], **kwargs)
-                    if plot_continuum:
-                        fig, ax = plt.subplots(1, 1, figsize=(8,5))
-                        ax.scatter(self.xs[r][n], self.ys[r][n], marker=".", alpha=0.5, c='k', s=40)
-                        mask = self.ivars[r][n] <= 1.e-8
-                        ax.scatter(self.xs[r][n][mask], self.ys[r][n][mask], marker=".", alpha=1., c='white', s=20)                        
-                        ax.plot(self.xs[r][n], fit)
-                        fig.savefig(plot_dir+'continuum_o{0}_e{1}.png'.format(r, n))
-                        plt.close(fig)
-                    self.ys[r][n] -= fit
                 except:
                     print("ERROR: Data: order {0}, epoch {1} could not be continuum normalized!".format(r,n))
+                    continue
+                if plot_continuum:
+                    fig, ax = plt.subplots(1, 1, figsize=(8,5))
+                    ax.scatter(self.xs[r][n], self.ys[r][n], marker=".", alpha=0.5, c='k', s=40)
+                    mask = self.ivars[r][n] <= 1.e-8
+                    ax.scatter(self.xs[r][n][mask], self.ys[r][n][mask], marker=".", alpha=1., c='white', s=20)                        
+                    ax.plot(self.xs[r][n], fit)
+                    fig.savefig(plot_dir+'continuum_o{0}_e{1}.png'.format(r, n))
+                    plt.close(fig)
+                self.ys[r][n] -= fit
                     
     def append(self, data2):
         """Append another dataset to the current one(s)."""
