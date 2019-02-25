@@ -191,6 +191,7 @@ class Model(object):
         # save optimization plots:
         if save_history:
             history.save_plots(basename, **kwargs)
+            return history
             
     def estimate_uncertainties(self, verbose=True, rvs=True, templates=False):
         """Estimate uncertainties using the second derivative of the likelihood. 
@@ -330,7 +331,7 @@ class Component(object):
         to make a composite spectrum. Returns residuals after removing this 
         component from the data.
         
-        NOTE: if epochs are masked out, this code relies on their RVs being NaNs.
+        NOTE: if epochs are masked out, this code implicitly relies on their RVs being NaNs.
         """
         N = len(self.starting_rvs)
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
