@@ -12,6 +12,8 @@ Installation
 	cd wobble
 	python setup.py develop
 
+If you are running macOS 10.14 (Mojave) and run into problems building the wobble C++ extensions, :doc:`try this <mojave>`.
+
 Input Data
 ----------
 
