@@ -98,7 +98,45 @@ def read_snr(filename, instrument='HARPS'):
     return snr
 
 def read_data_from_fits(filelist, instrument='HARPS', e2ds=False):
-    # input : a list of CCF filenames
+    '''Parses a list of HARPS CCF files.
+    
+    Parameters
+    ----------
+    filelist : list of strings
+    list of filenames for HARPS (or HARPS-N) CCF files
+
+    Returns
+    -------
+    data : list of numpy arrays
+    flux values in format [(N_epochs, M_pixels) for r in R_orders].
+    note that the echelle orders may be of different pixel lengths, 
+    but all epochs must be consistent.
+    
+    ivars : list of numpy arrays
+    Inverse variance errors on data in the same format.
+    
+    xs : list of numpy arrays
+    Wavelength values for each pixel, in the same format as data.
+    
+    pipeline_rvs : numpy array
+    N_epoch length array of RVs estimated by the HARPS pipeline. 
+    These RVs are drift-corrected but NOT barycentric corrected.
+    
+    pipeline_sigmas : numpy array
+    N_epoch length array of error estimates on HARPS pipeline RVs.
+    
+    dates : numpy array
+    N_epoch length array of observation times.
+    
+    bervs : numpy array
+    N_epoch length array of barycentric RVs.
+    
+    airms : numpy array
+    N_epoch length array of airmass.
+    
+    drifts : numpy array
+    N_epoch length array of instrumental drifts.    
+    '''
     N = len(filelist)  # number of epochs    
     M, R = dimensions(instrument)
     data = [np.zeros((N,M)) for r in range(R)]
@@ -197,6 +235,54 @@ def missing_wavelength_files(filelist):
     
     
 def write_data(data, ivars, xs, pipeline_rvs, pipeline_sigmas, dates, bervs, airms, drifts, filenames, hdffile):
+    '''Write processed HARPS data to HDF5 file. 
+    Note that currently all input parameters are required, 
+    but the following ones can be populated with zeros if you don't have them:
+    pipeline_rvs, pipeline_sigmas, bervs, drifts, filenames
+    
+    These parameters *are* strictly required:
+    data, ivars, xs, dates, airms
+    
+    And bervs is strongly recommended as they are used to initialize any stellar RVs.
+
+    Parameters
+    ----------
+    data : list of numpy arrays
+    flux values in format [(N_epochs, M_pixels) for r in R_orders].
+    note that the echelle orders may be of different pixel lengths, 
+    but all epochs must be consistent.
+    
+    ivars : list of numpy arrays
+    Inverse variance errors on data in the same format.
+    
+    xs : list of numpy arrays
+    Wavelength values for each pixel, in the same format as data.
+    
+    pipeline_rvs : numpy array
+    N_epoch length array of RVs estimated by the HARPS pipeline. 
+    These RVs are drift-corrected but NOT barycentric corrected.
+    
+    pipeline_sigmas : numpy array
+    N_epoch length array of error estimates on HARPS pipeline RVs.
+    
+    dates : numpy array
+    N_epoch length array of observation times.
+    
+    bervs : numpy array
+    N_epoch length array of barycentric RVs.
+    
+    airms : numpy array
+    N_epoch length array of airmass.
+    
+    drifts : numpy array
+    N_epoch length array of instrumental drifts.   
+    
+    filenames : list or numpy array
+    N_epoch length list of data files.
+    
+    hdffile : string
+    Filename to write to.
+    '''
     h = h5py.File(hdffile, 'w')
     dset = h.create_dataset('data', data=data)
     dset = h.create_dataset('ivars', data=ivars)
