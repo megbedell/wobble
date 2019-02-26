@@ -210,6 +210,7 @@ class Model(object):
         for c in self.components:
             attrs = []
             ivar_attrs = []
+            epsilon = []
             if rvs and not c.rvs_fixed:
                 attrs.append('rvs')
                 ivar_attrs.append('ivars_rvs')  # TODO: make ivars names consistent
@@ -217,9 +218,13 @@ class Model(object):
                 attrs.append('template_ys')
                 ivar_attrs.append('template_ivars')
             for attr, ivar_attr in zip(attrs, ivar_attrs):
+                if attr == 'rvs':
+                    epsilon = 5. # perturb by a few m/s
+                else:
+                    epsilon = 0.01 # perturb by 1%
                 best_values = session.run(getattr(c, attr))
                 N_var = len(best_values) # number of variables in attribute
-                N_grid = 10
+                N_grid = 5
                 if verbose:
                     print("optimize: calculating uncertainties on {0} {1}...".format(c.name, attr))
                     iterator = tqdm(range(N_var), total=N_var, 
@@ -228,7 +233,7 @@ class Model(object):
                     iterator = range(N_var)
                 for n in iterator: # get d2nll/drv2 from gradients
                     grid = np.tile(best_values, (N_grid,1))
-                    grid[:,n] += np.linspace(-1.e1, 1.e1, N_grid) * best_values[n] # vary by 10% - may fail in some cases
+                    grid[:,n] += np.linspace(-epsilon, epsilon, N_grid) # vary according to epsilon scale
                     dnll_dattr_grid = [session.run(getattr(c,'dnll_d{0}'.format(attr)), 
                                                     feed_dict={getattr(c,attr):g})[0][n] for g in grid]
                     # fit a slope with linear algebra
