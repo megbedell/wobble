@@ -196,12 +196,13 @@ class Results(object):
         self.M = None
         # optimize
         soln = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS')
+        soln_sigmas = soln['x']
         if not soln['success']:
             print(soln.status)
             print(soln.message)
-            #print(soln)
-            #assert False
-        soln_sigmas = soln['x']
+            if not np.isfinite(soln['fun']):
+                print("ERROR: non-finite likelihood encountered in optimization. Setting combined RVs to non-optimal values.")
+                soln_sigmas = x0_sigmas
         # save results
         lnlike, rvs_N, rvs_R, Cinv = self.lnlike_sigmas(soln_sigmas, return_rvs=True) # Cinv is inverse covariance matrix
         setattr(self, basename+'time_rvs', rvs_N)
