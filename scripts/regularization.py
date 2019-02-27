@@ -24,6 +24,46 @@ def improve_order_regularization(r, o, star_filename, tellurics_filename,
     Use a validation scheme to determine the best regularization parameters for 
     all model components in a given order r.
     Update files at star_filename, tellurics_filename with the best parameters.
+                                 
+    By default, this tunes in the following order: 
+            tellurics L2, star L2, tellurics L1, star L1.
+                                 
+    Parameters
+    ----------
+    r : int
+        Index into `training_data` and `validation_data` to retrieve desired order.
+    o : int
+        Index into `star_filename` and `telluric_filename` to retrieve desired order.
+    star_filename : str
+        Filename containing regularization amplitudes for the star.
+    tellurics_filename : str
+        Filename containing regularization amplitudes for the tellurics.
+    training_data : wobble.Data object
+        Data to train template on (should be the majority of available data).
+    training_results : wobble.Results object
+        Results object corresponding to `training_data`.
+    validation_data : wobble.Data object
+        Data to use in assessing goodness-of-fit for template 
+        (should be a representative minority of the available data).
+    validation_results : wobble.Results object
+        Results object corresponding to `validation_data`.
+    verbose : bool (default `True`)
+        Toggle print statements and progress bars.
+    plot : bool (default `False`)
+        Generate and save plots of fits to validation data.
+    basename : str (default ``)
+        String to append to the beginning of saved plots (file path and base).
+    K_star : int (default `0`)
+        Number of variable basis vectors for the star.
+    K_t : int (default `0`)
+        Number of variable basis vectors for the tellurics.
+    L1 : bool (default `True`)
+        Whether to tune L1 amplitudes.
+    L2 : bool (default `True`)
+        Whether to tune L2 amplitudes.
+    tellurics_template_fixed : bool (default `False`)
+        (currently hard-coded to work with MB's laptop, don't use this!)
+        Whether to keep tellurics template fixed to values from 51 Peg fit.
     """
     
     training_model = wobble.Model(training_data, training_results, r)
