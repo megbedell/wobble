@@ -129,7 +129,8 @@ class Model(object):
                 self.updates.append(c.opt_template)
             if not c.rvs_fixed:
                 c.dnll_drvs = tf.gradients(self.nll, c.rvs)
-                c.opt_rvs = tf.train.AdamOptimizer(c.learning_rate_rvs).minimize(self.nll,
+                c.opt_rvs = tf.train.AdamOptimizer(learning_rate=c.learning_rate_rvs,
+                                                   epsilon=1.).minimize(self.nll,
                             var_list=[c.rvs])
                 self.updates.append(c.opt_rvs)
             if c.K > 0:
@@ -219,7 +220,7 @@ class Model(object):
                 ivar_attrs.append('template_ivars')
             for attr, ivar_attr in zip(attrs, ivar_attrs):
                 if attr == 'rvs':
-                    epsilon = 5. # perturb by a few m/s
+                    epsilon = 10. # perturb by a few m/s - TODO: scale this with spectrum SNR!
                 else:
                     epsilon = 0.01 # perturb by 1%
                 best_values = session.run(getattr(c, attr))

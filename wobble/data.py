@@ -121,9 +121,9 @@ class Data(object):
     
     def mask_low_pixels(self, min_flux = 1., padding = 2, min_snr = 5.):
         """Set ivars to zero for pixels and edge regions that are bad."""
-        # mask out low pixels:
+        # mask out low/NaN pixels:
         for r in range(self.R):
-            bad = self.fluxes[r] < min_flux
+            bad = np.logical_or(self.fluxes[r] < min_flux, np.isnan(self.fluxes[r]))
             self.fluxes[r][bad] = min_flux
             for pad in range(padding): # mask out neighbors of low pixels
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
