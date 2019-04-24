@@ -1,8 +1,7 @@
 name = "wobble"
 from .utils import bin_data, get_session, doppler, fit_continuum
 from .interp import interp
-from .data import Data
-from .spectra import Spectra, Spectrum
+from .data import Data, Spectrum
 from .results import Results
 from .model import Model, Component
 from .history import History

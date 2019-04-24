@@ -17,7 +17,7 @@ def dimensions(instrument):
         M = 9141
         R = 170
     else:
-        print("instrument not recognized. valid options are: HARPS, HARPS-N")
+        print("instrument not recognized. valid options are: HARPS, HARPS-N, ESPRESSO")
         assert False
     return M, R
     
