@@ -21,7 +21,7 @@ if __name__ == "__main__":
     
     if False:
         # quick test on single order
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30, 56])
+        data = wobble.Data(filename='../data/'+starname+'_e2ds.hdf5', orders=[30, 56])
         results = wobble.Results(data=data)
         for r in range(data.R):
             model = wobble.Model(data, results, r)
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
     start_time = time()
     orders = np.arange(72)
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders)
+    data = wobble.Data(filename='../data/'+starname+'_e2ds.hdf5', orders=orders)
     results = wobble.Results(data=data)
     
     print("data loaded")

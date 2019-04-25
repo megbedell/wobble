@@ -34,10 +34,10 @@ class Model(object):
         self.r = r # order index
         self.order = data.orders[r] # order number
 
-    def __str__(self):
-        string = 'Model for order {0} consisting of the following components: '.format(self.order)
-        for c in self.components:
-            string += '\n{0}: '.format(c.name)
+    def __repr__(self):
+        string = 'wobble.Model for order {0} consisting of the following components: '.format(self.order)
+        for i,c in enumerate(self.components):
+            string += '\n{0}: {1}; '.format(i, c.name)
             if c.rvs_fixed:
                 string += 'RVs fixed; '
             else:
@@ -46,7 +46,22 @@ class Model(object):
         return string
 
     def add_component(self, name, starting_rvs, epochs=None, **kwargs):
-        """Add a new Component object to the model."""
+        """
+        Append a new Component object to the model.
+        
+        Parameters
+        ----------
+        name : `str`
+            The name of the component. Must be unique.
+        starting_rvs : `np.ndarray`
+            N-epoch length vector of initial guesses for RVs; will be used
+            to stack & average data resids for initialization of the template.
+        epochs : `np.ndarray`
+            Indices between 0:N denoting epochs where this component is present 
+            in the data. Defaults to all N epochs.
+         **kwargs : `dict`
+            Keywords to be passed to wobble.Component()
+        """
         if np.isin(name, self.component_names):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
@@ -62,7 +77,12 @@ class Model(object):
             self.results.add_component(c)
 
     def add_star(self, name, starting_rvs=None, **kwargs):
-        """Add a component with RVs initialized to zero in the barycentric-corrected rest frame."""
+        """
+        Convenience function to add a component with RVs initialized to zero 
+        in the barycentric-corrected rest frame.
+        Will have regularization parameters and learning rates set to default values
+        for a stellar spectrum.
+        """
         if starting_rvs is None:
             starting_rvs = -1. * np.copy(self.data.bervs) + np.mean(self.data.bervs)
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
@@ -71,7 +91,12 @@ class Model(object):
         self.add_component(name, starting_rvs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, **kwargs):
-        """Add a component with RVs initialized to zero in the observatory rest frame."""
+        """
+        Convenience function to add a component with RVs fixed to zero 
+        in the observatory rest frame. Component contribution scales with airmass by default.
+        Will have regularization parameters and learning rates set to default values
+        for a telluric spectrum.
+        """
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.01)
@@ -82,6 +107,7 @@ class Model(object):
         self.add_component(name, starting_rvs, **kwargs)
         
     def add_continuum(self, degree, **kwargs):
+        """Untested code for adding a continuum component."""
         if np.isin("continuuum", self.component_names):
             print("The model already has a continuum component.")
             return
@@ -204,7 +230,7 @@ class Model(object):
         rvs : `bool` (default `True`)
             Calculate uncertainties for rvs.
         templates : `bool` (default `False`)
-            Calculate uncertainties for template_ys. (NOTE: this may take a while!)
+            Calculate uncertainties for template_ys. (NOTE: this will take a while!)
         """
         session = get_session()
 
@@ -249,48 +275,132 @@ class Model(object):
 class Component(object):
     """
     Generic class for an additive component in the spectral model. 
+    You will probably never need to call this class directly. 
+    Instead, use wobble.Model.add_component() to append an instance 
+    of this object to the list saved as wobble.Model.components.
+    
+    Parameters
+    ----------
+    name : `str`
+        The name of the component. Must be unique within the model.
+    r : `int`
+        the index of the order to be fit in the data. Must be the same as
+        `Model.r`.
+    starting_rvs : `np.ndarray`
+        N-epoch length vector of initial guesses for RVs; will be used
+        to stack & average data resids for initialization of the template.
+    epoch_mask : `np.ndarray` of type `bool`
+        N-epoch mask where epoch_mask[n] = `True` indicates that this 
+        component contributes to the model at epoch n.
+    rvs_fixed : `bool` (default `False`)
+        If `True`, fix the RVs to their initial values and do not
+        optimize.
+    template_fixed : `bool` (default `False`)
+        If `True`, fix the template to its initial values and do not
+        optimize.
+    variable_bases : `int` (default `0`)
+        Number of basis vectors to use in time variability of `template_ys`. 
+        If zero, no time variability is allowed.
+    scale_by_airmass : `bool` (default `False`)
+        If `True`, component contribution to the model scales linearly with
+        airmass.
+    template_xs : `np.ndarray` or `None` (default `None`)
+        Grid of x-values for the spectral template in the same units as 
+        data `xs`. If `None`, generate automatically upon initialization.
+    template_ys : `np.ndarray` or `None` (default `None`)
+        Grid of starting guess y-values for the spectral template 
+        in the same units as data `ys`.
+        If `None`, generate automatically upon initialization.  
+        If not `None`, `template_xs` must be provided in the same shape.
+    initialize_at_zero : `bool` (default `False`)
+        If `True`, initialize template as a flat continuum. Equivalent to
+        providing a vector of zeros with `template_ys` keyword but does
+        not require passing a `template_xs` keyword.
+    learning_rate_rvs : `float` (default 1.)
+        Learning rate for Tensorflow Adam optimizer to use in `rvs` 
+        optimization step.
+    learning_rate_template : `float` (default 0.01)
+        Learning rate for Tensorflow Adam optimizer to use in `template_ys` 
+        optimization step.
+    learning_rate_basis : `float` (default 0.01)
+        Learning rate for Tensorflow Adam optimizer to use in `basis_vectors` 
+        optimization step.
+    regularization_par_file : `str` or `None` (default `None`)
+        Name of HDF5 file containing the expected regularization amplitudes.
+        If keyword arguments are set for any of these amplitudes, that value
+        is used instead of file contents. If `None` & no keywords, no
+        regularization is used.
+    L1_template : `float` (default `0`)
+        L1 regularization amplitude on `self.template_ys`. If zero, no 
+        regularization is used. If not explicitly specified and a valid
+        `regularization_par_file` is given, value from there is used.
+    L2_template : `float` (default `0`)
+        L2 regularization amplitude on `self.template_ys`. If zero, no 
+        regularization is used. If not explicitly specified and a valid
+        `regularization_par_file` is given, value from there is used.
+    L1_basis_vectors : `float` (default `0`)
+        L1 regularization amplitude on `self.basis_vectors`. If zero, no 
+        regularization is used. If not explicitly specified and a valid
+        `regularization_par_file` is given, value from there is used. 
+        Only set if `variable_bases` > 0.
+    L2_basis_vectors : `float` (default `1`)
+        L2 regularization amplitude on `self.basis_vectors`. If zero, no 
+        regularization is used. If not explicitly specified and a valid
+        `regularization_par_file` is given, value from there is used.
+        Only set if `variable_bases` > 0.
+    L2_basis_weights : `float` (default `0`)
+        L1 regularization amplitude on `self.basis_weights`. If zero, no 
+        regularization is used. If not explicitly specified and a valid
+        `regularization_par_file` is given, value from there is used.
+        Only set if `variable_bases` > 0.
+        Not recommended to change, as this is degenerate with basis vectors.
     """
-    def __init__(self, name, r, starting_rvs, epoch_mask, regularization_par_file=None,
-                 L1_template=0., L2_template=0., L1_basis_vectors=0.,
-                 L2_basis_vectors=0., L2_basis_weights=1., learning_rate_rvs=1.,
-                 learning_rate_template=0.01, learning_rate_basis=0.01,
+    def __init__(self, name, r, starting_rvs, epoch_mask, 
                  rvs_fixed=False, template_fixed=False, variable_bases=0, 
                  scale_by_airmass=False,
-                 template_xs=None, template_ys=None, initialize_at_zero=False):
-        self.name = name
-        self.r = r
+                 template_xs=None, template_ys=None, initialize_at_zero=False,    
+                 learning_rate_rvs=1., learning_rate_template=0.01, 
+                 learning_rate_basis=0.01, regularization_par_file=None, 
+                 **kwargs):
+        for attr in ['name', 'r', 'starting_rvs', 'epoch_mask',
+                    'rvs_fixed', 'template_fixed', 'template_xs',
+                    'template_ys', 'initialize_at_zero', 
+                    'learning_rate_rvs', 'learning_rate_template',
+                    'learning_rate_basis']:
+            setattr(self, attr, eval(attr))
+
         self.K = variable_bases # number of variable basis vectors
         self.N = len(starting_rvs)
-        self.rvs_fixed = rvs_fixed
-        self.template_fixed = template_fixed
-        self.scale_by_airmass = scale_by_airmass
-        self.learning_rate_rvs = learning_rate_rvs
-        self.learning_rate_template = learning_rate_template
-        self.learning_rate_basis = learning_rate_basis
+        self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
+        
         regularization_par = ['L1_template', 'L2_template']
         if self.K > 0:
             regularization_par = np.append(regularization_par, 
                     ['L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'])
-        self.regularization_par = regularization_par
-        for par in regularization_par:
-            setattr(self, par, eval(par)) # set to input values/defaults
-        if regularization_par_file is not None:
-            try:
-                with h5py.File(regularization_par_file,'r') as f:
-                    for par in regularization_par:
-                        setattr(self, par, np.copy(f[par][r])) # overwrite with value from file
-            except: # TODO: allow use of keywords to be explicitly specified
-                print('Regularization parameter file {0} not recognized; using keywords instead.'.format(regularization_par_file))
-        self.starting_rvs = starting_rvs
-        self.ivars_rvs = np.zeros_like(starting_rvs) + 10. # will be overwritten
-        self.template_xs = template_xs
-        self.template_ys = template_ys
-        self.initialize_at_zero = initialize_at_zero # initialize template ys to flat continuum        
-        self.epoch_mask = epoch_mask  
+        default_regularization_par = {'L1_template':0., 'L2_template':0.,
+                                      'L1_basis_vectors':0., 'L2_basis_vectors':0.,
+                                      'L1_basis_weights':1.}
+        #self.regularization_par = regularization_par
+        for par in regularization_par: 
+            if par in kwargs.keys(): # prioritize explicitly set keywords over all else
+                setattr(self, par, kwargs[par])
+            elif regularization_par_file is not None: # try setting from file
+                try:
+                    with h5py.File(regularization_par_file,'r') as f:
+                        setattr(self, par, np.copy(f[par][r]))
+                except:
+                    print('Regularization parameter file {0} not recognized; \
+                            adopting default values instead.'.format(regularization_par_file)) 
+                    setattr(self, par, default_regularization_par[par])
+            else:  # if no file & no keyword argument, set to defaults
+                setattr(self, par, default_regularization_par[par])
+
+    def __repr__(self):
+        print("wobble.Component named {0}".format(self.name))
         
 
     def setup(self, data, r):
-        """Do TensorFlow magic in prep for optimizing"""
+        """Do TensorFlow magic & define likelihoods in prep for optimizing"""
         self.starting_rvs[np.isnan(self.starting_rvs)] = 0. # because introducing NaNs to synth will fail
         
         # Make some TENSORS (hell yeah)
@@ -336,6 +446,7 @@ class Component(object):
         """Doppler-shift data into component rest frame and average 
         to make a composite spectrum. Returns residuals after removing this 
         component from the data.
+        Must be done BEFORE running `Component.setup()`.
         
         NOTE: if epochs are masked out, this code implicitly relies on their RVs being NaNs.
         """

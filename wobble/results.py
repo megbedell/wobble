@@ -50,8 +50,8 @@ class Results(object):
         else:
             assert False, "ERROR: must supply EITHER data OR filename keywords."
         
-    def __str__(self):
-        string = 'wobble Results object consisting of the following components: '
+    def __repr__(self):
+        string = 'wobble.Results object consisting of the following components: '
         for n in self.component_names:
             string += '\n{0}: '.format(n)
         return string    

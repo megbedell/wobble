@@ -70,6 +70,9 @@ class Data(object):
         if filename is not None:
             self.read(filename, **kwargs)
             
+    def __repr__(self):
+        print("wobble.Data object containing {0} echelle orders & {1} observation epochs.".format(self.R, self.N))
+            
     def append(self, sp):
         """
         Append a spectrum.
@@ -199,7 +202,7 @@ class Data(object):
                     strings = [a.encode('utf8') for a in getattr(self, attr)] # h5py workaround
                     dset = f.create_dataset('filelist', data=strings)    
                     
-    def drop_bad_orders(self, min_snr=5):
+    def drop_bad_orders(self, min_snr=5.):
         try: 
             orders = np.asarray(self.orders)
         except:
@@ -217,7 +220,7 @@ class Data(object):
         if self.R == 0:
             print("All orders failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             
-    def drop_bad_epochs(self, min_snr=5):
+    def drop_bad_epochs(self, min_snr=5.):
         try:
             epochs = np.asarray(self.epochs)
         except:
@@ -263,6 +266,12 @@ class Spectrum(object):
         if len(arg) > 0:
             self.populate(*arg, **kwarg) 
             
+    def __repr__(self):
+        if self.empty:
+            print("An empty wobble.Spectrum object.")
+        else:
+            print("A wobble.Spectrum object containing data loaded from: {0}".format(self.filelist))
+            
     def populate(self, xs, ys, ivars, **kwargs):
         """
         Takes data and saves it to the object.
@@ -287,7 +296,7 @@ class Spectrum(object):
         if not self.empty:
             print("WARNING: overwriting existing contents.")
         self.R = len(xs) # number of echelle orders
-        self.filelist = 'args'
+        self.filelist = 'input arguments' # will be overwritten if kwargs has filelist
         self.xs = xs
         self.ys = ys
         self.ivars = ivars
@@ -413,7 +422,7 @@ class Spectrum(object):
         spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
-        snrs = np.arange(R, dtype=np.float)
+        snrs = np.arange(R, dtype=np.float) # order-by-order SNR
         with fits.open(spec_file) as sp:  # assumes same directory
             spec = sp[0].data
             for i in np.nditer(snrs, op_flags=['readwrite']):
@@ -544,6 +553,10 @@ class Spectrum(object):
         Takes a HIRES blue chip spectrum file; reads data from it + red + I
         counterparts.
         Note: these files must all be located in the same directory.
+        Currently this function does NOT support calculating barycentric shifts 
+        from the observation dates. 
+        For best performance, you should set the 'bervs' attribute to approximate
+        values before analyzing these data.
         
         Parameters
         ----------
@@ -574,7 +587,7 @@ class Spectrum(object):
                 waves = np.concatenate((waves, sp[2].data))        
         xs = [waves[r] for r in range(R)]
         ys = [spec[r] for r in range(R)]
-        ivars = [1./errs[r]**2 for r in range(R)] # scaling hack
+        ivars = [1./errs[r]**2 for r in range(R)]
         self.populate(xs, ys, ivars, **metadata)
         if process:
             self.mask_low_pixels()
