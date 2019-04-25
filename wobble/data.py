@@ -6,6 +6,7 @@ from itertools import compress
 
 from .utils import fit_continuum
 
+# attributes!
 REQUIRED_3D = ['xs', 'ys', 'ivars'] # R-order lists of (N-epoch, M-pixel) arrays
 REQUIRED_1D = ['bervs', 'airms'] # N-epoch arrays
 OPTIONAL_1D = ['pipeline_rvs', 'pipeline_sigmas', 'dates', 'drifts', 'filelist'] # N-epoch arrays
@@ -23,8 +24,12 @@ class Data(object):
     
     Parameters
     ----------
-    filename : `str` (optional)
+    filename : string (optional)
         Name of HDF5 file storing the data.
+    orders : list (optional)
+        Indices of echelle orders to load (if reading from file).
+    epochs : list (optional)
+        Indices of observations to load (if reading from file).
     
     Attributes
     ----------
@@ -53,7 +58,7 @@ class Data(object):
     filelist : `np.ndarray`, optional
         Optional N-epoch array of file locations for each observation.
     """
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, **kwargs):
         self.empty = True
         for attr in REQUIRED_3D:
             setattr(self, attr, [])
@@ -63,7 +68,7 @@ class Data(object):
         self.R = 0 # number of echelle orders
         
         if filename is not None:
-            self.read(filename)
+            self.read(filename, **kwargs)
             
     def append(self, sp):
         """
@@ -288,110 +293,7 @@ class Spectrum(object):
         self.ivars = ivars
         for key, value in kwargs.items():
             setattr(self, key, value)
-        self.empty = False           
-        
-    def from_HARPS(self, filename, process=True):
-        """
-        Takes a HARPS CCF file; reads metadata and associated spectrum + wavelength files.
-        Note: these files must all be located in the same directory.
-        
-        Parameters
-        ----------
-        filename : string
-            Location of the CCF file to be read.
-        process : bool, optional (default `True`)
-            If `True`, do some data processing, including masking of low-SNR 
-            regions and strong outliers; continuum normalization; and 
-            transformation to ln(wavelength) and ln(flux).
-        """
-        if not self.empty:
-            print("WARNING: overwriting existing contents.")
-        R = 72
-        metadata = {}
-        metadata['filelist'] = filename
-        with fits.open(filename) as sp: # load up metadata
-            metadata['pipeline_rvs'] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
-            metadata['pipeline_sigmas'] = sp[0].header['HIERARCH ESO DRS CCF NOISE'] * 1.e3 # m/s
-            metadata['drifts'] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']
-            metadata['dates'] = sp[0].header['HIERARCH ESO DRS BJD']        
-            metadata['bervs'] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
-            metadata['airms'] = sp[0].header['HIERARCH ESO TEL AIRM START'] 
-            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
-            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
-        spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
-        spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
-        spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
-        snrs = np.arange(R, dtype=np.float)
-        with fits.open(spec_file) as sp:  # assumes same directory
-            spec = sp[0].data
-            for i in np.nditer(snrs, op_flags=['readwrite']):
-                i[...] = sp[0].header['HIERARCH ESO DRS SPE EXT SN{0}'.format(str(int(i)))]
-            wave_file = sp[0].header['HIERARCH ESO DRS CAL TH FILE']
-        path = spec_file[0:str.rfind(spec_file,'/')+1]
-        with fits.open(path+wave_file) as ww: # assumes same directory
-            wave = ww[0].data
-        xs = [wave[r] for r in range(R)]
-        ys = [spec[r] for r in range(R)]
-        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
-        self.populate(xs, ys, ivars, **metadata)
-        if process:
-            self.mask_low_pixels()
-            self.mask_bad_edges()  
-            self.transform_log()  
-            self.continuum_normalize()
-            self.mask_high_pixels()
-                  
-        
-    def from_HARPSN(self, filename, process=True):
-        """
-        Takes a HARPS-N CCF file; reads metadata and associated spectrum + wavelength files.
-        Note: these files must all be located in the same directory.
-        
-        Parameters
-        ----------
-        filename : string
-            Location of the CCF file to be read.
-        process : bool, optional (default `True`)
-            If `True`, do some data processing, including masking of low-SNR 
-            regions and strong outliers; continuum normalization; and 
-            transformation to ln(wavelength) and ln(flux).
-        """
-        if not self.empty:
-            print("WARNING: overwriting existing contents.")
-        R = 69
-        metadata['filelist'] = filename
-        with fits.open(filename) as sp: # load up metadata
-            metadata['pipeline_rvs'] = sp[0].header['HIERARCH TNG DRS CCF RVC'] * 1.e3 # m/s
-            metadata['pipeline_sigmas'] = sp[0].header['HIERARCH TNG DRS CCF NOISE'] * 1.e3 # m/s
-            metadata['drifts'] = sp[0].header['HIERARCH TNG DRS DRIFT RV USED']
-            metadata['dates'] = sp[0].header['HIERARCH TNG DRS BJD']        
-            metadata['bervs'] = sp[0].header['HIERARCH TNG DRS BERV'] * 1.e3 # m/s
-            metadata['airms'] = sp[0].header['AIRMASS'] 
-            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
-            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
-        spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
-        spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
-        spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
-        snrs = np.arange(R, dtype=np.float)
-        with fits.open(spec_file) as sp:
-            spec = sp[0].data
-            for i in np.nditer(snrs, op_flags=['readwrite']):
-                i[...] = sp[0].header['HIERARCH TNG DRS SPE EXT SN{0}'.format(str(int(i)))]
-            wave_file = sp[0].header['HIERARCH TNG DRS CAL TH FILE']
-        path = spec_file[0:str.rfind(spec_file,'/')+1]
-        with fits.open(path+wave_file) as ww:
-            wave = ww[0].data
-        xs = [wave[r] for r in range(R)]
-        ys = [spec[r] for r in range(R)]
-        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
-        self.populate(xs, ys, ivars, **metadata)
-        if process:
-            self.mask_low_pixels()
-            self.mask_bad_edges()   
-            self.transform_log()  
-            self.continuum_normalize()
-            self.mask_high_pixels()
-             
+        self.empty = False      
         
     def continuum_normalize(self, plot_continuum=False, plot_dir='../results/', **kwargs):
         """
@@ -478,6 +380,207 @@ class Spectrum(object):
             self.xs = [np.log(x) for x in self.xs]
         if ys:
             self.ivars = [self.ys[i]**2 * self.ivars[i] for i in range(self.R)]
-            self.ys = [np.log(y) for y in self.ys]        
+            self.ys = [np.log(y) for y in self.ys]     
+        
+    def from_HARPS(self, filename, process=True):
+        """
+        Takes a HARPS CCF file; reads metadata and associated spectrum + wavelength files.
+        Note: these files must all be located in the same directory.
+        
+        Parameters
+        ----------
+        filename : string
+            Location of the CCF file to be read.
+        process : bool, optional (default `True`)
+            If `True`, do some data processing, including masking of low-SNR 
+            regions and strong outliers; continuum normalization; and 
+            transformation to ln(wavelength) and ln(flux).
+        """
+        if not self.empty:
+            print("WARNING: overwriting existing contents.")
+        R = 72 # number of echelle orders
+        metadata = {}
+        metadata['filelist'] = filename
+        with fits.open(filename) as sp: # load up metadata
+            metadata['pipeline_rvs'] = sp[0].header['HIERARCH ESO DRS CCF RVC'] * 1.e3 # m/s
+            metadata['pipeline_sigmas'] = sp[0].header['HIERARCH ESO DRS CCF NOISE'] * 1.e3 # m/s
+            metadata['drifts'] = sp[0].header['HIERARCH ESO DRS DRIFT SPE RV']
+            metadata['dates'] = sp[0].header['HIERARCH ESO DRS BJD']        
+            metadata['bervs'] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
+            metadata['airms'] = sp[0].header['HIERARCH ESO TEL AIRM START'] 
+            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
+            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
+        spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
+        spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
+        spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
+        snrs = np.arange(R, dtype=np.float)
+        with fits.open(spec_file) as sp:  # assumes same directory
+            spec = sp[0].data
+            for i in np.nditer(snrs, op_flags=['readwrite']):
+                i[...] = sp[0].header['HIERARCH ESO DRS SPE EXT SN{0}'.format(str(int(i)))]
+            wave_file = sp[0].header['HIERARCH ESO DRS CAL TH FILE']
+        path = spec_file[0:str.rfind(spec_file,'/')+1]
+        with fits.open(path+wave_file) as ww: # assumes same directory
+            wave = ww[0].data
+        xs = [wave[r] for r in range(R)]
+        ys = [spec[r] for r in range(R)]
+        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
+        self.populate(xs, ys, ivars, **metadata)
+        if process:
+            self.mask_low_pixels()
+            self.mask_bad_edges()  
+            self.transform_log()  
+            self.continuum_normalize()
+            self.mask_high_pixels()
+                  
+        
+    def from_HARPSN(self, filename, process=True):
+        """
+        Takes a HARPS-N CCF file; reads metadata and associated spectrum + wavelength files.
+        Note: these files must all be located in the same directory.
+        
+        Parameters
+        ----------
+        filename : string
+            Location of the CCF file to be read.
+        process : bool, optional (default `True`)
+            If `True`, do some data processing, including masking of low-SNR 
+            regions and strong outliers; continuum normalization; and 
+            transformation to ln(wavelength) and ln(flux).
+        """
+        if not self.empty:
+            print("WARNING: overwriting existing contents.")
+        R = 69 # number of echelle orders
+        metadata = {}
+        metadata['filelist'] = filename
+        with fits.open(filename) as sp: # load up metadata
+            metadata['pipeline_rvs'] = sp[0].header['HIERARCH TNG DRS CCF RVC'] * 1.e3 # m/s
+            metadata['pipeline_sigmas'] = sp[0].header['HIERARCH TNG DRS CCF NOISE'] * 1.e3 # m/s
+            metadata['drifts'] = sp[0].header['HIERARCH TNG DRS DRIFT RV USED']
+            metadata['dates'] = sp[0].header['HIERARCH TNG DRS BJD']        
+            metadata['bervs'] = sp[0].header['HIERARCH TNG DRS BERV'] * 1.e3 # m/s
+            metadata['airms'] = sp[0].header['AIRMASS'] 
+            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
+            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
+        spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
+        spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
+        spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
+        snrs = np.arange(R, dtype=np.float)
+        with fits.open(spec_file) as sp:
+            spec = sp[0].data
+            for i in np.nditer(snrs, op_flags=['readwrite']):
+                i[...] = sp[0].header['HIERARCH TNG DRS SPE EXT SN{0}'.format(str(int(i)))]
+            wave_file = sp[0].header['HIERARCH TNG DRS CAL TH FILE']
+        path = spec_file[0:str.rfind(spec_file,'/')+1]
+        with fits.open(path+wave_file) as ww:
+            wave = ww[0].data
+        xs = [wave[r] for r in range(R)]
+        ys = [spec[r] for r in range(R)]
+        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
+        self.populate(xs, ys, ivars, **metadata)
+        if process:
+            self.mask_low_pixels()
+            self.mask_bad_edges()   
+            self.transform_log()  
+            self.continuum_normalize()
+            self.mask_high_pixels()
+            
+    def from_ESPRESSO(self, filename, process=True):
+        """
+        Takes an ESPRESSO CCF file; reads metadata and associated spectrum + wavelength files.
+        Note: these files must all be located in the same directory.
+        
+        Parameters
+        ----------
+        filename : string
+            Location of the CCF file to be read.
+        process : bool, optional (default `True`)
+            If `True`, do some data processing, including masking of low-SNR 
+            regions and strong outliers; continuum normalization; and 
+            transformation to ln(wavelength) and ln(flux).
+        """
+        if not self.empty:
+            print("WARNING: overwriting existing contents.")
+        R = 170 # number of echelle orders
+        metadata = {}
+        metadata['filelist'] = filename
+        with fits.open(filename) as sp: # load up metadata
+            metadata['pipeline_rvs'] = sp[0].header['HIERARCH ESO QC CCF RV'] * 1.e3 # m/s
+            metadata['pipeline_sigmas'] = sp[0].header['HIERARCH ESO QC CCF RV ERROR'] * 1.e3 # m/s
+            metadata['drifts'] = sp[0].header['HIERARCH ESO QC DRIFT DET0 MEAN']
+            metadata['dates'] = sp[0].header['HIERARCH ESO QC BJD']        
+            metadata['bervs'] = sp[0].header['HIERARCH ESO QC BERV'] * 1.e3 # m/s
+            aa = np.zeros(4) + np.nan
+            for t in range(1,5): # loop over telescopes
+                try:
+                    aa[t] = sp[0].header['HIERARCH ESO TEL{0} AIRM START'.format(t)]
+                except:
+                    continue
+            metadata['airms'] = np.nanmedian(aa)
+            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
+            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
+        spec_file = str.replace(filename, 'CCF', 'S2D') 
+        snrs = np.arange(R, dtype=np.float)
+        with fits.open(spec_file) as sp:  # assumes same directory
+            spec = sp[1].data
+            for i in np.nditer(snrs, op_flags=['readwrite']):
+                i[...] = sp[0].header['HIERARCH ESO QC ORDER{0} SNR'.format(str(int(i)))]
+        wave_file = str.replace(spec_file, 'S2D', 'WAVE_MATRIX')
+        with fits.open(wave_file) as ww: # assumes same directory
+            wave = ww[1].data
+        xs = [wave[r] for r in range(R)]
+        ys = [spec[r] for r in range(R)]
+        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
+        self.populate(xs, ys, ivars, **metadata)
+        if process:
+            self.mask_low_pixels()
+            self.mask_bad_edges()  
+            self.transform_log()  
+            self.continuum_normalize()
+            self.mask_high_pixels()
+            
+    def from_HIRES(self, filename, process=True):
+        """
+        Takes a HIRES blue chip spectrum file; reads data from it + red + I
+        counterparts.
+        Note: these files must all be located in the same directory.
+        
+        Parameters
+        ----------
+        filename : string
+            Location of the blue chip spectrum to be read.
+        process : bool, optional (default `True`)
+            If `True`, do some data processing, including masking of low-SNR 
+            regions and strong outliers; continuum normalization; and 
+            transformation to ln(wavelength) and ln(flux).
+        """
+        if not self.empty:
+            print("WARNING: overwriting existing contents.")
+        R = 23 + 16 + 10 # orders (b + r + i)
+        metadata = {}
+        metadata['filelist'] = filename
+        with fits.open(filename) as sp: # load up blue chip
+            metadata['dates'] = float(sp[0].header['MJD']) + 2450000.5       
+            metadata['airms'] = sp[0].header['AIRMASS']       
+            #TODO: needs BERVs!!!
+            spec = np.copy(sp[0].data)
+            errs = np.copy(sp[1].data)
+            waves = np.copy(sp[2].data)
+        other_files = [filename.replace('_b', '_r'), filename.replace('_b', '_i')]
+        for f in other_files: # load up red + iodine chips
+            with fits.open(f) as sp:
+                spec = np.concatenate((spec, sp[0].data))
+                errs = np.concatenate((errs, sp[1].data))
+                waves = np.concatenate((waves, sp[2].data))        
+        xs = [waves[r] for r in range(R)]
+        ys = [spec[r] for r in range(R)]
+        ivars = [1./errs[r]**2 for r in range(R)] # scaling hack
+        self.populate(xs, ys, ivars, **metadata)
+        if process:
+            self.mask_low_pixels()
+            self.mask_bad_edges()  
+            self.transform_log()  
+            self.continuum_normalize()
+            self.mask_high_pixels()     
         
         

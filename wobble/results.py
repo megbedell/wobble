@@ -6,8 +6,8 @@ T = tf.float64
 
 from .utils import get_session
 
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_file', 'epochs', 'component_names', 
-                'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders
+COMMON_ATTRS = ['R', 'N', 'component_names', 'bervs', 'pipeline_rvs', 
+                'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'template_ivars', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
@@ -25,21 +25,18 @@ class Results(object):
     
     Parameters
     ----------
-    data : `object`
+    data : `object`, optional
         a wobble Data object
-    filename : `str`
+    filename : `str`, optional
         a file path pointing to a saved Results object (HDF5 format).
     """
     def __init__(self, data=None, filename=None):
-        if filename is None:
+        if (filename is None) & (data is not None):
+            assert data is not None, "ERROR: must supply either data or filename keywords."
             self.component_names = []
             self.R = data.R
             self.N = data.N
             self.ys_predicted = [0 for r in range(self.R)]
-            # get everything we'd need to reconstruct the data used:
-            self.orders = data.orders
-            self.origin_file = data.origin_file
-            self.epochs = data.epochs
             # get other convenient things
             self.bervs = data.bervs
             self.pipeline_rvs = data.pipeline_rvs
@@ -47,11 +44,11 @@ class Results(object):
             self.dates = data.dates
             self.airms = data.airms
             self.drifts = data.drifts
-            return
-        if data is None:
+        elif (data is None) & (filename is not None):
+            assert filename is not None, "ERROR: must supply either data or filename keywords."
             self.read(filename)
-            return
-        print("Results: must supply either data or filename keywords.")
+        else:
+            assert False, "ERROR: must supply EITHER data OR filename keywords."
         
     def __str__(self):
         string = 'wobble Results object consisting of the following components: '
