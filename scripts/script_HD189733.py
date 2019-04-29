@@ -26,7 +26,7 @@ if __name__ == "__main__":
        66, 69, 70, 72, 73, 75] # night of August 28, 2007
     data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders, epochs=e)
     '''
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders)
+    data = wobble.Data(filename='../data/'+starname+'_e2ds.hdf5', orders=orders)
     orders = np.copy(data.orders)
     results = wobble.Results(data=data)
     
@@ -57,35 +57,17 @@ if __name__ == "__main__":
             wobble.optimize_order(model, niter=niter, save_history=True, 
                                   basename=plot_dir+'history', epochs_to_plot=epochs, movies=movies)
             fig, ax = plt.subplots(1, 1, figsize=(8,5))
-            ax.plot(data.dates, results.star_rvs[r] + data.bervs - np.mean(results.star_rvs[r] + data.bervs), 
-                    'k.', alpha=0.8)
+            ax.plot(data.dates, results.star_rvs[r] + data.bervs - data.drifts - np.mean(results.star_rvs[r] + data.bervs), 
+                    'k.', alpha=0.8, ms=4)
             ax.plot(data.dates, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), 
-                    'r.', alpha=0.5)   
+                    'r.', alpha=0.5, ms=4)
             ax.set_ylabel('RV (m/s)', fontsize=14)     
             ax.set_xlabel('BJD', fontsize=14)   
             plt.savefig(plot_dir+'results_rvs_o{0}.png'.format(o))
             plt.close(fig)          
             for e in epochs:
-                fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
-                xs = np.exp(data.xs[r][e])
-                ax.scatter(xs, np.exp(data.ys[r][e]), marker=".", alpha=0.5, c='k', label='data', s=40)
-                mask = data.ivars[r][e] <= 1.e-8
-                ax.scatter(xs[mask], np.exp(data.ys[r][e][mask]), marker=".", alpha=1., c='white', s=20)
-                ax.plot(xs, np.exp(results.star_ys_predicted[r][e]), c='r', alpha=0.8)
-                ax.plot(xs, np.exp(results.tellurics_ys_predicted[r][e]), c='b', alpha=0.8)
-                ax2.scatter(xs, np.exp(data.ys[r][e]) - np.exp(results.star_ys_predicted[r][e]
-                                                            + results.tellurics_ys_predicted[r][e]), 
-                            marker=".", alpha=0.5, c='k', label='data', s=40)
-                ax2.scatter(xs[mask], np.exp(data.ys[r][e][mask]) - np.exp(results.star_ys_predicted[r][e]
-                                                            + results.tellurics_ys_predicted[r][e])[mask], 
-                            marker=".", alpha=1., c='white', s=20)
-                ax.set_ylim([0.0,1.3])
-                ax2.set_ylim([-0.08,0.08])
-                ax.set_xticklabels([])
-                fig.tight_layout()
-                fig.subplots_adjust(hspace=0.05)
-                plt.savefig(plot_dir+'results_synth_o{0}_e{1}.png'.format(o, e))
-                plt.close(fig)
+                results.plot_spectrum(r, e, data, plot_dir+'results_synth_o{0}_e{1}.png'.format(o, e))
+                
         else:
             wobble.optimize_order(model, niter=niter)
         del model # not sure if this does anything
@@ -106,14 +88,21 @@ if __name__ == "__main__":
         
     print("results saved as: {0}".format(results_file))
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
-        
+    
+    # do post-processing:
+    results.combine_orders('star')
+    results.apply_drifts('star')
+    results.apply_bervs('star')
+    
     if plots:
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates, data.pipeline_rvs + data.bervs - data.drifts, c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates, results.star_time_rvs + data.bervs - data.drifts, c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates, data.pipeline_rvs - np.mean(data.pipeline_rvs), 
+                    c='r', label='DRS', alpha=0.7, s=12)
+        ax.scatter(data.dates, results.star_time_rvs - np.mean(results.star_time_rvs), 
+                    c='k', label='wobble', alpha=0.7, s=12)
         ax.legend()
         ax.set_xticklabels([])
-        ax2.scatter(data.dates, results.star_time_rvs - data.pipeline_rvs, c='k')
+        ax2.scatter(data.dates, results.star_time_rvs - data.pipeline_rvs, c='k', s=12)
         ax2.set_ylabel('JD')
         fig.tight_layout()
         fig.subplots_adjust(hspace=0.05)
@@ -121,15 +110,29 @@ if __name__ == "__main__":
         plt.close(fig)
         
         fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[3, 1]})
-        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs + data.bervs - np.mean(data.pipeline_rvs + data.bervs), c='r', label='DRS', alpha=0.7)
-        ax.scatter(data.dates % 2.21857312, results.star_time_rvs + data.bervs - np.mean(results.star_time_rvs + data.bervs), c='k', label='wobble', alpha=0.7)
+        ax.scatter(data.dates % 2.21857312, data.pipeline_rvs - np.mean(data.pipeline_rvs), 
+                    c='r', label='DRS', alpha=0.7, s=12)
+        ax.scatter(data.dates % 2.21857312, results.star_time_rvs - np.mean(results.star_time_rvs), 
+                    c='k', label='wobble', alpha=0.7, s=12)
         ax.legend()
         ax.set_xticklabels([])
-        ax2.scatter(data.dates % 2.21857312, results.star_time_rvs - data.pipeline_rvs, c='k')
-        ax2.set_ylabel('Phase-folded Date')
+        ax2.scatter(data.dates, results.star_time_rvs - data.pipeline_rvs, c='k', s=12)
+        ax2.set_ylabel('JD')
         fig.tight_layout()
         fig.subplots_adjust(hspace=0.05)
         plt.savefig(plot_dir+'results_rvs_phased.png')
         plt.close(fig)
+    
+    print("final RVs calculated.")
+    print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
         
+    # save output:
+    results_file = 'results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    results.write(results_file)
+    star_rvs_file = 'results/rvs_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    results.write_rvs('star', star_rvs_file, all_orders=True)
+    
+        
+    print("results saved as: {0} & {1}".format(results_file, star_rvs_file))
+    print("-----------------------------")         
     print("total runtime:{0:.2f} minutes".format((time() - start_time)/60.0))

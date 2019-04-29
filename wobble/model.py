@@ -366,7 +366,7 @@ class Component(object):
                     'rvs_fixed', 'template_fixed', 'template_xs',
                     'template_ys', 'initialize_at_zero', 
                     'learning_rate_rvs', 'learning_rate_template',
-                    'learning_rate_basis']:
+                    'learning_rate_basis', 'scale_by_airmass']:
             setattr(self, attr, eval(attr))
 
         self.K = variable_bases # number of variable basis vectors
@@ -380,7 +380,7 @@ class Component(object):
         default_regularization_par = {'L1_template':0., 'L2_template':0.,
                                       'L1_basis_vectors':0., 'L2_basis_vectors':0.,
                                       'L1_basis_weights':1.}
-        #self.regularization_par = regularization_par
+        self.regularization_par = regularization_par
         for par in regularization_par: 
             if par in kwargs.keys(): # prioritize explicitly set keywords over all else
                 setattr(self, par, kwargs[par])
