@@ -137,13 +137,13 @@ class Model(object):
         self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T, name='synth')
         for c in self.components:
             c.setup(self.data, self.r)
-            self.synth += c.synth
+            self.synth = tf.add(self.synth, c.synth)
             
         self.nll = 0.5*tf.reduce_sum(tf.square(tf.constant(self.data.ys[self.r], dtype=T) 
                                                - self.synth) 
                                     * tf.constant(self.data.ivars[self.r], dtype=T))
         for c in self.components:
-            self.nll += c.nll
+            self.nll = tf.add(self.nll, c.nll)
 
         # Set up optimizers
         self.updates = []
@@ -415,24 +415,28 @@ class Component(object):
         # Set up the regularization
         for name in self.regularization_par:
             setattr(self, name+'_tensor', tf.constant(getattr(self,name), dtype=T, name=name+'_'+self.name))
-        self.nll = self.L1_template_tensor * tf.reduce_sum(tf.abs(self.template_ys))
-        self.nll += self.L2_template_tensor * tf.reduce_sum(self.template_ys**2)
+        self.nll = tf.multiply(self.L1_template_tensor, tf.reduce_sum(tf.abs(self.template_ys)))
+        self.nll = tf.add(self.nll, tf.multiply(self.L2_template_tensor, 
+                                                tf.reduce_sum(tf.square(self.template_ys))))
         if self.K > 0:
-            self.nll += self.L1_basis_vectors_tensor * tf.reduce_sum(tf.abs(self.basis_vectors))
-            self.nll += self.L2_basis_vectors_tensor * tf.reduce_sum(self.basis_vectors**2)
-            self.nll += self.L2_basis_weights_tensor * tf.reduce_sum(self.basis_weights**2)
+            self.nll = tf.add(self.nll, tf.multiply(self.L1_basis_vectors_tensor, 
+                                                    tf.reduce_sum(tf.abs(self.basis_vectors))))
+            self.nll = tf.add(self.nll, tf.multiply(self.L2_basis_vectors_tensor, 
+                                                     tf.reduce_sum(tf.square(self.basis_vectors))))
+            self.nll = tf.add(self.nll, tf.multiply(self.L2_basis_weights_tensor, 
+                                                    tf.reduce_sum(tf.square(self.basis_weights))))
 
         # Apply doppler and synthesize component model predictions
-        shifted_xs = self.data_xs + tf.log(doppler(self.rvs[:, None]))
+        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs[:, None])))
         inner_zeros = tf.zeros(shifted_xs.shape[:-1], dtype=T)
-        expand_inner = lambda x: x + inner_zeros[..., None]
+        expand_inner = lambda x: tf.add(x, inner_zeros[..., None])
         if self.K == 0:
             self.synth = interp(shifted_xs,
                                 expand_inner(self.template_xs),
                                 expand_inner(self.template_ys))
         else:
-            full_template = self.template_ys[None,:] + tf.matmul(self.basis_weights,
-                                                                self.basis_vectors)
+            full_template = tf.add(self.template_ys[None,:], tf.matmul(self.basis_weights,
+                                                                self.basis_vectors))
             self.synth = interp(shifted_xs, expand_inner(self.template_xs), full_template)
             
         # Apply other scaling factors to model
@@ -464,7 +468,7 @@ class Component(object):
             else:
                 template_ys = bin_data(shifted_xs, data_ys, data_ivars, self.template_xs)
             self.template_ys = template_ys
-        self.template_ivars = np.zeros_like(template_ys)
+        self.template_ivars = np.zeros_like(self.template_ys)
             
         full_template = self.template_ys[None,:] + np.zeros((N,len(self.template_ys)))
         if self.K > 0:
