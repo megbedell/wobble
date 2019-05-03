@@ -137,13 +137,13 @@ class Model(object):
         self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T, name='synth')
         for c in self.components:
             c.setup(self.data, self.r)
-            self.synth = tf.add(self.synth, c.synth)
+            self.synth = tf.add(self.synth, c.synth, name='synth_add_{0}'.format(c.name))
             
         self.nll = 0.5*tf.reduce_sum(tf.square(tf.constant(self.data.ys[self.r], dtype=T) 
-                                               - self.synth) 
-                                    * tf.constant(self.data.ivars[self.r], dtype=T))
+                                               - self.synth, name='nll_data-model_sq') 
+                                    * tf.constant(self.data.ivars[self.r], dtype=T), name='nll_reduce_sum')
         for c in self.components:
-            self.nll = tf.add(self.nll, c.nll)
+            self.nll = tf.add(self.nll, c.nll, name='nll_add_{0}'.format(c.name))
 
         # Set up optimizers
         self.updates = []
@@ -151,20 +151,20 @@ class Model(object):
             if not c.template_fixed:
                 c.dnll_dtemplate_ys = tf.gradients(self.nll, c.template_ys)
                 c.opt_template = tf.train.AdamOptimizer(c.learning_rate_template).minimize(self.nll,
-                            var_list=[c.template_ys])
+                            var_list=[c.template_ys], name='opt_minimize_template_{0}'.format(c.name))
                 self.updates.append(c.opt_template)
             if not c.rvs_fixed:
                 c.dnll_drvs = tf.gradients(self.nll, c.rvs)
                 c.opt_rvs = tf.train.AdamOptimizer(learning_rate=c.learning_rate_rvs,
                                                    epsilon=1.).minimize(self.nll,
-                            var_list=[c.rvs])
+                            var_list=[c.rvs], name='opt_minimize_rvs_{0}'.format(c.name))
                 self.updates.append(c.opt_rvs)
             if c.K > 0:
                 c.opt_basis_vectors = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
-                            var_list=[c.basis_vectors])
+                            var_list=[c.basis_vectors], name='opt_minimize_basis_vectors_{0}'.format(c.name))
                 self.updates.append(c.opt_basis_vectors)
                 c.opt_basis_weights = tf.train.AdamOptimizer(c.learning_rate_basis).minimize(self.nll,
-                            var_list=[c.basis_weights])
+                            var_list=[c.basis_weights], name='opt_minimize_basis_weights_{0}'.format(c.name))
                 self.updates.append(c.opt_basis_weights)
         
         
@@ -172,7 +172,7 @@ class Model(object):
         session.run(tf.global_variables_initializer())
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
-                 feed_dict=None, verbose=True, rv_uncertainties=True, 
+                 verbose=True, rv_uncertainties=True, 
                  template_uncertainties=False, **kwargs):
         """Optimize the model!
             
@@ -185,14 +185,12 @@ class Model(object):
             iterations and generate plots.
         basename : `str` (default `wobble`)
             Path/name to use when saving plots. Only accessed if save_history = `True`.
-        feed_dict : `dict` (default `None`)
-            TensorFlow magic; passed to the optimizer. If `None`, does nothing.
         verbose : `bool` (default `True`)
             Toggle print statements and progress bars.
         rv_uncertainties : `bool` (default `True`)
             Toggle whether RV uncertainty estimates should be calculated.
         template_uncertainties : `bool` (default `False`)
-            Toggle whether template uncertainty estimates should be calculated.        
+            Toggle whether template uncertainty estimates should be calculated.     
         """
         # initialize helper classes:
         if save_history:
@@ -206,7 +204,7 @@ class Model(object):
         else:
             iterator = range(niter)
         for i in iterator:
-            session.run(self.updates, feed_dict=feed_dict)
+            session.run(self.updates, **kwargs)
             if save_history:
                 history.save_iter(self, i+1)
         self.estimate_uncertainties(verbose=verbose, rvs=rv_uncertainties, 
@@ -217,7 +215,7 @@ class Model(object):
         self.results.ys_predicted[self.r] = session.run(self.synth)
         # save optimization plots:
         if save_history:
-            history.save_plots(basename, **kwargs)
+            history.save_plots(basename)
             return history
             
     def estimate_uncertainties(self, verbose=True, rvs=True, templates=False):
@@ -415,9 +413,12 @@ class Component(object):
         # Set up the regularization
         for name in self.regularization_par:
             setattr(self, name+'_tensor', tf.constant(getattr(self,name), dtype=T, name=name+'_'+self.name))
-        self.nll = tf.multiply(self.L1_template_tensor, tf.reduce_sum(tf.abs(self.template_ys)))
+        self.nll = tf.multiply(self.L1_template_tensor, tf.reduce_sum(tf.abs(self.template_ys)), 
+                               name='L1_template_'+self.name)
         self.nll = tf.add(self.nll, tf.multiply(self.L2_template_tensor, 
-                                                tf.reduce_sum(tf.square(self.template_ys))))
+                                                tf.reduce_sum(tf.square(self.template_ys)),
+                                                name='L2_template_'+self.name), 
+                          name='L1_plus_L2_template_'+self.name)
         if self.K > 0:
             self.nll = tf.add(self.nll, tf.multiply(self.L1_basis_vectors_tensor, 
                                                     tf.reduce_sum(tf.abs(self.basis_vectors))))
@@ -427,9 +428,9 @@ class Component(object):
                                                     tf.reduce_sum(tf.square(self.basis_weights))))
 
         # Apply doppler and synthesize component model predictions
-        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs[:, None])))
+        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs[:, None])), name='shifted_xs_'+self.name)
         inner_zeros = tf.zeros(shifted_xs.shape[:-1], dtype=T)
-        expand_inner = lambda x: tf.add(x, inner_zeros[..., None])
+        expand_inner = lambda x: tf.add(x, inner_zeros[..., None], name='expand_inner_'+self.name)
         if self.K == 0:
             self.synth = interp(shifted_xs,
                                 expand_inner(self.template_xs),
@@ -441,9 +442,10 @@ class Component(object):
             
         # Apply other scaling factors to model
         if self.scale_by_airmass:
-            self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth)        
+            self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth, 
+                                   name='airmass_einsum_'+self.name)        
         A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
-        self.synth = tf.einsum('n,nm->nm', A, self.synth)
+        self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
 
 
     def initialize_template(self, data_xs, data_ys, data_ivars):
