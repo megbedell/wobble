@@ -8,6 +8,9 @@ Data
 
 .. autoclass:: wobble.Data
    :members:
+   
+.. autoclass:: wobble.Spectrum
+   :members:
 
 Model
 -----
@@ -22,9 +25,6 @@ Results
 -------
 
 .. autoclass:: wobble.Results
-   :members:
-
-.. autoclass:: wobble.History
    :members:
 
 Other Utilities
