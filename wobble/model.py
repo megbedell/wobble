@@ -428,7 +428,7 @@ class Component(object):
                                                     tf.reduce_sum(tf.square(self.basis_weights))))
 
         # Apply doppler and synthesize component model predictions
-        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs[:, None])), name='shifted_xs_'+self.name)
+        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs))[:, None], name='shifted_xs_'+self.name)
         inner_zeros = tf.zeros(shifted_xs.shape[:-1], dtype=T)
         expand_inner = lambda x: tf.add(x, inner_zeros[..., None], name='expand_inner_'+self.name)
         if self.K == 0:
@@ -445,6 +445,7 @@ class Component(object):
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth, 
                                    name='airmass_einsum_'+self.name)        
         A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
+        #self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
         self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
 
 
