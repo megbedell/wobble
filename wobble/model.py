@@ -445,8 +445,8 @@ class Component(object):
             self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth, 
                                    name='airmass_einsum_'+self.name)        
         A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
-        #self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
-        self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
+        self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
+        #self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
 
 
     def initialize_template(self, data_xs, data_ys, data_ivars):
