@@ -21,7 +21,7 @@ Input Data
 
 Running *wobble* on a generic data set will require some initial processing.
 
-If you just want some example data for testing purposes, try grabbing one of these pre-processed data sets: `51 Peg <https://www.dropbox.com/s/w1bgbnk80g0l1o9/51peg_e2ds.hdf5?dl=0>`_, `Barnard's Star <https://www.dropbox.com/s/mc7ahjsg0nkexx7/barnards_e2ds.hdf5?dl=0>`_.
+If you just want some example data for testing purposes, try grabbing one of these pre-processed data sets: `51 Peg <https://www.dropbox.com/s/0jjdp5t3zto8hp7/51peg_e2ds.hdf5?dl=0>`_, `Barnard's Star <https://www.dropbox.com/s/ccd050p7g7vsjdq/barnards_e2ds.hdf5?dl=0>`_.
 
 These data sets can be easily loaded as:
 
