@@ -11,8 +11,14 @@ Installation
 	git clone https://github.com/megbedell/wobble.git
 	cd wobble
 	python setup.py develop
+	
+If you are running macOS 10.14 (Mojave) and find that setup fails at building the wobble C++ extensions, :doc:`try this <mojave>`.
 
-If you are running macOS 10.14 (Mojave) and run into problems building the wobble C++ extensions, :doc:`try this <mojave>`.
+You may also need to install some requirements, notably TensorFlow (which is best installed via pip rather than conda):
+
+.. code-block:: bash
+
+	pip install -r requirements.txt
 
 If *wobble* builds with warnings and subsequently fails with a "Symbol not found" error on import, try rebuilding the C++ extensions using a different system compiler; see `this issue <https://github.com/megbedell/wobble/issues/66>`_.
 
