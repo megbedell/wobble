@@ -105,6 +105,7 @@ class InterpRevOp : public OpKernel {
     by.setConstant(0.0);
 
     for (int64 k = 0; k < size; ++k) {
+      int64 kx = (x_one_d) ? 0 : k;
       int64 ky = (y_one_d) ? 0 : k;
       for (int64 n = 0; n < N; ++n) {
         T value = t(k, n);
@@ -114,9 +115,9 @@ class InterpRevOp : public OpKernel {
         } else if (ind >= M) {
           by(ky, M-1) += bv(k, n);
         } else {
-          T factor = 1.0 / (x(k, ind) - x(k, ind-1));
-          T a = (value - x(k, ind-1)) * factor;
-          T bvalue = bv(k, n) * (y(k, ind) - y(k, ind-1)) * factor;
+          T factor = 1.0 / (x(kx, ind) - x(kx, ind-1));
+          T a = (value - x(kx, ind-1)) * factor;
+          T bvalue = bv(k, n) * (y(ky, ind) - y(ky, ind-1)) * factor;
           bt(k, n)     += bvalue;
           by(ky, ind)   += bv(k, n) * a;
           by(ky, ind-1) += bv(k, n) * (1.0 - a);
