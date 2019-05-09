@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+tensorflow >=1.10,<2.0
+tqdm
+h5py
+astropy
