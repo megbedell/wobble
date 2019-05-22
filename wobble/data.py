@@ -1,8 +1,8 @@
 import numpy as np
 import h5py
-import pdb
 import matplotlib.pyplot as plt
 from itertools import compress
+from astropy.io import fits
 
 from .utils import fit_continuum
 
@@ -71,7 +71,7 @@ class Data(object):
             self.read(filename, **kwargs)
             
     def __repr__(self):
-        print("wobble.Data object containing {0} echelle orders & {1} observation epochs.".format(self.R, self.N))
+        return "wobble.Data object containing {0} echelle orders & {1} observation epochs.".format(self.R, self.N)
             
     def append(self, sp):
         """
@@ -268,9 +268,9 @@ class Spectrum(object):
             
     def __repr__(self):
         if self.empty:
-            print("An empty wobble.Spectrum object.")
+            return "An empty wobble.Spectrum object."
         else:
-            print("A wobble.Spectrum object containing data loaded from: {0}".format(self.filelist))
+            return "A wobble.Spectrum object containing data loaded from: {0}".format(self.filelist)
             
     def populate(self, xs, ys, ivars, **kwargs):
         """
@@ -533,7 +533,7 @@ class Spectrum(object):
         with fits.open(spec_file) as sp:  # assumes same directory
             spec = sp[1].data
             for i in np.nditer(snrs, op_flags=['readwrite']):
-                i[...] = sp[0].header['HIERARCH ESO QC ORDER{0} SNR'.format(str(int(i)))]
+                i[...] = sp[0].header['HIERARCH ESO QC ORDER{0} SNR'.format(str(int(i)+1))]
         wave_file = str.replace(spec_file, 'S2D', 'WAVE_MATRIX')
         with fits.open(wave_file) as ww: # assumes same directory
             wave = ww[1].data

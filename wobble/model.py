@@ -394,7 +394,7 @@ class Component(object):
                 setattr(self, par, default_regularization_par[par])
 
     def __repr__(self):
-        print("wobble.Component named {0}".format(self.name))
+        return "wobble.Component named {0}".format(self.name)
         
 
     def setup(self, data, r):

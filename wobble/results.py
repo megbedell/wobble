@@ -272,7 +272,7 @@ class Results(object):
             print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
                     self.component_names))
             return
-        if not hasattr(self, drifts):
+        if not hasattr(self, 'drifts'):
             print("No instrumental drifts measured.")
             return
         basename = component_name+'_'
@@ -301,8 +301,8 @@ class Results(object):
             print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
                     self.component_names))
             return
-        if not hasattr(self, bervs):
-            print("No instrumental drifts measured.")
+        if not hasattr(self, 'bervs'):
+            print("No barycentric shifts computed.")
             return 
         basename = component_name+'_'
         all_rvs = np.asarray(getattr(self, basename+'rvs'))
