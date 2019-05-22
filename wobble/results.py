@@ -56,7 +56,7 @@ class Results(object):
                 string += 'RVs barycentric corrected; '
             if getattr(self, '{0}_drift_corr'.format(c)):
                 string += 'RVs drift corrected; '
-            string += '{0} variable basis components'.format(c.K)
+            #string += '{0} variable basis components'.format(c.K)
         return string
                             
     def add_component(self, c):
@@ -213,7 +213,7 @@ class Results(object):
         setattr(self, basename+'time_sigmas', np.sqrt(np.diag(np.linalg.inv(Cinv))[:self.N])) # really really a bad idea
         for tmp_attr in ['M', 'all_rvs', 'all_ivars']:
             delattr(self, tmp_attr) # cleanup
-        return Cinv
+        #return Cinv
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
         """Internal code used by combine_orders()"""
@@ -277,10 +277,10 @@ class Results(object):
             return
         basename = component_name+'_'
         all_rvs = np.asarray(getattr(self, basename+'rvs'))
-        setattr(self, basename+'rvs', all_rvs - np.tile(self.drifts, (1,self.R)))
+        setattr(self, basename+'rvs', all_rvs - np.tile(self.drifts[None,:], (self.R,1)))
         if hasattr(self, basename+'time_rvs'):
             time_rvs = np.asarray(getattr(self, basename+'time_rvs'))
-            setattr(self, basename+'rvs', time_rvs - self.drifts)
+            setattr(self, basename+'time_rvs', time_rvs - self.drifts)
         setattr(self, basename+'drift_corr', True)
             
     def apply_bervs(self, component_name):
@@ -306,11 +306,11 @@ class Results(object):
             return 
         basename = component_name+'_'
         all_rvs = np.asarray(getattr(self, basename+'rvs'))
-        all_bervs = np.tile(self.bervs, (1,self.R))
+        all_bervs = np.tile(self.bervs[None,:], (self.R,1))
         setattr(self, basename+'rvs', all_rvs + all_bervs)
         if hasattr(self, basename+'time_rvs'):
             time_rvs = np.asarray(getattr(self, basename+'time_rvs'))
-            setattr(self, basename+'rvs', time_rvs + self.bervs) 
+            setattr(self, basename+'time_rvs', time_rvs + self.bervs) 
         self.pipeline_rvs += self.bervs
         setattr(self, basename+'bary_corr', True)
         
@@ -328,7 +328,8 @@ class Results(object):
             print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
                     self.component_names))
             return
-        t = Table([self.dates], names=('date'))
+        t = Table()
+        t['dates'] = self.dates
         t.meta['comments'] = ['Table of wobble RVs for {0} component; all units m/s.'.format(component_name)]
         if getattr(self, '{0}_bary_corr'.format(component_name)):
             t.meta['comments'].append('RVs have been barycentric corrected.')
@@ -348,7 +349,7 @@ class Results(object):
                 t['RV_order{0}_err'.format(o)] = 1./np.sqrt(all_ivars[r])
         t['pipeline_rv'] = self.pipeline_rvs
         t['pipeline_rv_err'] = self.pipeline_sigmas
-        t.write(filename)
+        t.write(filename, format='ascii')
         print('Output saved to file: {0}'.format(filename))
         
     def plot_spectrum(self, r, n, data, filename, xlim=None, ylim=[0., 1.3], ylim_resids=[-0.1,0.1]):
