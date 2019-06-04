@@ -27,8 +27,11 @@ Results
 .. autoclass:: wobble.Results
    :members:
 
-Other Utilities
----------------
+Regularization & Other Utilities
+--------------------------------
+
+.. autoclass:: wobble.Regularization
+	:members:
 
 .. autofunction:: wobble.utils.bin_data
 .. autofunction:: wobble.utils.doppler

@@ -41,35 +41,47 @@ Assembling your own data set is possible via the built-in functions for HARPS, H
 Running *wobble*
 ----------------
 
-Once the data are loaded, you must create a wobble.Results object in which to store the calculation outputs. You must also construct one or more wobble.Model object(s). Data and Results objects span all echelle orders for the input spectra (or at least as many echelle orders as you specified in the *orders* keyword when loading Data), but a Model is specific to a single order. Thus if you want to combine RV constraints from multiple echelle orders, you'll need to define a model for each one.
+The following is an overview of the basic steps involved in running an analysis with *wobble*. If you want a simple example script, check `this demonstration Jupyter notebook <https://nbviewer.jupyter.org/github/megbedell/wobble/blob/master/notebooks/demo.ipynb>`_, designed to be used with the `51 Peg example data <https://www.dropbox.com/s/0jjdp5t3zto8hp7/51peg_e2ds.hdf5?dl=0>`_.
 
-A newly created wobble.Model object must be populated with one or more spectral components. Model.add_star() and Model.add_telluric() are convenience functions for this purpose. Here we'll construct a model that includes a single star and a tellurics component.
+1. Load the data.
+
+2. Create a wobble.Results object in which to store the calculation outputs.
+
+3. Create a wobble.Model object.
+
+.. note:: Data and Results objects span all echelle orders for the input spectra (or at least as many echelle orders as you specified in the *orders* keyword when loading Data), but Model is specific to a single order.
+
+4. Populate the model with one or more spectral components. Model.add_star() and Model.add_telluric() are convenience functions for this purpose.
+
+5. Optimize the model.
+
+.. warning:: The optimization scheme in *wobble* depends on L1 and L2 regularization. The default values used by the model should work fine for most HARPS data, but if you are using a custom data set from a different instrument or if you see unexpected behavior in the spectral fits then the regularization amplitudes should be tuned before *wobble* can be run reliably. See `this Jupyter notebook <https://nbviewer.jupyter.org/github/megbedell/wobble/blob/master/notebooks/regularization.ipynb>`_ for an example of how to do this.
+
+6. Repeat steps 3-5 as needed for additional echelle orders.
+
+7. (Optional) Do post-processing within the results, including combining multiple orders to get a net RV time series; applying barycentric corrections; and applying instrumental drifts as available.
+
+.. note:: Currently *wobble* does not support barycentric correction calculations; those should be supplied as a part of the input data. Also, the methods of combining orders and applying barycentric shifts may be sub-optimal.
+
+8. Save the results and/or write out RVs for further use.
+
+Here's an example of what that code might look like. Again, check out `the demo notebook <https://nbviewer.jupyter.org/github/megbedell/wobble/blob/master/notebooks/demo.ipynb>`_ for a slightly more detailed walkthrough, or :doc:`the API <api>` for advanced usage.
 
 .. code-block:: python
 
 	results = wobble.Results(data=data)
-	for r in range(len(data.orders)):
+	for r in range(len(data.orders)): # loop through orders
 		model = wobble.Model(data, results, r)
 		model.add_star('star')
 		model.add_telluric('tellurics')
 		wobble.optimize_order(model)
-		
-Note that in the above code, we're overwriting the `model` variable at each order. This is fine because all parameters are automatically stored inside the `results` object at the end of each optimization.
-
-Once all echelle orders have been modeled and optimized, we can automatically combine the RV constraints from each to get a net RV time series. We can also (optionally) do certain post-processing steps like applying barycetric corrections and instrumental drifts if the appropriate metadata were defined in the Data object:
-
-.. code-block:: python
 
 	results.combine_orders('star') # post-processing: combine all orders
 	results.apply_bervs('star') # post-processing: shift to barycentric frame
 	results.apply_drifts('star') # post-processing: remove instrumental drift
-	
-Finally, the Results output should be saved; a simple text file containing the RV time series of a given component can easily be written, or the entire Results object including all spectral templates and RVs can be saved for future use:
 
-.. code-block:: python
-
-	results.write_rvs('star', 'star_rvs.csv') # just RVs
-	results.write('results.hdf5') # everything
+	results.write_rvs('star', 'star_rvs.csv') # save just RVs
+	results.write('results.hdf5') # save everything
 
 Accessing *wobble* Outputs
 --------------------------
@@ -109,4 +121,4 @@ And the RV time series can be plotted as follows:
 	
 Other useful quantities stored in the Results object include `results.ys_predicted`, which is an order R by epoch N by pixel M array of `y'` model predictions in the data space, and `results.[component name]_ys_predicted`, which is a same-sized array storing the contribution of a given component to the model prediction.
 
-See the `minimal-scope demo Jupyter notebook <https://github.com/megbedell/wobble/blob/master/notebooks/demo.ipynb>`_ or the `notebook used to generate figures for the paper <https://github.com/megbedell/wobble/blob/master/paper/figures/make_figures.ipynb>`_ for further examples.
+See the `demo Jupyter notebook <https://github.com/megbedell/wobble/blob/master/notebooks/demo.ipynb>`_ or the `notebook used to generate figures for the paper <https://github.com/megbedell/wobble/blob/master/paper/figures/make_figures.ipynb>`_ for further examples.

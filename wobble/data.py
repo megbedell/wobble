@@ -57,6 +57,11 @@ class Data(object):
         Optional N-epoch array of instrumental drifts.
     filelist : `np.ndarray`, optional
         Optional N-epoch array of file locations for each observation.
+    orders : `list`
+        R-order list of echelle orders contained in this Data object. 
+        Represents a mapping from the order indices in this object to
+        the overall reference indices used in e.g. other data that may be 
+        used elsewhere, regularization parameter dictionaries, etc.
     """
     def __init__(self, filename=None, **kwargs):
         self.empty = True
@@ -83,11 +88,12 @@ class Data(object):
             The spectrum to be appended.
         """
         if self.empty:
+            self.orders = sp.orders
             self.R = sp.R
             for attr in REQUIRED_3D:
                 setattr(self, attr, getattr(sp, attr))
         else:
-            assert self.R == sp.R, "Echelle orders do not match." 
+            assert np.all(np.array(self.orders) == np.array(sp.orders)), "Echelle orders do not match." 
             for attr in REQUIRED_3D:           
                 old = getattr(self, attr)
                 new = getattr(sp, attr)
@@ -111,12 +117,12 @@ class Data(object):
         
     def pop(self, i):
         """
-        Remove and return spectrum at index i.
+        Remove and return spectrum at epoch index i.
         
         Parameters
         ----------
         i : `int`
-            The index of the spectrum to be removed.
+            The epoch index of the spectrum to be removed.
         
         Returns
         -------
@@ -126,6 +132,7 @@ class Data(object):
         assert 0 <= i < self.N, "ERROR: invalid index."
         sp = Spectrum()
         sp.R = self.R
+        sp.orders = self.orders
         for attr in REQUIRED_3D:
             epoch_to_split = [r[i] for r in getattr(self, attr)]
             epochs_to_keep = [np.delete(r, i, axis=0) for r in getattr(self, attr)]
@@ -208,15 +215,10 @@ class Data(object):
         except:
             orders = np.arange(self.R)
         snrs_by_order = [np.sqrt(np.nanmean(i)) for i in self.ivars]
-        orders_to_cut = np.array(snrs_by_order) < min_snr
-        if np.sum(orders_to_cut) > 0:
-            print("Data: Dropping orders {0} because they have average SNR < {1:.0f}".format(orders[orders_to_cut], min_snr))
-            orders = orders[~orders_to_cut]
-            for attr in REQUIRED_3D:
-                old = getattr(self, attr)
-                setattr(self, attr, list(compress(old, ~orders_to_cut)))
-            self.orders = orders
-            self.R = len(orders)
+        bad_order_mask = np.array(snrs_by_order) < min_snr
+        if np.sum(bad_order_mask) > 0:
+            print("Data: Dropping orders {0} because they have average SNR < {1:.0f}".format(orders[bad_order_mask], min_snr))
+            self.delete_orders(bad_order_mask)
         if self.R == 0:
             print("All orders failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             
@@ -239,7 +241,16 @@ class Data(object):
             self.N = len(epochs)
         if self.N == 0:
             print("All epochs failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
-            return        
+            return  
+        
+    def delete_orders(self, bad_order_mask):
+        good_order_mask = ~bad_order_mask
+        for attr in REQUIRED_3D:
+            old = getattr(self, attr)
+            new = list(compress(old, good_order_mask))
+            setattr(self, attr, new)
+        self.orders = self.orders[good_order_mask]
+        self.R = len(self.orders)
         
 class Spectrum(object):
     """
@@ -247,19 +258,6 @@ class Spectrum(object):
     epoch. Can be initialized by passing data as function 
     arguments or by calling a method to read from a 
     known file format.
-    
-    Parameters
-    ----------
-    xs : list of numpy arrays
-        A list of wavelengths or log(waves), one entry 
-        per echelle order.
-    ys : list of numpy arrays
-        A list of fluxes or log(fluxes), one entry per 
-        echelle order. Must be the same shape as 
-        `ys`.
-    ivars : list of numpy arrays
-        A list of inverse variance estimates
-        for `ys`.
     """
     def __init__(self, *arg, **kwarg):
         self.empty = True # flag indicating object contains no data
@@ -296,6 +294,8 @@ class Spectrum(object):
         if not self.empty:
             print("WARNING: overwriting existing contents.")
         self.R = len(xs) # number of echelle orders
+        if not 'orders' in metadata:
+            self.orders = np.arange(self.R)
         self.filelist = 'input arguments' # will be overwritten if kwargs has filelist
         self.xs = xs
         self.ys = ys

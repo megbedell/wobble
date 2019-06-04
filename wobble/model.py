@@ -375,10 +375,11 @@ class Component(object):
         if self.K > 0:
             regularization_par = np.append(regularization_par, 
                     ['L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'])
+        self.regularization_par = regularization_par # the names of the regularization parameters
+        
         default_regularization_par = {'L1_template':0., 'L2_template':0.,
                                       'L1_basis_vectors':0., 'L2_basis_vectors':0.,
                                       'L1_basis_weights':1.}
-        self.regularization_par = regularization_par
         for par in regularization_par: 
             if par in kwargs.keys(): # prioritize explicitly set keywords over all else
                 setattr(self, par, kwargs[par])

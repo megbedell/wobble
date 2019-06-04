@@ -8,7 +8,9 @@ Tuning Regularization Parameters
 
 Regularization is an important part of `wobble`'s functionality. To get the best possible results for any given data set, the regularization strengths should be tuned to suit these data. We do this with a cross-validation scheme.
 
-The `regularization.py script <https://github.com/megbedell/wobble/blob/master/scripts/regularization.py>`_ provides a framework for executing this cross-validation and saving the results in a *wobble*-friendly format.
+The `tune_regularization.py script <https://github.com/megbedell/wobble/blob/master/scripts/tune_regularization.py>`_ shows an example of generating new regularization parameter files and tuning them for a given data set via cross-validation.
+
+More details are given under the API.
 
 Running *wobble*
 ----------------

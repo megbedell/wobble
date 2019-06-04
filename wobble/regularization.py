@@ -1,12 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import wobble
 import tensorflow as tf
 from tqdm import tqdm
 import h5py
-import os
+import copy
 
-__all__ = ["improve_order_regularization", "improve_parameter", "test_regularization_value", "plot_pars_from_file"]
+from .data import Data
+from .model import Model
+from .results import Results
+from .utils import get_session
 
 def generate_regularization_file(filename, R, type='star'):
     """
@@ -20,7 +22,7 @@ def generate_regularization_file(filename, R, type='star'):
         Number of echelle orders.
     type : str, optional
         Type of object; sets which default values to use. 
-        Acceptable values are 'star' (default) or 'tellurics'.
+        Acceptable values are 'star' (default) or 'telluric'.
     """
     regularization_par = ['L1_template', 'L2_template', 
                               'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
@@ -28,7 +30,7 @@ def generate_regularization_file(filename, R, type='star'):
     telluric_defaults = [1.e4, 1.e6, 1.e3, 1.e8, 1.]
     if type=='star':
         defaults = star_defaults
-    elif type=='tellurics':
+    elif type=='telluric':
         defaults = telluric_defaults
     else:
         assert False, "ERROR: type not recognized."
@@ -42,14 +44,40 @@ def get_name_from_tensor(tensor):
     # also won't work if you put colons in your variable names but why would you do that?
     return str.split(tensor.name, ':')[0]
     
-def setup_for_order(r, datafile, training_epochs, validation_epochs):
+def setup_for_order(r, data, validation_epochs):
+    """
+    Set up necessary training & validation datasets and results objects
+    for tuning the regularization on a given order from a given dataset.
+                                 
+    Parameters
+    ----------
+    r : int
+        Index into `data.ys` to retrieve desired order.
+    data : wobble.Data object
+        The data used to tune regularization.
+    validation_epochs : list of ints
+        List of indices marking the epochs in `data` that
+        will be set aside for validation. All other epochs will 
+        make up the training set.
+        
+    Returns
+    -------
+    training_data : wobble.Data
+    training_results : wobble.Results
+    validation_data : wobble.Data
+    validation_results : wobble.Results
+    """
     # load up training and validation data for order r & set up results
-    training_data = wobble.Data(datafile, orders=[r], 
-                                epochs=training_epochs, min_snr=0.)
-    training_results = wobble.Results(training_data)
-    validation_data = wobble.Data(datafile, orders=training_data.orders, 
-                                  epochs=validation_epochs, min_snr=0.)
-    validation_results = wobble.Results(validation_data)
+    assert np.all(validation_epochs < data.N), "Invalid epoch index given."
+    training_data = copy.copy(data)
+    orders_to_cut = np.delete(np.arange(data.R), r)
+    training_data.delete_orders(orders_to_cut)
+    validation_data = Data()
+    validation_epochs[::-1].sort() # reverse sort in-place
+    for v in validation_epochs:
+        validation_data.append(training_data.pop(v))
+    training_results = Results(training_data)
+    validation_results = Results(validation_data)
     return training_data, training_results, validation_data, validation_results
 
 def improve_order_regularization(o, star_filename, tellurics_filename,
@@ -99,7 +127,7 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
         Whether to tune L2 amplitudes.
     """
     r = 0 # assumes there is only one order in data & results objects
-    training_model = wobble.Model(training_data, training_results, r)
+    training_model = Model(training_data, training_results, r)
     training_model.add_star('star', variable_bases=K_star)
     training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
@@ -112,7 +140,7 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
         plot_fit(r, n, training_data, training_results, title=title, basename=filename)
 
     
-    validation_model = wobble.Model(validation_data, validation_results, r)
+    validation_model = Model(validation_data, validation_results, r)
     validation_model.add_star('star', variable_bases=K_star, 
                           template_xs=training_results.star_template_xs[r]) # ensure templates are same size
     validation_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t,
@@ -263,7 +291,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     r = training_model.r
     regularization_dict[par] = val
     name = get_name_from_tensor(par) # chop off TF's ID #
-    session = wobble.utils.get_session()
+    session = get_session()
     session.run(tf.global_variables_initializer()) # reset both models
     
     training_model.optimize(niter=training_niter, feed_dict=regularization_dict, verbose=verbose, rv_uncertainties=False)
@@ -276,7 +304,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
         if c.K > 0:
             validation_dict[getattr(c, 'basis_vectors')] = getattr(training_model.results, 
                                                                    c.name+'_basis_vectors')[r]
-    session = wobble.utils.get_session()
+    session = get_session()
     if verbose:
         iterator = tqdm(range(validation_niter))
     else:
@@ -320,7 +348,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
     return nll
     
 def plot_fit(r, n, data, results, title='', basename=''):
-    """Plots full-order and zoomed-in versions of fits & residuals"""
+    """Plots full-order and zoomed-in versions of fits & residuals for order `r`, epoch `n`."""
     fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
     xs = np.exp(data.xs[r][n])
     ax.scatter(xs, np.exp(data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data', s=16)
@@ -355,7 +383,7 @@ def plot_fit(r, n, data, results, title='', basename=''):
     plt.close(fig) 
     
 def plot_pars_from_file(filename, basename, orders=np.arange(72)):
-    """Takes an HDF5 file and automatically creates overview plots of regularization amplitudes"""
+    """Takes an HDF5 file and automatically creates overview plots of regularization amplitudes."""
     with h5py.File(filename, 'r') as f:
         for key in list(f.keys()):
             fig = plt.figure()
@@ -368,73 +396,4 @@ def plot_pars_from_file(filename, basename, orders=np.arange(72)):
             ax.set_xlim([-3,75])
             fig.tight_layout()
             plt.savefig(basename+'_{0}.png'.format(key))
-            plt.close(fig)  
-
-        
-if __name__ == "__main__":
-    # change these keywords:
-    starname = 'barnards'
-    datafile = '../data/{0}_e2ds.hdf5'.format(starname)
-    orders = np.arange(72)
-    K_star = 0 # number of variable components for stellar spectrum
-    K_t = 0 # number of variable components for telluric spectrum         
-    tellurics_template_fixed = False    
-    plot = True
-    verbose = True
-    
-    # create directory for plots if it doesn't exist:
-    if plot:
-        plot_dir = '../regularization/{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
-        if not os.path.exists(plot_dir):
-            os.makedirs(plot_dir)
-    
-    # create regularization parameter files if they don't exist:
-    R = len(orders)
-    star_filename = '../wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
-    if not os.path.isfile(star_filename):
-        generate_regularization_file(star_filename, R, star=True, tellurics=False)
-    tellurics_filename = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
-    if not os.path.isfile(tellurics_filename):                
-        generate_regularization_file(tellurics_filename, R, star=False, tellurics=True)
-
-
-    # set up training & validation data sets:
-    data = wobble.Data(datafile, filepath='data/', orders=orders, min_snr=3) # to get N_epochs    
-    validation_epochs = np.random.choice(data.N, data.N//8, replace=False) # 12.5% of epochs will be validation set
-    training_epochs = np.delete(np.arange(data.N), validation_epochs)    
-        
-    # improve each order's regularization:
-    for o in enumerate(orders):
-        if verbose:
-            print('---- STARTING ORDER {0} ----'.format(o))
-            print("starting values:")
-            print("star:")
-            with h5py.File(star_filename, 'r') as f:
-                for key in list(f.keys()):
-                    print("{0}: {1:.0e}".format(key, f[key][o]))
-            print("tellurics:")
-            with h5py.File(tellurics_filename, 'r') as f:
-                for key in list(f.keys()):
-                    print("{0}: {1:.0e}".format(key, f[key][o]))
-        objs = setup_for_order(r, datafile, training_epochs, validation_epochs)
-        improve_order_regularization(o, star_filename, tellurics_filename,
-                                         *objs,
-                                         verbose=verbose, plot=plot, 
-                                         basename='{0}o{1}'.format(plot_dir, o), 
-                                         K_star=K_star, K_t=K_t, L1=True, L2=True)
-        if verbose:                                 
-            print('---- ORDER {0} COMPLETE ({1}/{2}) ----'.format(o,r,len(orders)-1))
-            print("best values:")
-            print("star:")
-            with h5py.File(star_filename, 'r') as f:
-                for key in list(f.keys()):
-                    print("{0}: {1:.0e}".format(key, f[key][o]))
-            print("tellurics:")
-            with h5py.File(tellurics_filename, 'r') as f:
-                for key in list(f.keys()):
-                    print("{0}: {1:.0e}".format(key, f[key][o]))        
-
-    # save some summary plots:
-    if plot:
-        plot_pars_from_file(star_filename, 'regularization/{0}_star_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)
-        plot_pars_from_file(tellurics_filename, 'regularization/{0}_tellurics_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)          
+            plt.close(fig)          
