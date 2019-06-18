@@ -70,7 +70,7 @@ def setup_for_order(r, data, validation_epochs):
     # load up training and validation data for order r & set up results
     assert np.all(validation_epochs < data.N), "Invalid epoch index given."
     training_data = copy.copy(data)
-    orders_to_cut = np.delete(np.arange(data.R), r)
+    orders_to_cut = np.arange(data.R) != r
     training_data.delete_orders(orders_to_cut)
     validation_data = Data()
     validation_epochs[::-1].sort() # reverse sort in-place
@@ -83,7 +83,8 @@ def setup_for_order(r, data, validation_epochs):
 def improve_order_regularization(o, star_filename, tellurics_filename,
                                  training_data, training_results,
                                  validation_data, validation_results,
-                                 verbose=True, plot=False, basename='', 
+                                 verbose=True, plot=False, plot_minimal=False,
+                                 basename='', 
                                  K_star=0, K_t=0, L1=True, L2=True,
                                  tellurics_template_fixed=False): 
     """
@@ -114,7 +115,10 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
     verbose : bool (default `True`)
         Toggle print statements and progress bars.
     plot : bool (default `False`)
-        Generate and save plots of fits to validation data.
+        Generate and save plots of fits to validation data including all variations
+        of regularization amplitudes tried. (This will be a lot of plots!)
+    plot_minimal : bool (default `False`)
+        Generate and save only the before/after plots of fits to validation data.
     basename : str (default ``)
         String to append to the beginning of saved plots (file path and base).
     K_star : int (default `0`)
@@ -126,25 +130,20 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
     L2 : bool (default `True`)
         Whether to tune L2 amplitudes.
     """
-    r = 0 # assumes there is only one order in data & results objects
-    training_model = Model(training_data, training_results, r)
+    assert (training_data.R == 1) & (validation_data.R == 1)
+    assert training_data.orders == validation_data.orders
+
+    training_model = Model(training_data, training_results, 0)
     training_model.add_star('star', variable_bases=K_star)
     training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
     training_model.setup()
     training_model.optimize(niter=0, verbose=verbose, rv_uncertainties=False)
     
-    if plot:
-        n = 0 # epoch to plot
-        title = 'Initialization'
-        filename = '{0}_init'.format(basename)
-        plot_fit(r, n, training_data, training_results, title=title, basename=filename)
-
-    
-    validation_model = Model(validation_data, validation_results, r)
+    validation_model = Model(validation_data, validation_results, 0)
     validation_model.add_star('star', variable_bases=K_star, 
-                          template_xs=training_results.star_template_xs[r]) # ensure templates are same size
+                          template_xs=training_results.star_template_xs[0]) # ensure templates are same size
     validation_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t,
-                          template_xs=training_results.tellurics_template_xs[r])
+                          template_xs=training_results.tellurics_template_xs[0])
     validation_model.setup()
     
     # the order in which these are defined will determine the order in which they are optimized:
@@ -177,6 +176,16 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
             assert False
         with h5py.File(filename, 'r') as f:                
                 regularization_dict[tensor] = np.copy(f[tensor_names[i]][o_init])
+                
+    if plot or plot_minimal:
+        test_regularization_value(tensor, 
+                                  regularization_dict[tensor],
+                                  training_model, validation_model, regularization_dict,
+                                  validation_data, validation_results, plot=False, verbose=False) # hack to initialize validation results
+        n = 0 # epoch to plot
+        title = 'Initialization'
+        filename = '{0}_init'.format(basename)
+        plot_fit(0, n, validation_data, validation_results, title=title, basename=filename)
 
     i = 0 # track order in which parameters are improved
     for component,(tensor,name) in zip(tensor_components, zip(tensors_to_tune, tensor_names)):
@@ -196,22 +205,30 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
             with h5py.File(filename, 'r+') as f:
                     f[name][o] = np.copy(regularization_dict[tensor])   
                     
-    if plot:
+    if plot or plot_minimal:
         test_regularization_value(tensor, regularization_dict[tensor],
                                   training_model, validation_model, regularization_dict,
                                   validation_data, validation_results, plot=False, verbose=False) # hack to update results
         title = 'Final'
         filename = '{0}_final'.format(basename)
-        plot_fit(r, n, validation_data, validation_results, title=title, basename=filename)    
+        plot_fit(0, n, validation_data, validation_results, title=title, basename=filename)    
         
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        val_rvs = validation_results.star_rvs[r] + validation_results.bervs
-        train_rvs = training_results.star_rvs[r] + training_results.bervs
-        ax.plot(validation_results.dates, val_rvs - np.mean(val_rvs), 'r.')
-        ax.plot(training_results.dates, train_rvs - np.mean(train_rvs), 'k.', alpha=0.5)   
-        ax.set_ylabel('RV (m/s)')
-        ax.set_xlabel('JD')
+        val_rvs = validation_results.star_rvs[0] + validation_results.bervs
+        train_rvs = training_results.star_rvs[0] + training_results.bervs
+        ax.plot(validation_results.dates, val_rvs - np.mean(val_rvs), 'r.', 
+                label='validation set\n(may have RV offset)')
+        ax.plot(training_results.dates, train_rvs - np.mean(train_rvs), 'k.', alpha=0.5,
+                label='training set') 
+        if not np.all(training_results.pipeline_rvs == 0.): # if pipeline RVs exist, plot them
+            all_dates = np.append(validation_results.dates, training_results.dates)
+            all_rvs = np.append(validation_results.pipeline_rvs + validation_results.bervs,
+                                training_results.pipeline_rvs + training_results.bervs)
+            ax.plot(all_dates, all_rvs - np.mean(all_rvs), 'b.', alpha=0.8, label='expected values')  
+        ax.set_ylabel('RV (m/s)', fontsize=14)
+        ax.set_xlabel('JD', fontsize=14)
+        ax.legend(fontsize=12)
         fig.tight_layout()
         plt.savefig(basename+'_final_rvs.png')
         plt.close(fig)

@@ -210,6 +210,9 @@ class Data(object):
                     dset = f.create_dataset('filelist', data=strings)    
                     
     def drop_bad_orders(self, min_snr=5.):
+        """
+        Automatically drop all echelle orders with average SNR (over all epochs) < min_snr.
+        """
         try: 
             orders = np.asarray(self.orders)
         except:
@@ -223,6 +226,9 @@ class Data(object):
             print("All orders failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             
     def drop_bad_epochs(self, min_snr=5.):
+        """
+        Automatically drop all epochs with average SNR (over all orders) < min_snr.
+        """
         try:
             epochs = np.asarray(self.epochs)
         except:
@@ -244,6 +250,9 @@ class Data(object):
             return  
         
     def delete_orders(self, bad_order_mask):
+        """
+        Take an R-order length boolean mask & drop all orders marked True.
+        """
         good_order_mask = ~bad_order_mask
         for attr in REQUIRED_3D:
             old = getattr(self, attr)
