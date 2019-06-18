@@ -294,8 +294,7 @@ class Spectrum(object):
         if not self.empty:
             print("WARNING: overwriting existing contents.")
         self.R = len(xs) # number of echelle orders
-        if not 'orders' in metadata:
-            self.orders = np.arange(self.R)
+        self.orders = np.arange(self.R) # will be overwritten if kwargs has orders
         self.filelist = 'input arguments' # will be overwritten if kwargs has filelist
         self.xs = xs
         self.ys = ys
