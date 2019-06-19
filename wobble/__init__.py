@@ -5,7 +5,7 @@ from .data import Data, Spectrum
 from .results import Results
 from .model import Model, Component
 from .history import History
-from .regularization import generate_regularization_file, setup_for_order, improve_order_regularization, improve_parameter, test_regularization_value, plot_pars_from_file
+from .regularization import *
 
 def optimize_order(model, **kwargs):
     '''

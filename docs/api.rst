@@ -30,7 +30,7 @@ Results
 Regularization & Other Utilities
 --------------------------------
 
-.. autoclass:: wobble.Regularization
+.. autoclass:: wobble.regularization
 	:members:
 
 .. autofunction:: wobble.utils.bin_data

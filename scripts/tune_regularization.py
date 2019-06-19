@@ -51,7 +51,7 @@ if __name__ == "__main__":
             with h5py.File(tellurics_filename, 'r') as f:
                 for key in list(f.keys()):
                     print("{0}: {1:.0e}".format(key, f[key][o]))
-        objs = setup_for_order(r, data, validation_epochs)
+        objs = setup_data(r, data, validation_epochs)
         improve_order_regularization(o, star_filename, tellurics_filename,
                                          *objs,
                                          verbose=verbose, plot=plot, 
@@ -72,5 +72,7 @@ if __name__ == "__main__":
 
     # save some extra summary plots:
     if plot or plot_minimal:
-        plot_pars_from_file(star_filename, 'regularization/{0}_star_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)
-        plot_pars_from_file(tellurics_filename, 'regularization/{0}_tellurics_Kstar{1}_Kt{2}'.format(starname, K_star, K_t), orders=orders)  
+        plot_pars_from_file(star_filename, 
+                            '../regularization/{0}_star_Kstar{1}_Kt{2}'.format(starname, K_star, K_t))
+        plot_pars_from_file(tellurics_filename, 
+                            '../regularization/{0}_tellurics_Kstar{1}_Kt{2}'.format(starname, K_star, K_t)

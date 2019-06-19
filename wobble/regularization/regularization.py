@@ -5,10 +5,10 @@ from tqdm import tqdm
 import h5py
 import copy
 
-from .data import Data
-from .model import Model
-from .results import Results
-from .utils import get_session
+from wobble.data import Data
+from wobble.model import Model
+from wobble.results import Results
+from wobble.utils import get_session
 
 def generate_regularization_file(filename, R, type='star'):
     """
@@ -27,7 +27,8 @@ def generate_regularization_file(filename, R, type='star'):
     regularization_par = ['L1_template', 'L2_template', 
                               'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
     star_defaults = [1.e-2, 1.e2, 1.e5, 1.e6, 1.]
-    telluric_defaults = [1.e4, 1.e6, 1.e3, 1.e8, 1.]
+    #telluric_defaults = [1.e4, 1.e6, 1.e3, 1.e8, 1.]
+    telluric_defaults = [1.e2, 1.e3, 1.e3, 1.e6, 1.]
     if type=='star':
         defaults = star_defaults
     elif type=='telluric':
@@ -44,7 +45,7 @@ def get_name_from_tensor(tensor):
     # also won't work if you put colons in your variable names but why would you do that?
     return str.split(tensor.name, ':')[0]
     
-def setup_for_order(r, data, validation_epochs):
+def setup_data(r, data, validation_epochs):
     """
     Set up necessary training & validation datasets and results objects
     for tuning the regularization on a given order from a given dataset.
@@ -79,6 +80,65 @@ def setup_for_order(r, data, validation_epochs):
     training_results = Results(training_data)
     validation_results = Results(validation_data)
     return training_data, training_results, validation_data, validation_results
+    
+def setup_models(training_data, training_results,
+                 validation_data, validation_results, r=0, K_star=0, K_t=0):
+    """
+    Set up models for the training & validation objects generated 
+    by `setup_data()`.          
+    """
+    training_model = Model(training_data, training_results, r)
+    training_model.add_star('star', variable_bases=K_star)
+    training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
+    training_model.setup()
+    training_model.optimize(niter=0, verbose=False, rv_uncertainties=False)
+    
+    validation_model = Model(validation_data, validation_results, r)
+    validation_model.add_star('star', variable_bases=K_star, 
+                          template_xs=training_results.star_template_xs[r]) # ensure templates are same size
+    validation_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t,
+                          template_xs=training_results.tellurics_template_xs[r])
+    validation_model.setup()
+    return training_model, validation_model
+    
+def setup_tensors(o, star_filename, tellurics_filename, 
+                     training_model, K_star=0, K_t=0):
+    """
+    Set up a list of pointers to the regularization amplitude tensors and 
+    a dictionary mapping them to their initial values.
+    """
+    # the order in which these are defined will determine the order in which they are optimized:
+    tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
+                       training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
+    tensor_names = ['L2_template', 'L2_template', 'L1_template',
+                     'L1_template'] # this is only needed bc TF appends garbage to the end of the tensor name
+    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # ^ same
+    if K_star > 0:
+        tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
+                                                    training_model.components[0].L1_basis_vectors_tensor])
+        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
+        tensor_components = np.append(tensor_components, ['star', 'star'])
+    if K_t > 0:
+        tensors_to_tune = np.append(tensors_to_tune, [training_model.components[1].L2_basis_vectors_tensor, 
+                                                training_model.components[1].L1_basis_vectors_tensor])
+        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
+        tensor_components = np.append(tensor_components, ['tellurics', 'tellurics'])
+    
+    regularization_dict = {}
+    #o_init = max(0, o-1) # initialize from previous order, or if o=0 use defaults
+    o_init = o # always initialize from starting guess (TODO: decide which init is better)
+    for i,tensor in enumerate(tensors_to_tune):
+        if tensor_components[i] == 'star':
+            filename = star_filename
+        elif tensor_components[i] == 'tellurics':
+            filename = tellurics_filename
+        else:
+            print("something has gone wrong.")
+            assert False
+        with h5py.File(filename, 'r') as f:                
+                regularization_dict[tensor] = np.copy(f[tensor_names[i]][o_init])
+                
+    return tensors_to_tune, tensor_names, tensor_components, regularization_dict
 
 def improve_order_regularization(o, star_filename, tellurics_filename,
                                  training_data, training_results,
@@ -132,54 +192,17 @@ def improve_order_regularization(o, star_filename, tellurics_filename,
     """
     assert (training_data.R == 1) & (validation_data.R == 1)
     assert training_data.orders == validation_data.orders
+    
+    training_model, validation_model = setup_models(training_data, training_results,
+                                                    validation_data, validation_results,
+                                                    K_star=K_star, K_t=K_t)
 
-    training_model = Model(training_data, training_results, 0)
-    training_model.add_star('star', variable_bases=K_star)
-    training_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t)
-    training_model.setup()
-    training_model.optimize(niter=0, verbose=verbose, rv_uncertainties=False)
-    
-    validation_model = Model(validation_data, validation_results, 0)
-    validation_model.add_star('star', variable_bases=K_star, 
-                          template_xs=training_results.star_template_xs[0]) # ensure templates are same size
-    validation_model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t,
-                          template_xs=training_results.tellurics_template_xs[0])
-    validation_model.setup()
-    
-    # the order in which these are defined will determine the order in which they are optimized:
-    tensors_to_tune = [training_model.components[1].L2_template_tensor, training_model.components[0].L2_template_tensor,
-                       training_model.components[1].L1_template_tensor, training_model.components[0].L1_template_tensor]
-    tensor_names = ['L2_template', 'L2_template', 'L1_template',
-                     'L1_template'] # this is only needed bc TF appends garbage to the end of the tensor name
-    tensor_components = ['tellurics', 'star', 'tellurics', 'star'] # ^ same
-    if K_star > 0:
-        tensors_to_tune = np.append(tensors_to_tune, [training_model.components[0].L2_basis_vectors_tensor, 
-                                                    training_model.components[0].L1_basis_vectors_tensor])
-        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
-        tensor_components = np.append(tensor_components, ['star', 'star'])
-    if K_t > 0:
-        tensors_to_tune = np.append(tensors_to_tune, [training_model.components[1].L2_basis_vectors_tensor, 
-                                                training_model.components[1].L1_basis_vectors_tensor])
-        tensor_names = np.append(tensor_names, ['L2_basis_vectors', 'L1_basis_vectors'])
-        tensor_components = np.append(tensor_components, ['tellurics', 'tellurics'])
-    
-    regularization_dict = {}
-    #o_init = max(0, o-1) # initialize from previous order, or if o=0 use defaults
-    o_init = o # always initialize from starting guess (TODO: decide which init is better)
-    for i,tensor in enumerate(tensors_to_tune):
-        if tensor_components[i] == 'star':
-            filename = star_filename
-        elif tensor_components[i] == 'tellurics':
-            filename = tellurics_filename
-        else:
-            print("something has gone wrong.")
-            assert False
-        with h5py.File(filename, 'r') as f:                
-                regularization_dict[tensor] = np.copy(f[tensor_names[i]][o_init])
-                
+    tensors_to_tune, tensor_names, tensor_components, regularization_dict = setup_tensors(o, 
+                        star_filename, tellurics_filename, training_model, K_star=K_star, K_t=K_t)
+                                     
     if plot or plot_minimal:
-        test_regularization_value(tensor, 
-                                  regularization_dict[tensor],
+        test_regularization_value(tensors_to_tune[0], 
+                                  regularization_dict[tensors_to_tune[0]],
                                   training_model, validation_model, regularization_dict,
                                   validation_data, validation_results, plot=False, verbose=False) # hack to initialize validation results
         n = 0 # epoch to plot
@@ -364,7 +387,7 @@ def test_regularization_value(par, val, training_model, validation_model, regula
         print('{0}, value {1:.0e}: nll {2:.4e}'.format(name, val, nll))
     return nll
     
-def plot_fit(r, n, data, results, title='', basename=''):
+def plot_fit(r, n, data, results, full=True, title='', basename=''):
     """Plots full-order and zoomed-in versions of fits & residuals for order `r`, epoch `n`."""
     fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
     xs = np.exp(data.xs[r][n])
@@ -390,14 +413,16 @@ def plot_fit(r, n, data, results, title='', basename=''):
     ax.set_title(title, fontsize=12)
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.05)
-    plt.savefig('{0}.png'.format(basename))
     
-    xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
-    ax.set_xlim(xlim)
-    ax.set_xticklabels([])
-    ax2.set_xlim(xlim)
-    plt.savefig('{0}_zoom.png'.format(basename))
-    plt.close(fig) 
+    if full: #this is a hack!!
+        plt.savefig('{0}.png'.format(basename))
+    
+        xlim = [np.percentile(xs, 20) - 7.5, np.percentile(xs, 20) + 7.5] # 15A near-ish the edge of the order
+        ax.set_xlim(xlim)
+        ax.set_xticklabels([])
+        ax2.set_xlim(xlim)
+        plt.savefig('{0}_zoom.png'.format(basename))
+        plt.close(fig) 
     
 def plot_pars_from_file(filename, basename, orders=np.arange(72)):
     """Takes an HDF5 file and automatically creates overview plots of regularization amplitudes."""
