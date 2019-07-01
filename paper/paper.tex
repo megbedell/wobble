@@ -10,7 +10,7 @@
 \shorttitle{\wobble}
 \shortauthors{Bedell et al.}
 
-%\graphicspath{ {figures/} }
+\graphicspath{ {figures/} }
 \DeclareGraphicsExtensions{.pdf,.eps,.png}
 
 %@arxiver{telluric_comparison.pdf}
@@ -182,12 +182,12 @@ Finally, we assume that, when the stellar and telluric components are properly o
 
 We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. 
 We also have a corresponding $M \times N$ matrix of wavelength solutions. 
-Again, the entries of this matrix are in logarithmic form ($\ln \lambda$). 
-This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.
+Again, the entries of this matrix are in logarithmic form ($\ln \lambda_{m,n}$). 
+\deleted{This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.}
 
 We model each data column $y_n$ as the sum of the stellar and telluric spectra:
 \begin{equation}
-y_n = y_{n}^\star + y_{n}^t + noise.
+y_n = y_{n}^\star + y_{n}^t + \textrm{noise}.
 \end{equation}
 
 The stellar spectrum contribution is: 
@@ -201,12 +201,17 @@ $P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
 interpolates $\mu^\star$ into the observatory rest frame.
 Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
 \begin{equation}
- \ln \lambda(v) = \ln \lambda_{0} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
+ \ln \lambda(v) = \ln \lambda_{0} + D(v) \equiv \ln \lambda_{0} - \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
-The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space.
+The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space, \added{so that each predicted value $y_{n,m}^\star$ at data wavelength $\ln \lambda_{m,n}$ is determined by:} \todo{(this is not complete)}
+\begin{equation}
+y_{m,n}^\star(\ln \lambda_{m,n}) = \mu^{\star}(\ln \lambda_{m'} + D(v^{obs}_{n})).
+\label{eqn:Pop}
+\end{equation}
 $P$ could be represented as a rectangular $M \times M'$ sparse matrix, but the dot product can be implemented efficiently using linear interpolation instead of instantiating the full matrix.
 
-The apparent stellar \RV, $v^{obs}_{n}$, is a sum of the star's actual velocity about its center of mass ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known.
+The apparent stellar \RV, $v^{obs}_{n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
+\todo{(add Wright equation!)}
 
 The telluric spectrum contribution is:
 \begin{equation}
@@ -759,7 +764,8 @@ It is our hope that openly shared development of next-generation \RV analysis te
     theano \citep{theano}
 }
 
-\acknowledgements{It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
+\acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful, constructive, and helpful review.}
+It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
 This research has made use of the services of the ESO Science Archive Facility. 
