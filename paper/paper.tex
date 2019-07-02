@@ -104,22 +104,19 @@ For stabilized, non-gas-cell \RV spectrographs, a standard approach has been to 
 This approach is limited by the accuracy of the mask, and since most masks are built for a broad category of spectral type rather than customized for the individual star in question, it is unlikely that this technique retrieves maximally precise \RVs. 
 Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined has been shown to be a superior approach for stars with complex spectra \citep{AngladaEscude2012, Zechmeister2018}. 
 
-Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is a single observation taken for the purpose \citep[e.g.][]{Butler1996}. 
+Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is \added{derived from} a single observation taken for this purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
 Such data-driven templates have the benefit of being both customized to the star in question and high-\SNR without requiring observing overhead. 
 
 Common to the issues of telluric correction and stellar template building is the fact that all of the necessary information about the unknown spectra is encoded in the data. 
-With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs.
-
-%\todo{(talk about lack of open-source code and difficulty of modifying \RV pipelines here?)}
-
+With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs. 
 Here we develop and implement such a data-driven model to infer the telluric and stellar spectra and calculate the stellar \RV at each observed epoch. 
 The telluric model component may vary with time in a low-dimensional manner, which is also inferred from the data. 
 Our model requires no prior knowledge of spectral features for the star or for the Earth's atmosphere. 
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
 
-Our approach is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
-%In this sense, ours is a true forward model.  -- this content-less (DFM)
+Our approach \added{to the \EPRV problem} is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
+\added{Similar approaches of learning template spectra for stars and tellurics from the data directly have been used in the literature, although they have not previously been demonstrated to achieve precise stellar \RVs \citep[e.g.]{Hadrava2004, Hadrava2006}.}
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. a reliable instrumental calibration and no absorption cell. 
 We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s). 
@@ -144,7 +141,8 @@ However, a few assumptions are made in this work to simplify the implementation,
 Many of these assumptions could be eliminated with relatively straightforward modifications to the method. 
 We revisit these in Section \ref{s:future}.
 
-First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution.
+First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution. 
+\added{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract instrumentally-broadened template spectra rather than explicitly modeling and solving for instrumental broadening effects. However, \todo{as we discuss in Section \ref{s:future}}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
 
 We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape. 
@@ -211,7 +209,9 @@ y_{m,n}^\star(\ln \lambda_{m,n}) = \mu^{\star}(\ln \lambda_{m'} + D(v^{obs}_{n})
 $P$ could be represented as a rectangular $M \times M'$ sparse matrix, but the dot product can be implemented efficiently using linear interpolation instead of instantiating the full matrix.
 
 The apparent stellar \RV, $v^{obs}_{n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
-\todo{(add Wright equation!)}
+\added{For the purposes of this work, we use the \BERV furnished by the \HARPS pipeline. 
+We also make the approximation that the observed velocity is a simple sum of the actual velocity and the \BERV. 
+In detail, this approximation is incorrect; see \citet{Wright2014} and \citet{Wright2019} for further discussion.}
 
 The telluric spectrum contribution is:
 \begin{equation}
@@ -764,7 +764,7 @@ It is our hope that openly shared development of next-generation \RV analysis te
     theano \citep{theano}
 }
 
-\acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful, constructive, and helpful review.}
+\acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful and constructive review.}
 It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
