@@ -1,6 +1,7 @@
 \documentclass[twocolumn]{aastex62}
 
 \include{preamble}
+\usepackage{ bbold }
 \newcommand{\Mdwarf}{Barnard's Star\xspace} % or should it be Barnard's star? or GJ 699?
 
 
@@ -178,56 +179,59 @@ Finally, we assume that, when the stellar and telluric components are properly o
 \subsection{Model Specification}
 \label{s:model-eqns}
 
-We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. 
-We also have a corresponding $M \times N$ matrix of wavelength solutions. 
-Again, the entries of this matrix are in logarithmic form ($\ln \lambda_{m,n}$). 
-\deleted{This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.}
+We take the data to be the $M \times N$ matrix y, where each entry $y_{m,n}$ is the logarithm of the observed flux for pixel $m$ of $M$ at epoch $n$ of $N$. 
+We also have a corresponding $M \times N$ matrix of wavelength solutions\added{ which we call $\xi$, where each entry $\xi_{m,n}$ is the logarithm of the wavelength for pixel $m$ at epoch $n$}.
+\deleted{Again, the entries of this matrix are in logarithmic form ($\ln \lambda_{m,n}$). This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.}
 
-We model each data column $y_n$ as the sum of the stellar and telluric spectra:
+\replaced{We model each data column $y_n$}{For each data column $y_n$, our model prediction $f_n$ can be treated} as the sum of stellar and telluric contributions:
 \begin{equation}
-y_n = y_{n}^\star + y_{n}^t + \textrm{noise}.
+f_n = f_{\star,n} + f_{t,n} + \textrm{noise}.
 \end{equation}
 
 The stellar spectrum contribution is: 
 \begin{equation}
-y_{n}^\star = P(v^{obs}_{n}) \mu^{\star},
+f_{\star,n} = P(\xi_n, \xi_{\star}, v_{obs,n}) \cdot \mu_{\star},
 \label{eqn:star}
 \end{equation}
-where $\mu^{\star}$ is a spectral template with length $M'$ corresponding to
-the length of an arbitrarily-chosen wavelength grid of control points, and
-$P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
-interpolates $\mu^\star$ into the observatory rest frame.
-Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
+where $\mu_{\star}$ is a spectral template of log-fluxes and 
+$\xi_{\star}$ is the corresponding vector of template log-wavelengths. 
+The exact values of $\xi_{\star}$ can be chosen somewhat arbitrarily under the conditions that the grid has uniform spacing $\Delta\xi_{\star}$, covers the entire wavelength range of the data, and is over-sampled with regards to the observed spectrum's wavelength grid.
+$P$ is a linear operator whose function is to apply a Doppler shift by observed velocity $v_{obs,n}$ and
+interpolate $\mu_{\star}$ from the $\xi_{\star}$ template grid to the $\xi_n$ data grid.
+Each entry of the $P$ matrix can be defined by a sum of weighted indicator function as follows:
 \begin{equation}
- \ln \lambda(v) = \ln \lambda_{0} + D(v) \equiv \ln \lambda_{0} - \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
+\begin{split}
+ P_{i,j} =  &\ \Big(\frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big(0 < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 1\big) \\
+  &+ \Big(1 - \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big({-1} < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 0\big), \\
+ \end{split}
 \end{equation}
-The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space, \added{so that each predicted value $y_{n,m}^\star$ at data wavelength $\ln \lambda_{m,n}$ is determined by:} \todo{(this is not complete)}
+where $\xi'_{\star}$ is the Doppler-shifted template grid:
 \begin{equation}
-y_{m,n}^\star(\ln \lambda_{m,n}) = \mu^{\star}(\ln \lambda_{m'} + D(v^{obs}_{n})).
-\label{eqn:Pop}
+ \xi'_{\star}(v) = \xi_{\star} + D(v) \equiv \xi_{\star} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
-$P$ could be represented as a rectangular $M \times M'$ sparse matrix, but the dot product can be implemented efficiently using linear interpolation instead of instantiating the full matrix.
+We note that because $P$ is quite sparse, in practice we do not instantiate the full matrix when performing calculations. 
 
-The apparent stellar \RV, $v^{obs}_{n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
+The apparent stellar \RV, $v_{obs,n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} $v_{\star,n}$ and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
 \added{For the purposes of this work, we use the \BERV furnished by the \HARPS pipeline. 
 We also make the approximation that the observed velocity is a simple sum of the actual velocity and the \BERV. 
 In detail, this approximation is incorrect; see \citet{Wright2014} and \citet{Wright2019} for further discussion.}
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{n}^t =  A_n(\mu^{t} + W^{t} z_n).
+f_{t,n} =  A_n(\mu_{t} + W_{t} \cdot z_n).
 \end{equation}
-In addition to its mean spectrum $\mu^t$, the telluric component also includes a time-dependent term assembled from two variables: $W^t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
-$W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used. 
+In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
+$W_t$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $M'$ is the length of some vector of template wavelengths $\xi_{t}$ and $K$ is the number of basis vectors used.\footnote{While we refer to these as basis vectors for simplicity, note that they are not actually constrained to be orthogonal.} 
 For the purposes of this work we found good performance with $K$ set to 3, but this may vary for other applications. 
-The net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
+The template wavelength grid $\xi_{t}$ should have similar properties to $\xi_{\star}$ and may in practice be the same grid. 
+Finally, the net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
 
 We evaluate a log-likelihood for each epoch
 \begin{equation}
-\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n}),
+\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - f_{n})^T C_{n}^{-1} (y_{n}-f_{n}),
 \label{eqn:lnlike}
 \end{equation}
-comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data. 
+comparing our model $f$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data. 
 
 The number of free parameters in this model is large: we must optimize every grid point in the mean spectral templates and telluric basis vectors along with the stellar \RV and the telluric basis weights for each epoch. 
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
@@ -258,15 +262,15 @@ We found that good performance came from tuning the L2 regularization amplitudes
 With regularization included, the final model likelihood to be optimized is:
 \begin{equation}
 \begin{split}
-\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n})  \\
- & + \Lone{\lambda_1}{\mu^{\star}} + \Ltwo{\lambda_2}{\mu^{\star}}   + \Lone{\lambda_3}{\mu^{t}} + \Ltwo{\lambda_4}{\mu^{t}} \\
- &  + \Lone{\lambda_5}{W^t}  + \Ltwo{\lambda_6}{W^t} + \Lone{1.0}{z^t} ,
+\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - f_{n})^T C_{n}^{-1} (y_{n}-f_{n})  \\
+ & + \Lone{\lambda_1}{\mu_{\star}} + \Ltwo{\lambda_2}{\mu_{\star}}   + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}} \\
+ &  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z} ,
 \end{split}
 \end{equation}
 %\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
 where the regularization amplitude on the basis weights is arbitrarily set to unity, and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure.
 The basis-weight regularization amplitude can be set arbitrarily to unity because there is a perfect degeneracy between amplifying the basis vectors and attenuating the basis weights.
-This regularization choice breaks that perfect degeneracy.
+This regularization choice breaks that degeneracy.
 The basis weights are regularized to encourage our desired outcome where the mean telluric spectrum contains as much telluric information as possible, while the variable basis picks up only the necessary time-variable changes.
 
 \subsection{Optimizing the Model}
