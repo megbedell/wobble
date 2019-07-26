@@ -211,7 +211,7 @@ where $\xi'_{\star}$ is the Doppler-shifted template grid:
 \end{equation}
 Because $P$ is quite sparse, in practice we do not instantiate the full matrix when performing calculations. 
 At this point, it is also useful to note that $P$ could, in principle, encode an instrumental line spread function (\LSF). 
-We return to this point in Section \label{s:future}.
+We return to this point in Section \ref{s:future}.
 
 The apparent stellar \RV, $v_{obs,n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} $v_{\star,n}$ and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
 \added{For the purposes of this work, we use the \BERV furnished by the \HARPS pipeline. 
@@ -653,8 +653,9 @@ This would rely on the use of telluric features as fixed calibration sources \ci
 
 Another way a less well-calibrated instrument may violate \wobble's assumptions is in the non-negligible variability of all spectral lines due to changes in the instrumental line spread function (\LSF). 
 In principle, if the changes to the \LSF were well-understood they could be hard-coded into linear operators like the $P$ operator used in Equation \ref{eqn:star}, leaving the essential equations of \wobble largely unchanged. 
-\added{In this case the \LSF operator should be applied to both the stellar and telluric component models after combining them.} 
-Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
+\added{In this case the \LSF operator should be applied to both the stellar and telluric component models after combining them. Indeed, technically the current \wobble model does not deal correctly with line broadening: the templates we infer for star and tellurics are post-broadening spectra, but this goes against the correct order of operations if line broadening is dominated by instrumental effects that are applied to the \textit{combined} spectra. We have assumed that this effect is negligible for the purposes of this work, but it should certainly be considered more carefully in the future.} 
+
+Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to \replaced{take this approach}{take a prescriptive approach to their behavior and hard-code them into the form of the $P$ operator}; instead, we might want to fit these variations \replaced{as a data-driven model component}{using a data-driven approach, which would make the \wobble model significantly non-linear}. 
 This leads us into the territory of making more fundamental changes to the \wobble model.
 
 \subsection{Changes to the Model}
@@ -774,7 +775,7 @@ It is our hope that openly shared development of next-generation \RV analysis te
 }
 
 \acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful and constructive review.}
-It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
+It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, Julian St\"{u}rmer, \added{and Sharon Xuesong Wang} for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
 This research has made use of the services of the ESO Science Archive Facility. 
