@@ -9,7 +9,7 @@ T = tf.float64
 from .utils import get_session
 
 COMMON_ATTRS = ['R', 'N', 'orders', 'component_names', 'bervs', 'pipeline_rvs', 
-                'pipeline_sigmas', 'drifts', 'dates', 'airms'] # common across all orders & components
+                'pipeline_sigmas', 'drifts', 'dates', 'airms', 'epochs'] # common across all orders & components
 COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'template_ivars', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # it's ok if these don't exist
@@ -173,7 +173,8 @@ class Results(object):
                         continue
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
             for attr in COMMON_ATTRS:
-                f.create_dataset(attr, data=getattr(self, attr))                    
+                f.create_dataset(attr, data=getattr(self, attr))  
+            self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround                  
                 
     def combine_orders(self, component_name):
         """Calculate and save final time-series RVs for a given component after all 

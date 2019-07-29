@@ -57,6 +57,10 @@ class Data(object):
         Optional N-epoch array of instrumental drifts.
     filelist : `np.ndarray`, optional
         Optional N-epoch array of file locations for each observation.
+    epochs : `np.ndarray`
+        N-epoch array of indices. In most cases this will be equivalent
+        to np.arange(N), but differences will arise when individual epochs have been
+        dropped from the original data file in post-read-in processing.
     orders : `list`
         R-order list of echelle orders contained in this Data object. 
         Represents a mapping from the order indices in this object to
@@ -69,6 +73,7 @@ class Data(object):
             setattr(self, attr, [])
         for attr in np.append(REQUIRED_1D, OPTIONAL_1D):
             setattr(self, attr, np.array([]))
+        self.epochs = []
         self.N = 0 # number of epochs
         self.R = 0 # number of echelle orders
         
@@ -111,7 +116,8 @@ class Data(object):
                 new = getattr(sp,attr)
             except: # fail silently
                 new = 0.
-            setattr(self, attr, np.append(getattr(self,attr), new))            
+            setattr(self, attr, np.append(getattr(self,attr), new))     
+        self.epochs = np.append(self.epochs, self.N)       
         self.N += 1
         self.empty = False
         
@@ -138,7 +144,7 @@ class Data(object):
             epochs_to_keep = [np.delete(r, i, axis=0) for r in getattr(self, attr)]
             setattr(sp, attr, epoch_to_split)
             setattr(self, attr, epochs_to_keep)
-        for attr in np.append(REQUIRED_1D, OPTIONAL_1D):
+        for attr in mp.append(np.append(REQUIRED_1D, OPTIONAL_1D), ['epochs']):
             all_epochs = getattr(self, attr)
             setattr(sp, attr, all_epochs[i])
             setattr(self, attr, np.delete(all_epochs, i))

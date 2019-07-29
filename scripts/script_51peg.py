@@ -125,14 +125,14 @@ if __name__ == "__main__":
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
         
     # save output:
-    results_file = 'results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    results_file = '../results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
     results.write(results_file)
-    star_rvs_file = 'results/rvs_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    star_rvs_file = '../results/rvs_{0}_Kstar{1}_Kt{2}.txt'.format(starname, K_star, K_t)
     results.write_rvs('star', star_rvs_file, all_orders=True)
     
         
     print("results saved as: {0} & {1}".format(results_file, star_rvs_file))
     print("-----------------------------")    
-    print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs + data.bervs)))
+    print("HARPS pipeline std = {0:.3f} m/s".format(np.std(data.pipeline_rvs)))
     print("wobble std = {0:.3f} m/s".format(np.std(results.star_time_rvs)))        
     print("total runtime:{0:.2f} minutes".format((time() - start_time)/60.0))

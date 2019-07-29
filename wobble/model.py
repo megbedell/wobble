@@ -172,8 +172,8 @@ class Model(object):
         session.run(tf.global_variables_initializer())
 
     def optimize(self, niter=100, save_history=False, basename='wobble',
-                 verbose=True, rv_uncertainties=True, 
-                 template_uncertainties=False, **kwargs):
+                 movies=False, epochs_to_plot=[0,1,2], verbose=True, 
+                 rv_uncertainties=True, template_uncertainties=False, **kwargs):
         """Optimize the model!
             
         Parameters
@@ -183,8 +183,14 @@ class Model(object):
         save_history : `bool` (default `False`)
             If `True`, create a wobble History object to track progress across 
             iterations and generate plots.
+        movies : `bool` (default `False`)
+            Use with `save_history`; if `True`, will generate animations of 
+            optimization progress.
+        epochs_to_plot : `list` (default `[0,1,2]`)
+            Use with `save_history`; indices of epochs to plot fits for. Each
+            epoch will generate its own plot/movies.
         basename : `str` (default `wobble`)
-            Path/name to use when saving plots. Only accessed if save_history = `True`.
+            Use with `save_history`; path/name stem to use when saving plots.
         verbose : `bool` (default `True`)
             Toggle print statements and progress bars.
         rv_uncertainties : `bool` (default `True`)
@@ -215,7 +221,7 @@ class Model(object):
         self.results.ys_predicted[self.r] = session.run(self.synth)
         # save optimization plots:
         if save_history:
-            history.save_plots(basename)
+            history.save_plots(basename, movies=movies, epochs_to_plot=epochs_to_plot)
             return history
             
     def estimate_uncertainties(self, verbose=True, rvs=True, templates=False):
