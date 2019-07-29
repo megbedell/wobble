@@ -117,11 +117,7 @@ class Results(object):
         print("Results: reading from {0}".format(filename))
         with h5py.File(filename,'r') as f:
             for attr in COMMON_ATTRS:
-                try:
-                    setattr(self, attr, np.copy(f[attr]))
-                except KeyError:
-                    setattr(self, attr, 0)
-                    print("WARNING: attribute {0} could not be read; filling with placeholder.".format(attr))
+                setattr(self, attr, np.copy(f[attr]))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
             self.ys_predicted = [0 for r in range(self.R)]
