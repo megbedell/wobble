@@ -16,7 +16,7 @@ As an example, let's say that you have a set of HARPS spectra and their correspo
 	import glob
 	filelist = glob.glob('/path/to/files/HARPS*ccf_*_A.fits') # list all star CCF files
 	data = read_data_from_fits(filelist)
-	write_data(*pars, filelist, '../data/filename.hdf5')
+	write_data(*data, filelist, '../data/filename.hdf5')
 	
 Now the data are formatted, saved, and ready to be loaded with:
 

@@ -17,33 +17,16 @@ if __name__ == "__main__":
     
     star_reg_file = '../wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     tellurics_reg_file = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
-    plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
-    
-    if False:
-        # quick test on two orders
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=[30,56])
-        results = wobble.Results(data=data)
-        for r in range(data.R):
-            model = wobble.Model(data, results, r)
-            model.add_star('star', variable_bases=K_star, 
-                            regularization_par_file=star_reg_file,
-                            learning_rate_template=0.01, learning_rate_rvs=1.)
-            model.add_telluric('tellurics', rvs_fixed=True, variable_bases=K_t, 
-                                regularization_par_file=tellurics_reg_file,
-                                learning_rate_template=0.01)
-            wobble.optimize_order(model, niter=niter, save_history=True, uncertainties=False,
-                                  basename='results/test', epochs=epochs, movies=movies)
-        results.write('results/test_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t))
-        assert False
+    plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}-keep/'.format(starname, K_star, K_t)
     
     print("running wobble on star {0} with K_star = {1}, K_t = {2}".format(starname, K_star, K_t))
     start_time = time()
     orders = np.arange(72)
-    data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders)
+    data = wobble.Data(starname+'_e2ds-keep.hdf5', filepath='../data/', orders=orders)
     if True: # reload data and remove all post-upgrade spectra
         upgrade = 2457174.5 # June 2015
         e = data.epochs[data.dates < upgrade]
-        data = wobble.Data(starname+'_e2ds.hdf5', filepath='../data/', orders=orders, epochs=e)
+        data = wobble.Data(starname+'_e2ds-keep.hdf5', filepath='../data/', orders=orders, epochs=e)
     orders = np.copy(data.orders)
     results = wobble.Results(data=data)
     
@@ -115,7 +98,7 @@ if __name__ == "__main__":
     print("final RVs calculated.")
     print("time elapsed: {0:.2f} minutes".format((time() - start_time)/60.0))
         
-    results_file = 'results/results_{0}_Kstar{1}_Kt{2}.hdf5'.format(starname, K_star, K_t)
+    results_file = 'results/results_{0}_Kstar{1}_Kt{2}-keep.hdf5'.format(starname, K_star, K_t)
     results.write(results_file)
         
     print("results saved as: {0}".format(results_file))
