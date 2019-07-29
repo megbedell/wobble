@@ -1,6 +1,7 @@
 \documentclass[twocolumn]{aastex62}
 
 \include{preamble}
+\usepackage{ bbold }
 \newcommand{\Mdwarf}{Barnard's Star\xspace} % or should it be Barnard's star? or GJ 699?
 
 
@@ -104,22 +105,19 @@ For stabilized, non-gas-cell \RV spectrographs, a standard approach has been to 
 This approach is limited by the accuracy of the mask, and since most masks are built for a broad category of spectral type rather than customized for the individual star in question, it is unlikely that this technique retrieves maximally precise \RVs. 
 Deriving a custom spectral template by stacking all spectra iteratively as the \RVs are determined has been shown to be a superior approach for stars with complex spectra \citep{AngladaEscude2012, Zechmeister2018}. 
 
-Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is a single observation taken for the purpose \citep[e.g.][]{Butler1996}. 
+Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is \added{derived from} a single observation taken for this purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
 Such data-driven templates have the benefit of being both customized to the star in question and high-\SNR without requiring observing overhead. 
 
 Common to the issues of telluric correction and stellar template building is the fact that all of the necessary information about the unknown spectra is encoded in the data. 
-With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs.
-
-%\todo{(talk about lack of open-source code and difficulty of modifying \RV pipelines here?)}
-
+With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs. 
 Here we develop and implement such a data-driven model to infer the telluric and stellar spectra and calculate the stellar \RV at each observed epoch. 
 The telluric model component may vary with time in a low-dimensional manner, which is also inferred from the data. 
 Our model requires no prior knowledge of spectral features for the star or for the Earth's atmosphere. 
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
 
-Our approach is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
-%In this sense, ours is a true forward model.  -- this content-less (DFM)
+Our approach \added{to the \EPRV problem} is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
+\added{Similar approaches of learning template spectra for stars and tellurics from the data directly have been used in the literature, although they have not previously been demonstrated to achieve precise stellar \RVs \citep[e.g.]{Hadrava2004, Hadrava2006}.}
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. a reliable instrumental calibration and no absorption cell. 
 We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s). 
@@ -144,7 +142,8 @@ However, a few assumptions are made in this work to simplify the implementation,
 Many of these assumptions could be eliminated with relatively straightforward modifications to the method. 
 We revisit these in Section \ref{s:future}.
 
-First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution.
+First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution. 
+\added{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract instrumentally-broadened template spectra rather than explicitly modeling and solving for instrumental broadening effects. However, \todo{as we discuss in Section \ref{s:future}}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
 
 We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape. 
@@ -180,54 +179,61 @@ Finally, we assume that, when the stellar and telluric components are properly o
 \subsection{Model Specification}
 \label{s:model-eqns}
 
-We take the data to be the $M \times N$ matrix Y, where each entry $y_{m,n}$ is the observed logarithmic flux $\ln f$ for pixel $m$ of $M$ at epoch $n$ of $N$. 
-We also have a corresponding $M \times N$ matrix of wavelength solutions. 
-Again, the entries of this matrix are in logarithmic form ($\ln \lambda_{m,n}$). 
-\deleted{This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.}
+We take the data to be the $M \times N$ matrix $y$, where each entry $y_{m,n}$ is the logarithm of the observed flux for pixel $m$ of $M$ at epoch $n$ of $N$. 
+We also have a corresponding $M \times N$ matrix of wavelength solutions\added{ which we call $\xi$, where each entry $\xi_{m,n}$ is the logarithm of the wavelength for pixel $m$ at epoch $n$}.
+\deleted{Again, the entries of this matrix are in logarithmic form ($\ln \lambda_{m,n}$). This choice makes the Doppler shift an additive term, considerably simplifying the math to follow.}
 
-We model each data column $y_n$ as the sum of the stellar and telluric spectra:
+\replaced{We model each data column $y_n$}{For each data column $y_n$, our model prediction $f_n$ can be treated} as the sum of stellar and telluric contributions:
 \begin{equation}
-y_n = y_{n}^\star + y_{n}^t + \textrm{noise}.
+f_n = f_{\star,n} + f_{t,n} + \textrm{noise}.
 \end{equation}
 
 The stellar spectrum contribution is: 
 \begin{equation}
-y_{n}^\star = P(v^{obs}_{n}) \mu^{\star},
+f_{\star,n} = P(\xi_n, \xi_{\star}, v_{obs,n}) \cdot \mu_{\star},
 \label{eqn:star}
 \end{equation}
-where $\mu^{\star}$ is a spectral template with length $M'$ corresponding to
-the length of an arbitrarily-chosen wavelength grid of control points, and
-$P$ is a linear operator which applies a Doppler shift by velocity $v_n$ and
-interpolates $\mu^\star$ into the observatory rest frame.
-Because we work in log-wavelength space, the Doppler shift due to velocity $v$ is simply an additive term:
+where $\mu_{\star}$ is a spectral template of log-fluxes and 
+$\xi_{\star}$ is the corresponding vector of template log-wavelengths. 
+The exact values of $\xi_{\star}$ can be chosen somewhat arbitrarily under the conditions that the grid has uniform spacing $\Delta\xi_{\star}$, covers the entire wavelength range of the data, and is over-sampled with regards to the observed spectrum's wavelength grid.
+$P$ is a linear operator whose function is to apply a Doppler shift by observed velocity $v_{obs,n}$ and
+interpolate $\mu_{\star}$ from the $\xi_{\star}$ template grid to the $\xi_n$ data grid.
+Each entry of the $P$ matrix can be defined by a sum of weighted indicator functions as follows:
 \begin{equation}
- \ln \lambda(v) = \ln \lambda_{0} + D(v) \equiv \ln \lambda_{0} - \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
+\begin{split}
+ P_{i,j} =  &\ \Big(\frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big(0 < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 1\big) \\
+  &+ \Big(1 - \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big({-1} < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 0\big), \\
+ \end{split}
 \end{equation}
-The $P$ operator adds this term to the $M'$-length wavelength grid for the template spectrum before linearly interpolating the template to the $M$-length data space, \added{so that each predicted value $y_{n,m}^\star$ at data wavelength $\ln \lambda_{m,n}$ is determined by:} \todo{(this is not complete)}
+where $\xi'_{\star}$ is the Doppler-shifted template grid:
 \begin{equation}
-y_{m,n}^\star(\ln \lambda_{m,n}) = \mu^{\star}(\ln \lambda_{m'} + D(v^{obs}_{n})).
-\label{eqn:Pop}
+ \xi'_{\star}(v) = \xi_{\star} + D(v) \equiv \xi_{\star} + \frac{1}{2} \ln \left(\frac{1 - v/c}{1 + v/c}\right).
 \end{equation}
-$P$ could be represented as a rectangular $M \times M'$ sparse matrix, but the dot product can be implemented efficiently using linear interpolation instead of instantiating the full matrix.
+Because $P$ is quite sparse, in practice we do not instantiate the full matrix when performing calculations. 
+At this point, it is also useful to note that $P$ could, in principle, encode an instrumental line spread function (\LSF). 
+We return to this point in Section \ref{s:future}.
 
-The apparent stellar \RV, $v^{obs}_{n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} ($v^{\star}_{n}$) and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
-\todo{(add Wright equation!)}
+The apparent stellar \RV, $v_{obs,n}$, is a \replaced{sum}{combination} of the star's actual velocity \replaced{about its center of mass}{in the barycentric reference frame} $v_{\star,n}$ and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
+\added{For the purposes of this work, we use the \BERV furnished by the \HARPS pipeline. 
+We also make the approximation that the observed velocity is a simple sum of the actual velocity and the \BERV. 
+In detail, this approximation is incorrect, but it should not have a large effect on our results; see \citet{Wright2014} and \citet{Wright2019} for further discussion.}
 
 The telluric spectrum contribution is:
 \begin{equation}
-y_{n}^t =  A_n(\mu^{t} + W^{t} z_n).
+f_{t,n} =  A_n(\mu_{t} + W_{t} \cdot z_n).
 \end{equation}
-In addition to its mean spectrum $\mu^t$, the telluric component also includes a time-dependent term assembled from two variables: $W^t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
-$W$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $K$ is the number of basis vectors used. 
+In addition to its mean spectrum $\mu_t$, the telluric component also includes a time-dependent term assembled from two variables: $W_t$, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by $z_n$ to form the spectral contribution at epoch $n$. 
+$W_t$ has the shape $M' \times K$ and $z_n$ is a $K$-vector, where $M'$ is the length of some vector of template wavelengths $\xi_{t}$ and $K$ is the number of basis vectors used.\footnote{While we refer to these as basis vectors for simplicity, note that they are not actually constrained to be orthogonal.} 
 For the purposes of this work we found good performance with $K$ set to 3, but this may vary for other applications. 
-The net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
+The template wavelength grid $\xi_{t}$ should have similar properties to $\xi_{\star}$. 
+Finally, the net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
 
 We evaluate a log-likelihood for each epoch
 \begin{equation}
-\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n}),
+\ln \mathcal{L}_n = -\frac{1}{2} (y_{n} - f_{n})^T C_{n}^{-1} (y_{n}-f_{n}),
 \label{eqn:lnlike}
 \end{equation}
-comparing our model $y'$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data. 
+comparing our model $f$ to the data $y$, with $C$ representing the covariance matrix of uncertainties for the data. 
 
 The number of free parameters in this model is large: we must optimize every grid point in the mean spectral templates and telluric basis vectors along with the stellar \RV and the telluric basis weights for each epoch. 
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
@@ -236,7 +242,7 @@ L1 normalization adds a term to the log-likelihood that takes the form:
 \begin{equation}
 \Lone{\lambda}{p} \equiv -\lambda \sum_{i} | p_{i} | ,
 \end{equation}
-where $p$ is the vector of parameters to be normalized (in this case $\mu^{\star}$, $\mu^{t}$, or $W^{t}$) and $\lambda$ is the regularization amplitude.
+where $p$ is the vector of parameters to be normalized (in this case $\mu_{\star}$, $\mu_{t}$, or $W_{t}$) and $\lambda$ is the regularization amplitude.
 
 Similarly, L2 normalization adds a term of the form:
 \begin{equation}
@@ -252,38 +258,38 @@ The $\chi^2$ for the validation epochs can then be adopted as a goodness-of-fit 
 In theory, we might wish to regularize using an optimization metric based on \RV accuracy rather than $\chi^2$ over pixels; however, the lack of known ``ground truth'' in the \RV behavior of stars makes this not currently feasible. 
 
 Since we have multiple regularization amplitudes to set, we begin by hand-setting all amplitudes to a reasonable starting guess and optimize each amplitude sequentially with cross-validation. 
-Generally speaking, the L2 regularization tends to be stricter than L1 and the telluric components are more strongly regularized than the stellar components, so we aim to roughly go from most to least sensitive regularization component when tuning the amplitudes.
+Generally speaking, the L2 regularization tends to be stricter than L1 and the telluric components are more strongly regularized than the stellar components, so we aim to go roughly from most to least sensitive regularization component when tuning the amplitudes.
 We found that good performance came from tuning the L2 regularization amplitudes for the mean telluric and stellar spectra, followed by the L1 regularization amplitudes for the same, followed by L2 and L1 for the time-variable telluric basis vectors. 
 
 With regularization included, the final model likelihood to be optimized is:
 \begin{equation}
 \begin{split}
-\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - y'_{n})^T C_{n}^{-1} (y_{n}-y'_{n})  \\
- & + \Lone{\lambda_1}{\mu^{\star}} + \Ltwo{\lambda_2}{\mu^{\star}}   + \Lone{\lambda_3}{\mu^{t}} + \Ltwo{\lambda_4}{\mu^{t}} \\
- &  + \Lone{\lambda_5}{W^t}  + \Ltwo{\lambda_6}{W^t} + \Lone{1.0}{z^t} ,
+\ln \mathcal{L} = & -\frac{1}{2} \sum_{n} (y_{n} - f_{n})^T C_{n}^{-1} (y_{n}-f_{n})  \\
+ & + \Lone{\lambda_1}{\mu_{\star}} + \Ltwo{\lambda_2}{\mu_{\star}}   + \Lone{\lambda_3}{\mu_{t}} + \Ltwo{\lambda_4}{\mu_{t}} \\
+ &  + \Lone{\lambda_5}{W_t}  + \Ltwo{\lambda_6}{W_t} + \Lone{1.0}{z} ,
 \end{split}
 \end{equation}
 %\todo{BEDELL: THIS IS WRONG. We were supposed to set $\lambda_5$ to unity. My (Hogg's) bad. However, I wrote the following to justify our WRONG choice!}
 where the regularization amplitude on the basis weights is arbitrarily set to unity, and all other regularization amplitudes $\lambda$ are set by grid searches using the above-described validation procedure.
 The basis-weight regularization amplitude can be set arbitrarily to unity because there is a perfect degeneracy between amplifying the basis vectors and attenuating the basis weights.
-This regularization choice breaks that perfect degeneracy.
+This regularization choice breaks that degeneracy.
 The basis weights are regularized to encourage our desired outcome where the mean telluric spectrum contains as much telluric information as possible, while the variable basis picks up only the necessary time-variable changes.
 
 \subsection{Optimizing the Model}
 \label{s:optimizing}
 
-As an initial guess, we set the star to be stationary, e.g. $v^{obs} = $ \BERV at all epochs. 
-We may then initialize the stellar spectrum $\mu^{\star}$ by Doppler-shifting the data and calculating the median flux across \BERV-corrected spectra in bins at each model wavelength $\lambda'$. 
+As an initial guess, we set the star to be stationary, e.g. $v_{obs} = $ \BERV at all epochs. 
+We may then initialize the stellar spectrum $\mu_{\star}$ by Doppler-shifting the data and calculating the median flux across \BERV-corrected spectra in bins at each model wavelength $\xi_{\star}$. 
 The telluric template is initialized similarly by using the residuals after the stellar contribution has been removed, again binning in model wavelength (this time without applying any Doppler shift to the spectra) and taking the median values of each bin. 
 Finally, we initialize the telluric spectrum's basis vectors $W_t$ and weights $z_t$ by performing Principal Component Analysis (\acronym{PCA}) on the residuals after both the stellar spectrum and the mean telluric spectrum have been removed. 
-The $K$ highest eigenweights and their corresponding eigenvectors are taken as the basis weights and vectors. 
+The $K$ highest eigenweights and their corresponding eigenvectors are taken as the starting guess for the basis weights and vectors. 
 
 Once all parameters are initialized, we optimize them iteratively. 
 The likelihood function is maximized first by varying the stellar and telluric templates (including the telluric basis vectors). 
 This step is a convex optimization, meaning that a global optimum for the template parameters should be reached under the condition of fixed time-dependent variables. 
 Next, the templates are held fixed and the time-dependent parameters (stellar \RVs and telluric basis weights) are varied to maximize the likelihood function again. 
 Technically the velocities are location parameters and their optimization is not convex.
-However, once the velocities are known to a small fraction of a pixel (which they usually are, in practice, in advance of running \wobble), the linearized problem becomes convex at each iteration.
+However, once the velocities are known to a small fraction of a pixel (which they usually are in practice, given an accurate estimation of the \BERV), the linearized problem becomes convex at each iteration.
 We repeat this procedure, optimizing spectra and time-dependent parameters in turn, until the likelihood appears to converge, typically within 100 iterations.
 This iterative procedure is equivalent to a full simultaneous optimization in the limit of many iterations to convergence.
 
@@ -335,7 +341,7 @@ For the purposes of this work, we chose to test the performance of \wobble on ar
 Furthermore, its excellent instrumental stability and precise calibration make the data ideally suited to our method, which relies on having an accurate wavelength solution for every spectrum. 
 
 All data were obtained from the \acronym{ESO} public data archive in the form of ``\code{e2ds}'' spectra.\footnote{Based on observations made with ESO Telescopes at the La Silla Paranal Observatory under programme IDs 091.C-0271, 183.C-0437, 191.C-0505, 072.C-0488, 089.C-0497, 099.C-0880, and 60.A-9700.} 
-These data come as extracted 1D spectra, in blocks of 72 orders by 4096 pixels per order.
+These data come as extracted order-by-order 1D spectra in blocks of 72 orders by 4096 pixels per order.
 The airmass of the observation and the calculated \BERV are both provided in the \acronym{FITS} header of the spectral data file. 
 We obtained wavelength solutions for each spectrum from the dedicated \HARPS calibration archive, also maintained by \acronym{ESO}.
 
@@ -343,6 +349,7 @@ Before running the above-described model optimization on the data, we first mask
 This masking is done by setting the inverse variance on the masked data point to zero, effectively removing it from the fit. 
 In brief, we mask pixels whose extracted flux is below zero as well as regions at the edges of the spectral orders where the local \SNR falls below 5. 
 After masking these data, we convert the flux to log space and continuum normalize by fitting and subtracting a polynomial to an asymmetrically clipped subset of the data. 
+\added{We found good results from clipping all pixels outside of the range [$-$0.3$\sigma$, $+$3$\sigma$] as a way of effectively removing the absorption features; fitting a sixth-order polynomial; and iteratively repeating with the pixel clipping set by the residuals to the previous fit until the selection of clipped pixels is stable.}
 
 To each pixel in the normalized, logarithmic spectrum, we assign an uncertainty variance (squared error).
 Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data. 
@@ -410,7 +417,8 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 Moreover, telluric absorption features are recovered down to a very small amplitude.
 
 It is worthy of note that the stellar spectral model shown in Figure \ref{fig:51peg_spectrum} is an extremely high-\SNR spectrum of 51 Peg. 
-This template spectrum is essentially a time-averaged composite spectrum. 
+\added{The uncertainties on this spectrum can be estimated from the negative inverse Hessian, similarly to the \RVs. Doing this calculation for a subset of the template in the continuum around 6000 \ang indicates an approximate \SNR of \todo{xxx}, which is consistent with the expected \SNR from co-adding each individual spectrum. }
+\replaced{This template spectrum is essentially a time-averaged composite spectrum.}{In essence, this template is a time-averaged and telluric-cleaned composite stellar spectrum.} 
 Both it and its residuals as a function of time are scientifically valuable outputs of the \wobble method.
 
 \subsection{\Mdwarf}
@@ -645,7 +653,9 @@ This would rely on the use of telluric features as fixed calibration sources \ci
 
 Another way a less well-calibrated instrument may violate \wobble's assumptions is in the non-negligible variability of all spectral lines due to changes in the instrumental line spread function (\LSF). 
 In principle, if the changes to the \LSF were well-understood they could be hard-coded into linear operators like the $P$ operator used in Equation \ref{eqn:star}, leaving the essential equations of \wobble largely unchanged. 
-Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
+\added{In this case the \LSF operator should be applied to both the stellar and telluric component models after combining them. Indeed, technically the current \wobble model does not deal correctly with line broadening: the templates we infer for star and tellurics are post-broadening spectra, but this goes against the correct order of operations if line broadening is dominated by instrumental effects that are applied to the \textit{combined} spectra. We have assumed that this effect is negligible for the purposes of this work, but it should certainly be considered more carefully in the future.} 
+
+Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to \replaced{take this approach}{take a prescriptive approach to their behavior and hard-code them into the form of the $P$ operator}; instead, we might want to fit these variations \replaced{as a data-driven model component}{using a data-driven approach, which would make the \wobble model significantly non-linear}. 
 This leads us into the territory of making more fundamental changes to the \wobble model.
 
 \subsection{Changes to the Model}
@@ -764,8 +774,8 @@ It is our hope that openly shared development of next-generation \RV analysis te
     theano \citep{theano}
 }
 
-\acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful, constructive, and helpful review.}
-It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, and Julian St\"{u}rmer for helpful discussions. 
+\acknowledgements{\added{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful and constructive review.}
+It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, Julian St\"{u}rmer, \added{and Sharon Xuesong Wang} for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
 This research has made use of the services of the ESO Science Archive Facility. 
