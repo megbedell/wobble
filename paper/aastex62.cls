@@ -665,13 +665,20 @@ revtex4-1.cls^^J^^J}\stop
 }
 \ifmodern
 \vglue-18pt
+\noindent\begin{minipage}{0.5\textwidth}
+\flushleft
 {\footnotesize
 \raggedright
-{\sc Draft version \today}\\[2pt]
+{\sc Draft version \today}\\
 {\footnotesize
-Typeset using \LaTeX\ {\bf modern} style in AASTeX62}
-\vskip48pt
+Typeset using a modified AASTeX62}
 }
+\end{minipage}\begin{minipage}{0.5\textwidth}
+\flushright
+\vspace{-0.75in}
+\includegraphics[height=0.5in]{flatiron-logo.pdf}\hspace{-0.5in}
+\end{minipage}
+\vskip36pt
 \else
 %%
 \ifpreprint
@@ -691,10 +698,23 @@ Typeset using \LaTeX\ {\bf modern} style in AASTeX62}
 \else
 %%
 \iftwocolstyle
+% DFM DOES NOT APPROVE
+\message{****************************************}
+\message{****************************************}
+\message{* DO YOU REALLY WANT TO USE TWOCOLUMN? *}
+\message{****************************************}
+\message{****************************************}
 \vspace*{-\headsep}\vspace*{\headheight}
+\noindent\begin{minipage}{0.5\textwidth}
+\flushleft
 \footnotesize
 {\footnotesize\textsc{\@journalinfo}}\par
-{\footnotesize Typeset using \LaTeX\ {\bf twocolumn} style in AASTeX62}
+{\footnotesize Typeset using a modified AASTeX62}
+\end{minipage}\begin{minipage}{0.5\textwidth}
+\flushright
+\vspace{-0.5in}
+\includegraphics[height=0.5in]{flatiron-logo.pdf}\hspace{-0.25in}
+\end{minipage}
 \par\vspace*{-\baselineskip}\vspace*{0.625in}
 \else
 \ifmanu
@@ -6659,7 +6679,7 @@ in single column styles.
 ``the latest edit identifies the problem unambiguously: \mag is a tex
 primitive, and shouldn't be redefined. why this didn't appear in the
 logs you posted is beyond me, but if you rename your command to (say)
-\Mag it should stop having a problem. ? barbara beeton Feb 22''
+\Mag it should stop having a problem. � barbara beeton Feb 22''
 
 \mag is a tex primitive, and it is expecting to be followed by a
 number.
@@ -6829,6 +6849,7 @@ Deleted recent definition of \appendix, returned to earlier version
 with additions.
 
 ================
+
 
 
 

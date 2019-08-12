@@ -51,7 +51,7 @@ class Data(object):
         if np.sum(orders_to_cut) > 0:
             print("Data: Dropping orders {0} because they have average SNR < {1:.0f}".format(orders[orders_to_cut], min_snr))
             orders = orders[~orders_to_cut]
-            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+            self.read_data(origin_file, orders=orders, epochs=epochs) # overwrite with new data
             self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         if len(orders) == 0:
             print("All orders failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
@@ -62,7 +62,7 @@ class Data(object):
         if np.sum(epochs_to_cut) > 0:
             print("Data: Dropping epochs {0} because they have average SNR < {1:.0f}".format(epochs[epochs_to_cut], min_snr))
             epochs = epochs[~epochs_to_cut]
-            self.read_data(orders=orders, epochs=epochs) # overwrite with new data
+            self.read_data(origin_file, orders=orders, epochs=epochs) # overwrite with new data
             self.mask_low_pixels(min_flux=min_flux, padding=padding, min_snr=min_snr)
         if len(epochs) == 0:
             print("All epochs failed the quality cuts with min_snr={0:.0f}.".format(min_snr))

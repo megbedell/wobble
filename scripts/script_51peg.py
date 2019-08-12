@@ -9,7 +9,7 @@ import os
 if __name__ == "__main__":
     starname = '51peg'
     K_star = 0
-    K_t = 0    
+    K_t = 3    
     niter = 150 # for optimization
     plots = True
     epochs = [0, 50] # to plot
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     
     star_reg_file = '../wobble/regularization/{0}_star_K{1}.hdf5'.format(starname, K_star)
     tellurics_reg_file = '../wobble/regularization/{0}_t_K{1}.hdf5'.format(starname, K_t)
-    plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}/'.format(starname, K_star, K_t)
+    plot_dir = '../results/plots_{0}_Kstar{1}_Kt{2}-keep/'.format(starname, K_star, K_t)
     
     if False:
         # quick test on single order
