@@ -10,7 +10,7 @@
 \shorttitle{\wobble}
 \shortauthors{Bedell et al.}
 
-%\graphicspath{ {figures/} }
+\graphicspath{ {figures/} }
 \DeclareGraphicsExtensions{.pdf,.eps,.png}
 
 %@arxiver{telluric_comparison.pdf}
@@ -354,7 +354,7 @@ Below we describe the results of applying this procedure and optimizing the \wob
 \begin{figure*}[ht!]
 \centering
 \includegraphics[width=5in]{51peg_planet}
-\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered from the \wobble\ \RVs (left) and from the \HARPS standard pipeline. While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns. Maximum-likelihood Keplerians (solid orange lines) and 1-$\sigma$ posterior constraints (shaded orange regions) for each data set are overplotted.}
+\caption{Phased orbit of the Hot Jupiter 51 Peg b as recovered from the \wobble\ \RVs (left) and from the \HARPS standard pipeline (right). While the phase coverage of \HARPS observations is sparse, we nonetheless recover orbital parameters consistent with those found by other \RV campaigns. Maximum-likelihood Keplerians (solid orange lines) and 1-$\sigma$ posterior constraints (shaded orange regions) for each data set are overplotted.}
 \label{fig:51peg_planet}
 \end{figure*}
 
@@ -364,12 +364,12 @@ Below we describe the results of applying this procedure and optimizing the \wob
 \tablecaption{Orbital Parameters of 51 Pegasi b}
 \label{tbl:51peg}
 \startdata
-$K$ & m s$^{-1}$ & $55.57^{+2.28}_{-2.04}$ & $53.84^{+1.96}_{-2.20}$ \\
-$P$ & days & $4.2292^{+0.0003}_{-0.0003}$ & $4.2294^{+0.0003}_{-0.0003}$ \\
-$t_0$ & JD & $2456546.89^{+0.02}_{-0.02}$ & $2456546.94^{+0.01}_{-0.02}$ \\
+$K$ & m s$^{-1}$ & $56.30^{+2.42}_{-2.05}$ & $54.02^{+1.84}_{-1.89}$ \\
+$P$ & days & $4.2289^{+0.0004}_{-0.0004}$ & $4.2293^{+0.0003}_{-0.0003}$ \\
+$t_0$ & JD & $2456543.85^{+0.44}_{-0.47}$ & $2456546.41^{+0.27}_{-3.78}$ \\
 $e$ & $-$  & $0.03^{+0.02}_{-0.02}$ & $0.04^{+0.02}_{-0.02}$ \\
-$\omega$ & rad & $0.45^{+0.62}_{-1.00}$ & $-1.79^{+0.34}_{-0.32}$ \\
-$s$ & m s$^{-1}$ & $0.01^{+0.08}_{-0.01}$ & $0.74^{+0.06}_{-0.07}$ \\
+$\omega$ & rad & $0.91^{+4.99}_{-0.64}$ & $4.51^{+0.32}_{-0.35}$ \\
+$s$ & m s$^{-1}$ & $0.01^{+0.10}_{-0.01}$ & $0.72^{+0.07}_{-0.06}$ \\
 \enddata
 \end{deluxetable*}
 
@@ -387,7 +387,7 @@ Their \SNR is generally high, ranging from 100 up to 300 pix$^{-1}$ at the centr
 \begin{figure*}[t]
 \centering
 \includegraphics[width=5.3in]{51peg_multispectrum}
-\caption{Three example echelle orders at a randomly chosen epoch from the \HARPS observations of 51 Pegasi. Data are shown as dark circles, while the \wobble predictions for the stellar and telluric spectral contributions at this epoch are red and blue lines, respectively. Even in the presence of a strong stellar absorption feature such as the H$\alpha$ line (seen at 6561.5 \ang due to the star's Doppler shift at the plotted epoch), small telluric features are clearly recovered. Residuals after subtracting both star and telluric models are shown below each spectrum.}
+\caption{Three example echelle orders at a randomly chosen epoch from the \HARPS observations of 51 Pegasi. \replaced{Data are shown as dark circles, while the \wobble predictions for the stellar and telluric spectral contributions at this epoch are red and blue lines, respectively.}{Data and best-fit models are plotted in black, while the predicted stellar and telluric spectral contributions from the model fit are plotted in red and blue with arbitrary flux offsets for clarity.} Even in the presence of a strong stellar absorption feature such as the H$\alpha$ line (seen at 6561.5 \ang due to the star's Doppler shift at the plotted epoch), small telluric features are clearly recovered. Residuals after subtracting both star and telluric models are shown below each spectrum.}
 \label{fig:51peg_spectrum}
 \end{figure*}
 
@@ -576,7 +576,7 @@ A physical interpretation of these components should be possible.
 
 \begin{figure*}
 \centering
-\includegraphics[width=5in]{telluric_basis2}
+\includegraphics[width=5in]{telluric_basis}
 \caption{Example of the mean telluric spectral template in a small wavelength region (upper panel) and the three basis vectors used to capture the time-variable contributions to the spectrum, staggered by an arbitrary offset for display (lower panel).}
 \label{fig:telluric_basis}
 \end{figure*}
@@ -584,8 +584,8 @@ A physical interpretation of these components should be possible.
 An example of the inferred variability from the 51 Peg analysis is shown in Figure \ref{fig:telluric_basis}. 
 There is clearly coherent structure in the variations. 
 As we might expect, many of the lines co-vary with each other: as all known telluric lines in this region arise from H$_2$O, this likely corresponds to time-variable levels of atmospheric water vapor content. 
-In general, the basis vectors are suggestive of Doppler shifts, perhaps due to wind speeds in different layers of the atmosphere contributing individually to the overall line shapes. 
-These hypotheses could be tested in the future by seeking correlations between basis weights and externally-measured weather diagnostics. 
+\deleted{In general, the basis vectors are suggestive of Doppler shifts, perhaps due to wind speeds in different layers of the atmosphere contributing individually to the overall line shapes.}
+\replaced{These hypotheses}{This hypothesis} could be tested in the future by seeking correlations between basis weights and externally-measured weather diagnostics. 
 %\todo{(is this enough? also show that basis weights change seasonally-ish?)}
 
 
@@ -640,7 +640,7 @@ This would rely on the use of telluric features as fixed calibration sources \ci
 
 Another way a less well-calibrated instrument may violate \wobble's assumptions is in the non-negligible variability of all spectral lines due to changes in the instrumental line spread function (\LSF). 
 In principle, if the changes to the \LSF were well-understood they could be hard-coded into linear operators like the $P$ operator used in Equation \ref{eqn:star}, leaving the essential equations of \wobble largely unchanged. 
-Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component. 
+\replaced{Realistically speaking, if \LSF variations are present they are probably not sufficiently well-understood to take this approach; instead, we might want to fit these variations as a data-driven model component.}{In fact, it is worth noting at this point that the \wobble method does not deal correctly with the instrumental \LSF even for a perfectly stable spectrograph; the equations presented in this work disentangle \LSF-broadened telluric and stellar templates from each other, whereas in reality those templates should be combined \textit{before} the \LSF is applied. For the purposes of this work, where the \LSF is assumed to be time-invariant, the method demonstrably works despite this flaw. However, for other applications the \LSF variations might need to be included as a data-driven model component within a second interpolation operator that acts on the sum of the stellar and telluric model predictions.}
 This leads us into the territory of making more fundamental changes to the \wobble model.
 
 \subsection{Changes to the Model}
