@@ -15,7 +15,9 @@
 
 %@arxiver{telluric_comparison.pdf}
 
-\title{\textsc{\wobble: a data-driven method for precision radial velocities}}
+%\title{\textsc{\wobble: a data-driven method for precision radial velocities}}
+\title{\textsc{\wobble: a data-driven \changed{analysis technique for time-series stellar spectra}}}
+
 
 \author[0000-0001-9907-7742]{Megan Bedell}
 \affiliation{\flatiron}
@@ -40,11 +42,17 @@
 \email{E-mail: mbedell@flatironinstitute.org}
 
 \begin{abstract}
+
+\changed{In recent years, dedicated extreme-precision radial velocity (\EPRV) spectrographs have produced vast quantities of high-resolution, high-signal-to-noise time-series spectra for bright stars. 
+These data contain valuable information for the dual purposes of planet detection via the measured \RVs and stellar characterization via the co-added spectra. 
+However, considerable data analysis challenges exist in extracting these data products from the observed spectra at the highest possible precision, including the issue of poorly-characterized telluric absorption features and the common use of an assumed stellar spectral template. 
+In both of these examples, precision-limiting reliance on external information can be sidestepped using the data directly. } 
+%The most widely-used methods for \RV extraction neglect to make use of the full information content of the spectral time series.}
 % Context
-Extreme-precision radial velocity (\EPRV) exoplanet surveys face considerable data analysis challenges in extracting maximally precise \RVs from spectra. 
-Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features which are not perfectly known. 
-Another major limitation on the achievable \RV precision is the need to adopt an imperfect stellar template against which to cross-correlate or otherwise match the observations. 
-In both cases, precision-limiting reliance on external information can be sidestepped using the data directly. 
+%Extreme-precision radial velocity (\EPRV) exoplanet surveys face considerable data analysis challenges in extracting maximally precise \RVs from spectra. 
+%Chief among these, particularly for the upcoming generation of red-optimized spectrographs targeting M dwarfs, is the presence of telluric absorption features which are not perfectly known. 
+%Another major limitation on the achievable \RV precision is the need to adopt an imperfect stellar template against which to cross-correlate or otherwise match the observations. 
+%In both cases, precision-limiting reliance on external information can be sidestepped using the data directly. 
 % Aims
 Here we propose a data-driven method to simultaneously extract precise \RVs and infer the underlying stellar and telluric spectra using a linear model (in the log of flux). 
 The model employs a convex objective and convex regularization to keep the optimization of the spectral components fast. 
@@ -65,7 +73,7 @@ However, significant challenges exist in deriving precise \RV measurements from 
 %The current capabilities of extreme-precision radial velocity (\EPRV) instruments do not extend to the 10 \cms\ regime, 
 %In this work, we present an open-source code for \RV\ determination. We use a highly flexible linear model to extract \RV s in a fully data-driven way. %Our method simultaneously models the stellar and telluric spectra.
 
-One of the primary contributors to the noise budget in \RV measurements is the incomplete treatment of telluric features in the Earth's atmosphere \citep{Halverson2016}. 
+One \changed{major contributor} to the noise budget in \RV measurements is the incomplete treatment of telluric features in the Earth's atmosphere \citep{Halverson2016}. 
 Often, particular sections of a spectrum that are likely to feature telluric features are identified before the velocity shift of the stellar spectrum is inferred. 
 These regions are then removed from analysis, leaving only seemingly telluric-free regions to be analyzed \citep[e.g.][]{AngladaEscude2012}.
 
@@ -106,6 +114,7 @@ Deriving a custom spectral template by stacking all spectra iteratively as the \
 Data analysis pipelines for absorption cell instruments have long used a stellar template that is customized to the star in question, although traditionally this template is \changed{derived from} a single observation taken for this purpose \citep[e.g.][]{Butler1996}. 
 Higher quality templates can be derived iteratively from the data \citep{Sato2002, Gao2016}. 
 Such data-driven templates have the benefit of being both customized to the star in question and high-\SNR without requiring observing overhead. 
+\changed{Moreover, these templates contain valuable scientific information, as an optimally-combined stellar spectral template will yield the most precise possible constraints on the spectroscopic parameters and abundances for the star.}
 
 Common to the issues of telluric correction and stellar template building is the fact that all of the necessary information about the unknown spectra is encoded in the data. 
 With a simple data-driven model, one could learn both stellar and telluric spectra simultaneously with the stellar \RVs. 
@@ -115,7 +124,7 @@ Our model requires no prior knowledge of spectral features for the star or for t
 As such, it does not yield absolute measurements of \RVs, only highly precise relative measurements between epochs. 
 
 Our approach \changed{to the \EPRV problem} is similar to that taken by \citet{Gao2016}, but differs in that we take the stellar spectrum as a latent variable to be optimized rather than iteratively determining it by stacking model residuals. 
-\changed{Similar approaches of learning template spectra for stars and tellurics from the data directly have been used in the literature, although they have not previously been demonstrated to achieve precise stellar \RVs \citep[e.g.]{Hadrava2004, Hadrava2006}.}
+\changed{Similar approaches of learning template spectra for stars and tellurics from the data directly have been used in the literature, although they have not previously been demonstrated to achieve precise stellar \RVs \citep[e.g.][]{Hadrava2004, Hadrava2006}.}
 
 In this work, we focus on the ultra-stabilized spectrograph case, i.e. a reliable instrumental calibration and no absorption cell. 
 We also assume that multiple epochs of observations exist and that these epochs are spread out across the observing season(s). 
@@ -141,7 +150,7 @@ Many of these assumptions could be eliminated with relatively straightforward mo
 We revisit these in Section \ref{s:future}.
 
 First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution. 
-\changed{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract instrumentally-broadened template spectra rather than explicitly modeling and solving for instrumental broadening effects. However, \todo{as we discuss in Section \ref{s:future}}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
+\changed{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract instrumentally-broadened template spectra rather than explicitly modeling and solving for instrumental broadening effects. However, as we discuss in Section \ref{s:data-changes}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
 
 We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape. 
@@ -354,7 +363,7 @@ To each pixel in the normalized, logarithmic spectrum, we assign an uncertainty 
 Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data. 
 For each order we assign to each log flux an uncertainty variance that is the inverse of the mean signal-to-noise-squared of the pixels in that order (as reported by the \HARPS pipelines), scaled up or down by the raw linear flux observed in that pixel in the data prior to logging and normalizing. 
 This is the best Poisson estimate we can make given that we are working in the log space, and we don't have individual-pixel uncertainty estimates. 
-Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, the small bias \changed{in flux is unlikely to map onto the radial velocities obtained.}%acts in the flux direction, not the radial-velocity direction.
+Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, the small bias \changed{in flux is unlikely to map strongly onto the radial velocities obtained.}%acts in the flux direction, not the radial-velocity direction.
 
 If possible, the final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off an \RV drift term specified in the data header, consistent with the standard \HARPS pipeline. 
 This drift is calculated from the simultaneous reference lamp and is therefore only available in certain observing modes. 
@@ -417,9 +426,10 @@ Nevertheless, the optimized stellar templates clearly reproduce the expected app
 Moreover, telluric absorption features are recovered down to a very small amplitude.
 
 It is worthy of note that the stellar spectral model shown in Figure \ref{fig:51peg_spectrum} is an extremely high-\SNR spectrum of 51 Peg. 
-\changed{The uncertainties on this spectrum can be estimated from the negative inverse Hessian, similarly to the \RVs. Doing this calculation for a subset of the template in the continuum around 6000 \ang indicates an approximate \SNR of \todo{xxx}, which is consistent with the expected \SNR from co-adding each individual spectrum. }
+\changed{The uncertainties on this spectrum can be estimated from the negative inverse Hessian, similarly to the \RVs. Doing this calculation for a subset of the template in the continuum around 6000 \ang indicates an approximate \SNR of 3000 per 0.02-\ang template ``pixel,'' which is consistent with the expected net \SNR from co-adding each individual \HARPS spectrum. }
 \changed{In essence, this template is a time-averaged and telluric-cleaned composite stellar spectrum.} 
-Both it and its residuals as a function of time are scientifically valuable outputs of the \wobble method.
+Both it and its residuals as a function of time are scientifically valuable outputs of the \wobble method. 
+\changed{The template, with its exquisite \SNR, can be used for very precise stellar characterization and abundance analysis. Meanwhile, the time-series residuals contain information about the stellar spectrum's non-Doppler-shift variations in time, a matter of key importance to both stellar physics and the effort to mitigate stellar ``noise'' in \EPRV measurements.}
 
 \subsection{\Mdwarf}
 \label{s:Mdwarf}
@@ -743,10 +753,14 @@ Extremely precise \RV measurements are a critical part of modern exoplanet detec
 Many dedicated \EPRV instruments exist and more are being built with the goal of achieving better than \ms precision over long timescales. 
 Beyond the hardware challenges of building such instruments, software challenges exist as well: extracting maximally precise \RVs from high-quality spectra is not a trivial task. 
 Moreover, most existing \EPRV pipelines are closed-source, proprietary, and built for use with a specific instrument in mind. 
-While traditional \RV extraction methods are demonstrably suboptimal when it comes to treatment of telluric features or use of a fixed stellar template spectrum, experimenting with changes to the existing pipelines is generally not possible.
+While traditional \RV extraction methods are demonstrably suboptimal when it comes to treatment of telluric features and use of a fixed stellar template spectrum, experimenting with changes to the existing pipelines is generally not possible. 
+
+\changed{The data from these \EPRV campaigns are also useful for the purpose of precise stellar characterization using the co-added spectra. 
+Since such a co-added spectrum is not a primary intended data product of \EPRV instrument pipelines, this is generally left to the user, who is again limited by the closed-source nature of most pipelines in their ability to take properly into account the true uncertainties in producing a net spectrum, or in removing the telluric absorption features that introduce noise to the stellar spectrum.}
 
 In this work, we have proposed a simple linear model for simultaneously inferring stellar spectra, telluric spectra, and \RVs from the data. 
 Our model does not rely on physical knowledge of the star or the Earth's atmosphere. 
+\changed{It is designed with the dual aims of producing precise \RV estimates and robust stellar spectral templates from the data.}
 We implement this method in \wobble, an open-source code designed to be extensible and adaptable for a variety of data sets. 
 
 By running the \wobble algorithm on archival \HARPS spectra for a variety of stars, we have demonstrated its basic capabilities. 
@@ -760,7 +774,7 @@ It also eliminates costs in observational overhead for obtaining telluric standa
 
 We make \wobble freely available to the \RV community to be adapted for use with various instruments and data sets. 
 We highlight the versatility of the algorithm in Section \ref{s:future} with suggested changes and improvements for applications to different regimes. 
-It is our hope that openly shared development of next-generation \RV analysis techniques will enable the community as a whole to make full use of the information-rich data being produced by current and future \EPRV surveys.
+It is our hope that openly shared development of next-generation \changed{spectral} analysis techniques will enable the community as a whole to make full use of the information-rich data being produced by current and future \EPRV surveys.
 
 \software{%
     astropy \citep{Astropy13, Astropy18},
@@ -774,7 +788,7 @@ It is our hope that openly shared development of next-generation \RV analysis te
     theano \citep{theano}
 }
 
-\acknowledgements{\changed{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful and constructive review.}
+\acknowledgements{\changed{We gratefully acknowledge the referee, Ian Czekala, for a thoughtful review that substantially improved this work.}
 It is a pleasure to acknowledge Jacob L. Bean, John M. Brewer, Heather Knutson, Timothy Morton, Melissa Ness, Andreas Seifahrt, Julian St\"{u}rmer, \changed{and Sharon Xuesong Wang} for helpful discussions. 
 We are grateful to Hans-Walter Rix and the Max-Planck-Institut f\"ur Astronomie for their hospitality while developing key parts of this project. Special thanks go to Geert Barentsen, Michael Gully-Santiago, Christina Hedges, Susan Mullaly, and Z\'{e} Vin\'{i}cius for their vital contribution to the most important part of \wobble's documentation (the pronunciation guide).
 
