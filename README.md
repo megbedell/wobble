@@ -14,5 +14,7 @@ cd wobble
 python setup.py develop
 ```
 
-
-
+The paper presenting the *wobble* method used a slightly older version of the code than what is currently in the master branch. To access this version, install *wobble* and then change branches:
+```
+git checkout paper-version
+```
