@@ -5,14 +5,6 @@
 \usepackage[sort&compress]{natbib}
 \usepackage[hang,flushmargin]{footmisc}
 
-
-% style tweaks
-\newcommand{\acronym}[1]{{\small{#1}}}
-\newcommand{\project}[1]{\textsl{#1}}
-\newcommand{\code}[1]{{\texttt{#1}}}
-\newcommand{\todo}[1]{\textcolor{red}{#1}}
-\newcommand{\changed}[1]{\textcolor{blue}{#1}}
-
 % the following is stolen from Adrian Price-Whelan (github.com/adrn/latex-init):
 \usepackage{hyperref}
 \definecolor{niceblue}{rgb}{0.0, 0.4, 0.65}
@@ -23,9 +15,21 @@
             filecolor=linkcolor,urlcolor=linkcolor}
 \hypersetup{pageanchor=false}
 
+
+% style tweaks
+\newcommand{\acronym}[1]{{\small{#1}}}
+\newcommand{\project}[1]{\textsl{#1}}
+\newcommand{\code}[1]{{\texttt{#1}}}
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+\newcommand{\changed}[1]{\textcolor{niceblue}{#1}}
+
 % math
-\newcommand{\Lone}[2]{\ensuremath{#1\| #2 \|^1_1}}
-\newcommand{\Ltwo}[2]{\ensuremath{#1\| #2 \|^2_2}}
+\newcommand{\Lone}[2]{\ensuremath{#1\| \mvec{#2} \|^1_1}}
+\newcommand{\Ltwo}[2]{\ensuremath{#1\| \mvec{#2} \|^2_2}}
+\newcommand{\ssvec}[1]{{\ensuremath{\mathit{\mathsf{#1}}}}}
+\newcommand{\mmatrix}[1]{\ensuremath{\boldsymbol{#1}}}
+\newcommand{\mvec}[1]{\ensuremath{\boldsymbol{#1}}}
+
 
 % astronomy
 \newcommand{\teff}{\ensuremath{T_{\rm eff}}\xspace}
