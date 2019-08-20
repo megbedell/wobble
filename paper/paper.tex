@@ -222,17 +222,17 @@ We return to this point in Section \ref{s:future}.}
 The apparent stellar \RV, $v_{obs,n}$, is a \changed{combination} of the star's actual velocity \changed{in the barycentric reference frame} $v_{\star,n}$ and the projected motion of the Earth about the Solar System barycenter (Barycentric Earth Radial Velocity or \BERV), the latter of which is known. 
 \changed{For the purposes of this work, we use the \BERV furnished by the \HARPS pipeline. 
 We also make the approximation that the observed velocity is a simple sum of the actual velocity and the \BERV. 
-In detail, this approximation is incorrect, but it should not have a large effect on our results; see \citet{Wright2014} and \citet{Wright2019} for further discussion.}
+In detail, this approximation incorrectly assumes that the transverse component of the Earth's motion with respect to the target star is negligible, which may affect our resulting \RV precision by up to a few \ms \citep{Wright2014, Wright2019}. Nevertheless, because only the 1D \BERV is supplied by (and presumably used by) the \HARPS pipeline, we adopt this approximation to ensure that our results are comparable to those reported by the pipeline.}
 
 The telluric spectrum contribution is:
 \changed{\begin{equation}
-\mvec{f_{t,n}} =  A_n(\mvec{\mu_{t}} + \mmatrix{W_{t}} \cdot \mvec{z_n}).
+\mvec{f_{t,n}} =  a_n(\mvec{\mu_{t}} + \mmatrix{W_{t}} \cdot \mvec{z_n}).
 \end{equation}}
 In addition to its mean spectrum \mvec{\mu_t}, the telluric component also includes a time-dependent term assembled from two variables: \mmatrix{W_t}, a matrix of ``basis vectors'' for the span of telluric spectral variations, is weighted by \mvec{z_n} to form the spectral contribution at epoch $n$. 
 \changed{\mmatrix{W_t} has the shape $M' \times K$ and \mvec{z_n} is a $K$-vector, where $M'$ is the length of some vector of template wavelengths \mvec{\xi_{t}} and $K$ is the number of basis vectors used.\footnote{While we refer to these as basis vectors for simplicity, note that they are not actually constrained to be orthogonal.}} 
 For the purposes of this work we found good performance with $K$ set to 3, but this may vary for other applications. 
 \changed{The template wavelength grid \mvec{\xi_{t}} should have similar properties to \mvec{\xi_{\star}}.} 
-Finally, the net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $A_n$, a known quantity.
+Finally, the net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $a_n$, a known quantity.
 
 We evaluate a log-likelihood for each epoch
 \changed{
@@ -361,7 +361,7 @@ To each pixel in the normalized, logarithmic spectrum, we assign an uncertainty 
 Technically this uncertainty is assumed to be Gaussian in the log space, which is an incorrect approximation, but not very far off for high signal-to-noise data. 
 For each order we assign to each log flux an uncertainty variance that is the inverse of the mean signal-to-noise-squared of the pixels in that order (as reported by the \HARPS pipelines), scaled up or down by the raw linear flux observed in that pixel in the data prior to logging and normalizing. 
 This is the best Poisson estimate we can make given that we are working in the log space, and we don't have individual-pixel uncertainty estimates. 
-Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, the small bias \changed{in flux is unlikely to map strongly onto the radial velocities obtained.}%acts in the flux direction, not the radial-velocity direction.
+Technically a small bias is introduced by taking the logarithm of the flux, but this bias is very small at the relevant signal-to-noise ratios; furthermore, this small bias \changed{is in the flux direction and will not necessarily map onto the radial velocities obtained.}%acts in the flux direction, not the radial-velocity direction.
 
 If possible, the final stellar \RV retrieved by \wobble is corrected for intra-night drift in the wavelength solution by subtracting off an \RV drift term specified in the data header, consistent with the standard \HARPS pipeline. 
 This drift is calculated from the simultaneous reference lamp and is therefore only available in certain observing modes. 
