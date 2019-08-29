@@ -150,7 +150,7 @@ Many of these assumptions could be eliminated with relatively straightforward mo
 We revisit these in Section \ref{s:future}.
 
 First, we assume that the wavelength calibration and spectral extraction of the instrument are perfect: that is, we begin at the stage of having 1D extracted spectra and corresponding wavelength grids in hand and we do not model any corrections to the wavelength solution. 
-\changed{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract instrumentally-broadened template spectra rather than explicitly modeling and solving for instrumental broadening effects. However, as we discuss in Section \ref{s:data-changes}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
+\changed{Similarly, we assume that the line spread function of the instrument remains perfectly constant from one exposure to the next. This assumption is needed because it allows us to extract constant instrumentally-broadened template spectra rather than explicitly modeling and solving for time-variable broadening effects. However, as we discuss in Section \ref{s:data-changes}, even within the limits of this assumption extracting already-broadened templates is not strictly correct. We do this for simplicity only and leave the general case to future work.}
 
 We assume that the spectra can be modeled as the product of a finite and fixed number of components.
 For the cases shown in this work, two components are used: a stellar spectrum which is invariant in shape but may be Doppler-shifted, and a telluric spectrum which is fixed to the observatory rest frame but varies in shape. 
@@ -189,7 +189,7 @@ Finally, we assume that, when the stellar and telluric components are properly o
 We take the data to be the $M \times N$ matrix \mmatrix{y}, where each entry $y_{m,n}$ is the logarithm of the observed flux for pixel $m$ of $M$ at epoch $n$ of $N$. 
 We also have a corresponding $M \times N$ matrix of wavelength solutions \changed{which we call \mmatrix{\xi}, where each entry $\xi_{m,n}$ is the logarithm of the wavelength for pixel $m$ at epoch $n$}.
 
-\changed{For each data column \mvec{y_n}, our model prediction \mvec{f_n} can be treated as the sum of stellar and telluric contributions:
+\changed{For each data column \mvec{y_n}, our model prediction \mvec{f_n} can be treated as the sum of stellar and telluric contributions at time $n$:
 \begin{equation}
 \mvec{f_n} = \mvec{f_{\star,n}} + \mvec{f_{t,n}} + \textrm{noise}.
 \end{equation}}
@@ -207,8 +207,8 @@ interpolate \mvec{\mu_{\star}} from the \mvec{\xi_{\star}} template grid to the 
 Each entry of the \mmatrix{P} matrix can be defined by a sum of weighted indicator functions (where an indicator function is denoted here as $\mathbb{1}(x)$ and is defined to have value 1 when condition $x$ is fulfilled and zero otherwise):
 \begin{equation}
 \begin{split}
- P_{i,j} =  &\ \Big(\frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big(0 < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 1\big) \\
-  &+ \Big(1 - \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\Big) \mathbb{1}\big({-1} < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 0\big), \\
+ P_{i,j} =  &\ \bigg(\frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\bigg) \cdot \mathbb{1}\bigg(0 \leq \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} < 1\bigg) \\
+  &+ \bigg(1 - \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}}\bigg) \cdot \mathbb{1}\bigg({-1} < \frac{\xi_{n,i} - \xi'_{\star,j}}{\Delta\xi_{\star}} \leq 0\bigg), \\
  \end{split}
 \end{equation}
 where \mvec{\xi'_{\star}} is the Doppler-shifted template grid:
@@ -234,13 +234,12 @@ For the purposes of this work we found good performance with $K$ set to 3, but t
 \changed{The template wavelength grid \mvec{\xi_{t}} should have similar properties to \mvec{\xi_{\star}}.} 
 Finally, the net telluric spectrum (mean + time-variable components) is weighted by the airmass at the time of observation $a_n$, a known quantity.
 
-We evaluate a log-likelihood for each epoch
-\changed{
+\changed{The contribution of each data epoch to the net log-likelihood may be evaluated as
 \begin{equation}
 \ln \mathcal{L}_n = -\frac{1}{2} (\mvec{y_{n}} - \mvec{f_{n}})^T \mvec{C_{n}}^{-1} (\mvec{y_{n}} - \mvec{f_{n}}),
 \label{eqn:lnlike}
-\end{equation}}
-comparing our model \changed{\mmatrix{f}} to the data \mmatrix{y}, with \mmatrix{C} representing the covariance matrix of uncertainties for the data. 
+\end{equation}
+}with \mmatrix{C_n} representing the covariance matrix of uncertainties on the data. 
 
 The number of free parameters in this model is large: we must optimize every grid point in the mean spectral templates and telluric basis vectors along with the stellar \RV and the telluric basis weights for each epoch. 
 We deal with potential over-fitting issues by applying L1 and L2 regularization to the spectral templates, as discussed in Section \ref{s:assumptions}. 
@@ -250,7 +249,6 @@ L1 normalization adds a term to the log-likelihood that takes the form:
 \Lone{\lambda}{p} \equiv -\lambda \sum_{i} | p_{i} | ,
 \end{equation}
 where \mvec{p} is the vector of parameters to be normalized (in this case \mvec{\mu_{\star}}, \mvec{\mu_{t}}, or \mmatrix{W_{t}}) and $\lambda$ is the regularization amplitude.
-
 Similarly, L2 normalization adds a term of the form:
 \begin{equation}
 \Ltwo{\lambda}{p} \equiv -\lambda \sum_{i} p_{i}^2 .
