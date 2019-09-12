@@ -128,6 +128,9 @@ class Model(object):
         data_xs = self.data.xs[self.r]
         data_ys = np.copy(self.data.ys[self.r])
         data_ivars = np.copy(self.data.ivars[self.r])
+        assert np.isfinite(data_xs), "Non-finite values or Nans in wavelengths."
+        assert np.isfinite(data_ys), "Non-finite values or NaNs in log spectral values."
+        assert np.isfinite(data_ivars), "Non-finite values or NaNs in inverse variance."
         for c in self.components:
             data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
 

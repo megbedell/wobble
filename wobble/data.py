@@ -3,6 +3,7 @@ import h5py
 import matplotlib.pyplot as plt
 from itertools import compress
 from astropy.io import fits
+import pandas as pd
 
 from .utils import fit_continuum
 
@@ -144,7 +145,7 @@ class Data(object):
             epochs_to_keep = [np.delete(r, i, axis=0) for r in getattr(self, attr)]
             setattr(sp, attr, epoch_to_split)
             setattr(self, attr, epochs_to_keep)
-        for attr in mp.append(np.append(REQUIRED_1D, OPTIONAL_1D), ['epochs']):
+        for attr in np.append(np.append(REQUIRED_1D, OPTIONAL_1D), ['epochs']):
             all_epochs = getattr(self, attr)
             setattr(sp, attr, all_epochs[i])
             setattr(self, attr, np.delete(all_epochs, i))
@@ -204,7 +205,7 @@ class Data(object):
         filename : `str`
             The filename (including path).
         """
-        with h5py.File(filename, 'w') as f:
+        with h5py.File(filename, 'a') as f:
             dset = f.create_dataset('data', data=self.ys)
             dset = f.create_dataset('ivars', data=self.ivars)
             dset = f.create_dataset('xs', data=self.xs)
@@ -213,7 +214,7 @@ class Data(object):
                     dset = f.create_dataset(attr, data=getattr(self, attr))
                 else:
                     strings = [a.encode('utf8') for a in getattr(self, attr)] # h5py workaround
-                    dset = f.create_dataset('filelist', data=strings)    
+                    dset = f.create_dataset(attr, data=strings)    
                     
     def drop_bad_orders(self, min_snr=5.):
         """
@@ -352,7 +353,7 @@ class Spectrum(object):
     def mask_low_pixels(self, min_flux = 1., padding = 2):
         """Set ivars to zero for pixels that fall below some minimum value (e.g. negative flux)."""
         for r in range(self.R):
-            bad = np.logical_or(self.ys[r] < min_flux, np.isnan(self.ys[r]))
+            bad = np.logical_or(self.ys[r] < min_flux, ~np.isfinite(self.ys[r]))
             self.ys[r][bad] = min_flux
             for pad in range(padding): # mask out neighbors of low pixels
                 bad = np.logical_or(bad, np.roll(bad, pad+1))
@@ -432,7 +433,7 @@ class Spectrum(object):
             metadata['bervs'] = sp[0].header['HIERARCH ESO DRS BERV'] * 1.e3 # m/s
             metadata['airms'] = sp[0].header['HIERARCH ESO TEL AIRM START'] 
             metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
-            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
+            #metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
         spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
@@ -482,9 +483,7 @@ class Spectrum(object):
             metadata['drifts'] = sp[0].header['HIERARCH TNG DRS DRIFT RV USED']
             metadata['dates'] = sp[0].header['HIERARCH TNG DRS BJD']        
             metadata['bervs'] = sp[0].header['HIERARCH TNG DRS BERV'] * 1.e3 # m/s
-            metadata['airms'] = sp[0].header['AIRMASS'] 
-            metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
-            metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
+            metadata['airms'] = sp[0].header['AIRMASS']
         spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
@@ -499,7 +498,9 @@ class Spectrum(object):
             wave = ww[0].data
         xs = [wave[r] for r in range(R)]
         ys = [spec[r] for r in range(R)]
-        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
+        ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack 
+        metadata['pipeline_rvs'] -= metadata['bervs'] # move pipeline rvs back to observatory rest frame
+        #metadata['pipeline_rvs'] -= np.mean(metadata['pipeline_rvs']) # just for plotting convenience
         self.populate(xs, ys, ivars, **metadata)
         if process:
             self.mask_low_pixels()
@@ -507,6 +508,77 @@ class Spectrum(object):
             self.transform_log()  
             self.continuum_normalize()
             self.mask_high_pixels()
+    
+    def from_EXPRES(self, filename, rv_file_name, process=True):
+        """
+        Takes an EXPRES optimally extracted file; reads metadata and associated
+        spectrum + wavelength files.
+        Note: these files mst all be located in the same directory.
+        
+        Parameters
+        ----------
+        filename : string
+            Location of the extracted file to be read.
+        rv_file_name : string
+            Location of the CCF RV file to be read.
+            (Note: likely temporary until RVs are written into extracted file headers)
+        process : bool, optional (default `True`)
+            If `True`, do some data processing, including masking of low-SNR 
+            regions and strong outliers; continuum normalization; and 
+            transformation to ln(wavelength) and ln(flux).
+        """
+        if not self.empty:
+            print("WARNING: overwriting existing contents.")
+        R = 86 # number of echelle orders (may change? but initial order will be the same)
+        
+        # For now, we have to read in the RV file separately
+        ccf_rvs = pd.read_csv(rv_file_name,index_col=5)
+        ccf_rvs = ccf_rvs.drop(ccf_rvs.index[ccf_rvs['ACCEPT']==False]) # Get rid of bad observations
+        
+        metadata = {}
+        metadata['filelist'] = filename
+        with fits.open(filename) as sp: # load up metadata
+            extr_file = '{}_{}.fits'.format(sp[0].header['OBJECT'].strip(),
+                                            sp[0].header['OBS_ID'].strip())
+            try:
+                metadata['pipeline_rvs']    = ccf_rvs.at[extr_file,'V'] / 100   # m/s
+                metadata['pipeline_sigmas'] = ccf_rvs.at[extr_file,'E_V'] / 100 # m/s
+            except KeyError:
+                print(f'No CCF RV for: {extr_file}')
+            
+            # Drift is dealt with via the wavelength solution
+            # WILL HAVE TO THINK HARDER ABOUT HOW WOBBLE WILL FEEL ABOUT THISs
+            
+            metadata['dates'] = float(sp[2].header['HIERARCH wtd_mdpt']) # Geometric midpoint in JD, not BJD
+            metadata['bervs'] = float(sp[2].header['HIERARCH wtd_single_channel_bc']) * 299792458. # m/s
+            metadata['airms'] = float(sp[0].header['AIRMASS']) # Average airmass at center of exposure (though I can also get beginning or end)
+            
+            # Load Spectrum
+            xs = sp[1].data['wavelength'].copy()
+            if process: # continuum normalize
+                ys = sp[1].data['spectrum'].copy()/sp[1].data['continuum'].copy()
+                us = sp[1].data['uncertainty'].copy()/sp[1].data['continuum'].copy()
+            else:
+                ys = sp[1].data['spectrum'].copy()
+                us = sp[1].data['uncertainty'].copy()
+            
+            #snrs = (int(sp[0].header['EXPCOUNT'])**0.5)*0.357 # SNR of entire observation from exposure meter
+            #snrs = np.nanmean(ys/us, axis=1) # Empirical SNR order by order
+            #invars = (snr**2/ys)/np.nanmean(ys,axis=1) # Scaling hack
+            
+            # EXPRES does have individual-pixel uncertainty estimates, should we just use those?
+            invars = us.copy()**-2
+            
+            sp.close()
+        self.populate(xs, ys, invars, **metadata)
+        
+        if process:
+            self.mask_low_pixels(min_flux=0.001)
+            self.mask_bad_edges(min_snr=10)  
+            self.transform_log()
+            #self.continuum_normalize() # Done using EXPRES continuum
+            self.mask_high_pixels(max_flux=.5)
+
             
     def from_ESPRESSO(self, filename, process=True):
         """
