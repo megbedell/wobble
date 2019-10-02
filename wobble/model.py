@@ -452,8 +452,10 @@ class Component(object):
             
         # Apply other scaling factors to model
         if self.scale_by_airmass:
-            self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth, 
-                                   name='airmass_einsum_'+self.name)        
+            #self.synth = tf.einsum('n,nm->nm', tf.constant(data.airms, dtype=T), self.synth, 
+            #                       name='airmass_einsum_'+self.name)
+            self.synth = tf.add(self.synth, tf.constant(np.log(data.airms), dtype=T),
+                                name=f'airmass_log_add_{self.name}')
         A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
         self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
         #self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
