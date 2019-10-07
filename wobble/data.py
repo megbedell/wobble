@@ -366,8 +366,8 @@ class Spectrum(object):
             bad = self.ys[r] > max_flux
             self.ys[r][bad] = 1.
             for pad in range(padding): # mask out neighbors of high pixels
-                bad = np.logical_or(bad, np.roll(bad, padding+1))
-                bad = np.logical_or(bad, np.roll(bad, -padding-1))
+                bad = np.logical_or(bad, np.roll(bad, pad+1))
+                bad = np.logical_or(bad, np.roll(bad, -pad-1))
             self.ivars[r][bad] = 0.
             
     def mask_bad_edges(self, window_width = 128, min_snr = 5.):
