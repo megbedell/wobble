@@ -213,7 +213,13 @@ class Model(object):
         else:
             iterator = range(niter)
         for i in iterator:
-            session.run(self.updates, **kwargs)
+            for c in self.components:
+                if not c.template_fixed:
+                    session.run(c.opt_template, **kwargs)
+            for c in self.components:
+                if not c.rvs_fixed:
+                    for _ in range(c.rv_steps):
+                        session.run(c.opt_rvs, **kwargs)
             if save_history:
                 history.save_iter(self, i+1)
         self.estimate_uncertainties(verbose=verbose, rvs=rv_uncertainties, 
@@ -305,6 +311,9 @@ class Component(object):
     template_fixed : `bool` (default `False`)
         If `True`, fix the template to its initial values and do not
         optimize.
+    rv_steps : `int` (default `1`)
+        Number of times to step the RV optimizer every time the
+        template optimizer is stepped.
     variable_bases : `int` (default `0`)
         Number of basis vectors to use in time variability of `template_ys`. 
         If zero, no time variability is allowed.
@@ -363,15 +372,15 @@ class Component(object):
         Not recommended to change, as this is degenerate with basis vectors.
     """
     def __init__(self, name, r, starting_rvs, epoch_mask, 
-                 rvs_fixed=False, template_fixed=False, variable_bases=0, 
-                 scale_by_airmass=False,
+                 rvs_fixed=False, template_fixed=False, rv_steps = 1,
+                 variable_bases=0, scale_by_airmass=False,
                  template_xs=None, template_ys=None, initialize_at_zero=False,    
                  learning_rate_rvs=1., learning_rate_template=0.01, 
                  learning_rate_basis=0.01, regularization_par_file=None, 
                  **kwargs):
         for attr in ['name', 'r', 'starting_rvs', 'epoch_mask',
-                    'rvs_fixed', 'template_fixed', 'template_xs',
-                    'template_ys', 'initialize_at_zero', 
+                    'rvs_fixed', 'template_fixed', 'rv_steps', 
+                    'template_xs', 'template_ys', 'initialize_at_zero',
                     'learning_rate_rvs', 'learning_rate_template',
                     'learning_rate_basis', 'scale_by_airmass']:
             setattr(self, attr, eval(attr))
@@ -452,8 +461,8 @@ class Component(object):
             
         # Apply other scaling factors to model
         if self.scale_by_airmass:
-            self.synth = tf.add(self.synth, tf.constant(np.log(data.airms), dtype=T),
-                                name=f'airmass_log_add_{self.name}')
+            self.synth = tf.add(self.synth, tf.constant(np.log(data.airms), dtype=T), 
+                                   name=f'airmass_log_add_{self.name}')        
         A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
         self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
         #self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
