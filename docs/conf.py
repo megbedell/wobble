@@ -57,6 +57,7 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
+    'nbsphinx',
 ]
 
 napoleon_google_docstring = False
@@ -85,7 +86,7 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '**.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
@@ -125,6 +126,8 @@ html_static_path = ['_static']
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'wobbledoc'
 
+# If you make the notebooks they may take up to 5 minutes to execute
+nbsphinx_timeout = 300
 
 # -- Options for LaTeX output ------------------------------------------------
 
