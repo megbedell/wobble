@@ -1,0 +1,11 @@
+name: wobble
+dependencies:
+  - python=3.6
+  - numpy
+  - scipy
+  - matplotlib
+  - tensorflow=1.11.*
+  - tqdm
+  - h5py
+  - astropy
+  - pandas
