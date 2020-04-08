@@ -12,7 +12,9 @@ def optimize_order(model, **kwargs):
     optimize the model for order r in data
     '''      
     model.setup()    
-    model.optimize(**kwargs)
+    h = model.optimize(**kwargs)
+    if 'save_history' in kwargs and kwargs['save_history']:
+        return h
 
 def optimize_orders(data, **kwargs):
     """

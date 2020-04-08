@@ -171,7 +171,7 @@ class Data(object):
         if not self.empty:
             print("WARNING: overwriting existing contents.")
         # TODO: add asserts to check data are finite, no NaNs, non-negative ivars, etc
-        with h5py.File(filename) as f:
+        with h5py.File(filename, 'r') as f:
             if orders is None:
                 orders = np.arange(len(f['data']))
             self.orders = orders
