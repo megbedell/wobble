@@ -411,9 +411,9 @@ class Results(object):
                     Optional ylim; passed to matplotlib.
    	    """
         if min_order == None:
-            min_order = min(self.orders)
+            min_order = 0
         if max_order == None:
-            max_order = max(self.orders)
+            max_order = len(self.orders)
         upper = np.percentile(self.star_rvs[min_order:max_order], percentiles[1], axis=1)
         lower = np.percentile(self.star_rvs[min_order:max_order], percentiles[0], axis=1)
         x = np.array([np.exp(np.mean(order)) for order in self.star_template_xs[min_order:max_order]])
