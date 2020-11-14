@@ -391,3 +391,68 @@ class Results(object):
         fig.subplots_adjust(hspace=0.05)
         plt.savefig(filename)
         plt.close(fig)
+        
+    def plot_chromatic_rvs(self, min_order=None, max_order=None, percentiles=(16,84), wavelengths=None, scale='log',  ylim=None):
+        """Output a representative percentile plot showing the chromaticity apparent in the rv signal.
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to plot.
+        max_order : 'int'
+                    Maximum order to plot. 
+        percentiles : 'tuple'
+                    Optional upper and lower percentile to plot.
+        wavelengths : 'tuple'
+                    Optional wavelength range (in Angstroms) to use instead of orders. 
+        scale : 'str'
+                    Optional scale; passed to matplotlib.
+        ylim : 'tuple'
+                    Optional ylim; passed to matplotlib.
+   	    """
+        if min_order == None:
+            min_order = min(self.orders)
+        if max_order == None:
+            max_order = max(self.orders)
+        upper = np.percentile(self.star_rvs[min_order:max_order], percentiles[1], axis=1)
+        lower = np.percentile(self.star_rvs[min_order:max_order], percentiles[0], axis=1)
+        x = np.array([np.exp(np.mean(order)) for order in self.star_template_xs[min_order:max_order]])
+        if wavelengths != None:
+            keep = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
+            x = x[keep]
+            upper = upper[keep]
+            lower = lower[keep]
+        m, b = np.polyfit(x, upper, 1)
+        m2, b2 = np.polyfit(x, lower, 1)
+        f = plt.figure()
+        plt.scatter(x, upper)
+        plt.scatter(x, lower)
+        plt.plot(x, m*x + b)
+        plt.plot(x, m2*x + b2)
+        plt.ylabel('Radial Velocity [m/s]')
+        plt.xlabel('Wavelength λ [Å]')
+        plt.xscale(scale)
+        plt.ylim(ylim)
+        plt.show(f)
+    
+    def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
+        """ Return the chromatic index for each epoch (slope of the linear least squares fit).
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to use in the calculation of the chromatic indices.
+        max_order : 'int'
+                    Maximum order to use in the calculation of the chromatic indices.
+        """
+        if min_order == None:
+            min_order = min(self.orders)
+        if max_order == None:
+            max_order = max(self.orders)
+        x = np.array([np.mean(order) for order in self.star_template_xs[min_order:max_order]])
+        chromatic_indices = []
+        for epoch in self.epochs: 
+           m, b = np.polyfit(x, np.array(self.star_rvs)[min_order:max_order,epoch], 1)
+           chromatic_indices.append(m)
+        return(chromatic_indices)
+      
