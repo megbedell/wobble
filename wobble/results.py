@@ -451,7 +451,7 @@ class Results(object):
             max_order = max(self.orders)
         x = np.array([np.mean(order) for order in self.star_template_xs[min_order:max_order]])
         chromatic_indices = []
-        for epoch in self.epochs: 
+        for epoch in range(len(self.epochs)): 
            m, b = np.polyfit(x, np.array(self.star_rvs)[min_order:max_order,epoch], 1)
            chromatic_indices.append(m)
         return(chromatic_indices)
