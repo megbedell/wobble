@@ -436,7 +436,7 @@ class Results(object):
         plt.show(f)
     
     def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
-        """ Return the chromatic index for each epoch (slope of the linear least squares fit).
+        """Return the chromatic index for each epoch (slope of the linear least squares fit).
         
         Parameters
         ----------
