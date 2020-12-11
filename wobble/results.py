@@ -392,7 +392,7 @@ class Results(object):
         plt.savefig(filename)
         plt.close(fig)
         
-    def plot_chromatic_rvs(self, min_order=None, max_order=None, percentiles=(16,84), wavelengths=None, scale='log',  ylim=None, center=True):
+    def plot_chromatic_rvs(self, min_order=None, max_order=None, percentiles=(16,84), wavelengths=None, scale='log',  ylim=None, center=True, filename=None):
         """Output a representative percentile plot showing the chromaticity apparent in the rv signal.
         
         Parameters
@@ -411,6 +411,8 @@ class Results(object):
                     Optional ylim; passed to matplotlib.
         center : 'boolean' 
                     Determines whether the epochs are median centered before percentiles are calculated. 
+        filename : 'str'
+                    Saves plot if given. Optional filename; passed to matplotlib e.g. 'filename.png'
    	"""
         if min_order == None:
             min_order = 0
@@ -433,18 +435,20 @@ class Results(object):
         m2, b2 = np.polyfit(x, lower, 1)
         plt.errorbar(x, upper, upper_sigma, fmt='o')
         plt.errorbar(x, lower, lower_sigma, fmt='o')
-        plt.plot(x, m*x + b)
-        plt.plot(x, m2*x + b2)
+        plt.plot(x, m*x + b, color='tab:blue')
+        plt.plot(x, m2*x + b2, color='tab:orange')
         plt.ylabel('Radial Velocity [m/s]')
         plt.xlabel('Wavelength λ [Å]')
         plt.ylim(ylim)
         plt.xscale(scale)
-        plt.savefig('chromatic rvs.png')
+        if filename != None:
+            plt.savefig(filename)
         plt.show()
+        
         
     
     def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
-        """ Return the chromatic index for each epoch (slope of the linear least squares fit).
+        """ Returns a 2 by no. of epochs array representing the chromatic index along with uncertainty for each epoch (calculated as slope of the linear least squares fit).
         
         Parameters
         ----------
@@ -465,7 +469,9 @@ class Results(object):
             orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
             x = x[orders]
         chromatic_indices = []
+        sigmas = []
         for epoch in range(len(self.epochs)): 
-           m, b = np.polyfit(x, np.array(self.star_rvs)[orders, epoch], 1)
-           chromatic_indices.append(m)
-        return(chromatic_indices)
+           coefs = np.polyfit(x, np.array(self.star_rvs)[orders, epoch], 1, full=True)
+           chromatic_indices.append(coefs[0][0])
+           sigmas.append(np.sqrt(coefs[1][0]))
+        return([chromatic_indices, sigmas])
