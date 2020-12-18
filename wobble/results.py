@@ -448,7 +448,7 @@ class Results(object):
         
     
     def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
-        """ Returns a 2 by no. of epochs array representing the chromatic index along with uncertainty for each epoch (calculated as slope of the linear least squares fit).
+        """ Returns a 2 by n array representing the chromatic index along with uncertainty for each epoch (calculated as slope of the linear least squares fit).
         
         Parameters
         ----------
@@ -463,7 +463,7 @@ class Results(object):
             min_order = 0
         if max_order == None:
             max_order = len(self.orders)
-        orders = np.arange(min_order,max_order)
+        orders = np.arange(min_order, max_order)
         x = np.array([np.mean(order) for order in self.star_template_xs[min_order:max_order]])
         if wavelengths != None:
             orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
@@ -474,4 +474,4 @@ class Results(object):
            coefs = np.polyfit(x, np.array(self.star_rvs)[orders, epoch], 1, full=True)
            chromatic_indices.append(coefs[0][0])
            sigmas.append(np.sqrt(coefs[1][0]))
-        return([chromatic_indices, sigmas])
+        return [chromatic_indices, sigmas]
