@@ -433,10 +433,13 @@ class Results(object):
         lower_sigma = np.sqrt(1/np.array(self.star_ivars_rvs))[orders, np.argmin(abs(np.array(self.star_rvs)[orders].T - lower.T).T, axis=1)]
         m, b = np.polyfit(x, upper, 1)
         m2, b2 = np.polyfit(x, lower, 1)
+        y = m*x + b
+        y2 = m2*x + b2
         plt.errorbar(x, upper, upper_sigma, fmt='o')
         plt.errorbar(x, lower, lower_sigma, fmt='o')
-        plt.plot(x, m*x + b, color='tab:blue')
-        plt.plot(x, m2*x + b2, color='tab:orange')
+        plt.plot(x, y, color='tab:blue')
+        plt.plot(x, y2, color='tab:orange')
+        plt.fill_between(x, y, y2, color='lightgray')
         plt.ylabel('Radial Velocity [m/s]')
         plt.xlabel('Wavelength λ [Å]')
         plt.ylim(ylim)
