@@ -10,7 +10,7 @@ from wobble.model import Model
 from wobble.results import Results
 from wobble.utils import get_session
 
-def generate_regularization_file(filename, R, type='star'):
+def generate_regularization_file(filename, R, type='star',defaults=None): 
     """
     Create a regularization parameter file with default values.
     
@@ -23,18 +23,23 @@ def generate_regularization_file(filename, R, type='star'):
     type : str, optional
         Type of object; sets which default values to use. 
         Acceptable values are 'star' (default) or 'telluric'.
+    defaults : list, optional
+    	list with 5 numbers, corresponding to the 5 regularization
+    	parameters
     """
     regularization_par = ['L1_template', 'L2_template', 
                               'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights']
     star_defaults = [1.e-2, 1.e2, 1.e5, 1.e6, 1.]
     #telluric_defaults = [1.e4, 1.e6, 1.e3, 1.e8, 1.]
     telluric_defaults = [1.e2, 1.e3, 1.e3, 1.e6, 1.]
-    if type=='star':
-        defaults = star_defaults
-    elif type=='telluric':
-        defaults = telluric_defaults
-    else:
-        assert False, "ERROR: type not recognized."
+    if defaults==None:
+        if type=='star':
+            defaults = star_defaults
+        elif type=='telluric':
+            defaults = telluric_defaults
+        else:
+            assert False, "ERROR: type not recognized."
+
     with h5py.File(filename,'w') as f:
         for par,val in zip(regularization_par, defaults):
             f.create_dataset(par, data=np.zeros(R)+val)
