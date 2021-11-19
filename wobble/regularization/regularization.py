@@ -10,7 +10,7 @@ from wobble.model import Model
 from wobble.results import Results
 from wobble.utils import get_session
 
-def generate_regularization_file(filename, R, type='',defaults=None): 
+def generate_regularization_file(filename, R, type='star',defaults=None): 
     """
     Create a regularization parameter file with default values.
     
