@@ -16,10 +16,11 @@ Documentation
 
 .. toctree::
    :maxdepth: 2
-   
+
    quickstart
    api
    scripts
+   tutorials/Recover-51Peg-RV-signal-from-HARPS.ipynb
 
 
 Bug Reports & Questions
