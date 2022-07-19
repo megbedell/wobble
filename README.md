@@ -1,4 +1,4 @@
-## wobble *(/wäb.lā/)* <a href='http://astro.uchicago.edu/~bmontet/wobble.mp3'>:sound:</a>
+## wobble *(/wäb.lā/)* <a href='https://benmontet.github.io/assets/wobble.mp3'>:sound:</a>
 
 [![Documentation Status](https://readthedocs.org/projects/wobble/badge/?version=latest)](https://wobble.readthedocs.io/en/latest/?badge=latest)[![arXiv](https://img.shields.io/badge/arXiv-1901.00503-orange.svg)](https://arxiv.org/abs/1901.00503)
 

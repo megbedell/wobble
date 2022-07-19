@@ -391,3 +391,90 @@ class Results(object):
         fig.subplots_adjust(hspace=0.05)
         plt.savefig(filename)
         plt.close(fig)
+        
+    def plot_chromatic_rvs(self, min_order=None, max_order=None, percentiles=(16,84), wavelengths=None, scale='log',  ylim=None, center=True, filename=None):
+        """Output a representative percentile plot showing the chromaticity apparent in the rv signal.
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to plot.
+        max_order : 'int'
+                    Maximum order to plot. 
+        percentiles : 'tuple'
+                    Optional upper and lower percentile to plot.
+        wavelengths : 'tuple'
+                    Optional wavelength range (in Angstroms) to use instead of orders. 
+        scale : 'str'
+                    Optional scale; passed to matplotlib.
+        ylim : 'tuple'
+                    Optional ylim; passed to matplotlib.
+        center : 'boolean' 
+                    Determines whether the epochs are median centered before percentiles are calculated. 
+        filename : 'str'
+                    Saves plot if given. Optional filename; passed to matplotlib e.g. 'filename.png'
+   	"""
+        if min_order == None:
+            min_order = 0
+        if max_order == None:
+            max_order = len(self.orders)
+        orders = np.arange(min_order, max_order)
+        x = np.array([np.exp(np.mean(order)) for order in self.star_template_xs[min_order:max_order]])
+        if wavelengths != None:
+            orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
+            x = x[orders]
+        if center == True:
+            median = np.median(np.array(self.star_rvs)[orders], axis=1).T
+        else:
+            median = 0
+        upper = np.percentile(np.array(self.star_rvs)[orders].T - median, percentiles[1], axis=0).T
+        upper_sigma = np.sqrt(1/np.array(self.star_ivars_rvs))[orders, np.argmin(abs(np.array(self.star_rvs)[orders].T - upper.T).T, axis=1)]
+        lower = np.percentile(np.array(self.star_rvs)[orders].T - median, percentiles[0], axis=0).T
+        lower_sigma = np.sqrt(1/np.array(self.star_ivars_rvs))[orders, np.argmin(abs(np.array(self.star_rvs)[orders].T - lower.T).T, axis=1)]
+        m, b = np.polyfit(x, upper, 1)
+        m2, b2 = np.polyfit(x, lower, 1)
+        y = m*x + b
+        y2 = m2*x + b2
+        plt.errorbar(x, upper, upper_sigma, fmt='o')
+        plt.errorbar(x, lower, lower_sigma, fmt='o')
+        plt.plot(x, y, color='tab:blue')
+        plt.plot(x, y2, color='tab:orange')
+        plt.fill_between(x, y, y2, color='lightgray')
+        plt.ylabel('Radial Velocity [m/s]')
+        plt.xlabel('Wavelength λ [Å]')
+        plt.ylim(ylim)
+        plt.xscale(scale)
+        if filename != None:
+            plt.savefig(filename)
+        plt.show()
+        
+        
+    
+    def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
+        """ Returns a 2 by n array representing the chromatic index along with uncertainty for each epoch (calculated as slope of the linear least squares fit).
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to use in the calculation of the chromatic indices.
+        max_order : 'int'
+                    Maximum order to use in the calculation of the chromatic indices.
+        wavelengths : 'tuple'
+                    Optional wavelength range (in Angstroms) to use instead of orders. 
+        """
+        if min_order == None:
+            min_order = 0
+        if max_order == None:
+            max_order = len(self.orders)
+        orders = np.arange(min_order, max_order)
+        x = np.array([np.mean(order) for order in self.star_template_xs[min_order:max_order]])
+        if wavelengths != None:
+            orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
+            x = x[orders]
+        chromatic_indices = []
+        sigmas = []
+        for epoch in range(len(self.epochs)): 
+           coefs = np.polyfit(x, np.array(self.star_rvs)[orders, epoch], 1, full=True)
+           chromatic_indices.append(coefs[0][0])
+           sigmas.append(np.sqrt(coefs[1][0]))
+        return [chromatic_indices, sigmas]
