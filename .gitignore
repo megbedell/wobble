@@ -9,6 +9,7 @@ dist
 *.ipynb_checkpoints
 checkpoint
 docs/_build
+env
 
 # plots
 *.png

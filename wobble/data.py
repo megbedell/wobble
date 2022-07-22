@@ -184,4 +184,3 @@ class Data(object):
         self.epoch_groups.append((self.N + data2.epochs))
         self.N = self.N + data2.N
         
-                
