@@ -8,6 +8,9 @@ Data
 
 .. autoclass:: wobble.Data
    :members:
+   
+.. autoclass:: wobble.Spectrum
+   :members:
 
 Model
 -----
@@ -24,11 +27,11 @@ Results
 .. autoclass:: wobble.Results
    :members:
 
-.. autoclass:: wobble.History
-   :members:
+Regularization & Other Utilities
+--------------------------------
 
-Other Utilities
----------------
+.. autoclass:: wobble.regularization
+	:members:
 
 .. autofunction:: wobble.utils.bin_data
 .. autofunction:: wobble.utils.doppler

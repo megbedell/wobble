@@ -2,18 +2,22 @@ import numpy as np
 from scipy.optimize import minimize
 import h5py
 import tensorflow as tf
+import matplotlib.pyplot as plt
+from astropy.table import Table, Column
 T = tf.float64
 
 from .utils import get_session
 
-COMMON_ATTRS = ['R', 'N', 'orders', 'origin_files', 'epochs', 'component_names',
-                'bervs', 'pipeline_rvs', 'pipeline_sigmas', 'drifts', 'dates', 'airms', 'epoch_groups'] # common across all components
-COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'scale_by_airmass', 'learning_rate_rvs', 
+COMMON_ATTRS = ['R', 'N', 'orders', 'component_names', 'bervs', 'pipeline_rvs', 
+                'pipeline_sigmas', 'drifts', 'dates', 'airms', 'epochs'] # common across all orders & components
+                # 'epoch_groups' ??
+COMPONENT_NP_ATTRS = ['K', 'r', 'rvs_fixed', 'ivars_rvs', 'template_ivars', 'scale_by_airmass', 'learning_rate_rvs', 
                       'learning_rate_template', 'L1_template', 'L2_template']
 OPT_COMPONENT_NP_ATTRS = ['learning_rate_basis', 'L1_basis_vectors', 'L2_basis_vectors', 'L2_basis_weights'] # only exist if K>0
 COMPONENT_TF_ATTRS = ['rvs', 'template_xs', 'template_ys']
 OPT_COMPONENT_TF_ATTRS = ['basis_vectors', 'basis_weights'] # only present if component K > 0
-POST_COMPONENT_ATTRS = ['time_rvs', 'time_sigmas', 'order_rvs', 'order_sigmas'] # these won't exist until post-processing
+POST_COMPONENT_ATTRS = ['time_rvs', 'time_sigmas', 'order_rvs', 'order_sigmas', 
+                        'bary_corr', 'drift_corr'] # these won't exist until post-processing
 
 class Results(object):
     """A read/writeable object which stores RV & template results across all orders. 
@@ -25,40 +29,36 @@ class Results(object):
     
     Parameters
     ----------
-    data : `object`
+    data : `object`, optional
         a wobble Data object
-    filename : `str`
+    filename : `str`, optional
         a file path pointing to a saved Results object (HDF5 format).
     """
     def __init__(self, data=None, filename=None):
-        if filename is None:
-            self.component_names = []
-            self.R = data.R
-            self.N = data.N
+        if (filename is None) & (data is not None):
+            assert data is not None, "ERROR: must supply either data or filename keywords."
+            for attr in COMMON_ATTRS:
+                if attr == 'component_names':
+                    setattr(self, attr, [])
+                else:
+                    setattr(self, attr, getattr(data, attr))
             self.ys_predicted = [0 for r in range(self.R)]
-            # get everything we'd need to reconstruct the data used:
-            self.orders = data.orders
-            self.origin_files = data.origin_files
-            self.epochs = data.epochs
-            self.epoch_groups = data.epoch_groups
-            # get other convenient things
-            self.bervs = data.bervs
-            self.pipeline_rvs = data.pipeline_rvs
-            self.pipeline_sigmas = data.pipeline_sigmas
-            self.dates = data.dates
-            self.airms = data.airms
-            self.drifts = data.drifts            
-            return
-        if data is None:
+        elif (data is None) & (filename is not None):
+            assert filename is not None, "ERROR: must supply either data or filename keywords."
             self.read(filename)
-            return
-        print("Results: must supply either data or filename keywords.")
+        else:
+            assert False, "ERROR: must supply EITHER data OR filename keywords."
         
-    def __str__(self):
-        string = 'wobble Results object consisting of the following components: '
-        for n in self.component_names:
-            string += '\n{0}: '.format(n)
-        return string    
+    def __repr__(self):
+        string = 'wobble.Results object consisting of the following components: '
+        for i,c in enumerate(self.component_names):
+            string += '\n{0}: {1}; '.format(i, c)
+            if getattr(self, '{0}_bary_corr'.format(c)):
+                string += 'RVs barycentric corrected; '
+            if getattr(self, '{0}_drift_corr'.format(c)):
+                string += 'RVs drift corrected; '
+            #string += '{0} variable basis components'.format(c.K)
+        return string
                             
     def add_component(self, c):
         """Initialize a new model component and prepare to save its optimized outputs. 
@@ -77,14 +77,17 @@ class Results(object):
             return
         self.component_names.append(c.name)
         basename = c.name+'_'
-        setattr(self, basename+'rvs', np.empty((self.R,self.N)) + np.nan)
-        setattr(self, basename+'ivars_rvs', np.empty((self.R,self.N)) + np.nan)
+        setattr(self, basename+'rvs', np.full((self.R,self.N), np.nan, dtype=np.float64))
+        setattr(self, basename+'ivars_rvs', np.full((self.R,self.N), np.nan, dtype=np.float64))
         setattr(self, basename+'template_xs', [0 for r in range(self.R)])
         setattr(self, basename+'template_ys', [0 for r in range(self.R)])
+        setattr(self, basename+'template_ivars', [0 for r in range(self.R)])
         if c.K > 0:
             setattr(self, basename+'basis_vectors', [0 for r in range(self.R)])
             setattr(self, basename+'basis_weights', [0 for r in range(self.R)])
         setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
+        setattr(self, basename+'drift_corr', False)
+        setattr(self, basename+'bary_corr', False)
         attrs = COMPONENT_NP_ATTRS
         if c.K > 0:
             attrs = np.append(attrs, OPT_COMPONENT_NP_ATTRS)
@@ -117,10 +120,12 @@ class Results(object):
         print("Results: reading from {0}".format(filename))
         with h5py.File(filename,'r') as f:
             for attr in COMMON_ATTRS:
-                setattr(self, attr, np.copy(f[attr]))
+                try:
+                    setattr(self, attr, np.copy(f[attr]))
+                except KeyError:
+                    print("WARNING: attribute {0} could not be read.".format(attr))
             self.component_names = np.copy(f['component_names'])
             self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround
-            self.origin_files = [a.decode('utf8') for a in self.origin_files] # h5py workaround
             self.ys_predicted = [0 for r in range(self.R)]
             all_order_attrs = ['ys_predicted']
             for name in self.component_names:
@@ -133,11 +138,9 @@ class Results(object):
                 setattr(self, basename+'ys_predicted', [0 for r in range(self.R)])
                 all_order_attrs.append(basename+'ys_predicted')
                 attrs = np.append(COMPONENT_NP_ATTRS, COMPONENT_TF_ATTRS)
+                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS)
+                attrs = np.append(attrs, opt_attrs)
                 for attr in attrs:
-                    setattr(self, basename+attr, [0 for r in range(self.R)])
-                    all_order_attrs.append(basename+attr)
-                opt_attrs = np.append(OPT_COMPONENT_NP_ATTRS, OPT_COMPONENT_TF_ATTRS) # only exist if K>0
-                for attr in opt_attrs:
                     try: # if attribute exists in hdf5, set it up
                         test = f['order0'][basename+attr]
                         setattr(self, basename+attr, [0 for r in range(self.R)])
@@ -172,7 +175,8 @@ class Results(object):
             self.component_names = [a.encode('utf8') for a in self.component_names] # h5py workaround
             self.origin_files = [a.encode('utf8') for a in self.origin_files] # h5py workaround
             for attr in COMMON_ATTRS:
-                f.create_dataset(attr, data=getattr(self, attr))                    
+                f.create_dataset(attr, data=getattr(self, attr))  
+            self.component_names = [a.decode('utf8') for a in self.component_names] # h5py workaround                  
                 
     def combine_orders(self, component_name):
         """Calculate and save final time-series RVs for a given component after all 
@@ -197,12 +201,13 @@ class Results(object):
         self.M = None
         # optimize
         soln = minimize(self.opposite_lnlike_sigmas, x0_sigmas, method='BFGS')
+        soln_sigmas = soln['x']
         if not soln['success']:
             print(soln.status)
             print(soln.message)
-            #print(soln)
-            #assert False
-        soln_sigmas = soln['x']
+            if not np.isfinite(soln['fun']):
+                print("ERROR: non-finite likelihood encountered in optimization. Setting combined RVs to non-optimal values.")
+                soln_sigmas = x0_sigmas
         # save results
         lnlike, rvs_N, rvs_R, Cinv = self.lnlike_sigmas(soln_sigmas, return_rvs=True) # Cinv is inverse covariance matrix
         setattr(self, basename+'time_rvs', rvs_N)
@@ -211,7 +216,7 @@ class Results(object):
         setattr(self, basename+'time_sigmas', np.sqrt(np.diag(np.linalg.inv(Cinv))[:self.N])) # really really a bad idea
         for tmp_attr in ['M', 'all_rvs', 'all_ivars']:
             delattr(self, tmp_attr) # cleanup
-        return Cinv
+        #return Cinv
         
     def lnlike_sigmas(self, sigmas, return_rvs = False, restart = False):
         """Internal code used by combine_orders()"""
@@ -254,3 +259,224 @@ class Results(object):
             return self.M
         else:
             return self.M
+            
+    def apply_drifts(self, component_name):
+        """Apply instrumental drifts to all RVs for a given component. 
+        Will modify both `rvs` and `time_rvs` (if applicable). 
+        Will not modify pipeline RVs; these are assumed to have drift
+        corrections already.
+        
+        Parameters
+        ----------
+        component_name : `str`
+            Name of the model component to use.
+        """
+        if not np.isin(component_name, self.component_names):
+            print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
+                    self.component_names))
+            return
+        if not hasattr(self, 'drifts'):
+            print("No instrumental drifts measured.")
+            return
+        basename = component_name+'_'
+        all_rvs = np.asarray(getattr(self, basename+'rvs'))
+        setattr(self, basename+'rvs', all_rvs - np.tile(self.drifts[None,:], (self.R,1)))
+        if hasattr(self, basename+'time_rvs'):
+            time_rvs = np.asarray(getattr(self, basename+'time_rvs'))
+            setattr(self, basename+'time_rvs', time_rvs - self.drifts)
+        setattr(self, basename+'drift_corr', True)
+            
+    def apply_bervs(self, component_name):
+        """Apply barycentric corrections to all RVs for a given component. 
+        Will modify both `rvs` and `time_rvs` (if applicable).
+        BERVs follow standard convention: +ve = Earth is moving 
+        toward the observed object, so 
+        barycentric-corrected stellar RV = measured RV + BERV.
+        Correction is applied to wobble RVs and to pipeline RVs to keep 
+        them in the same frame.
+        
+        Parameters
+        ----------
+        component_name : `str`
+            Name of the model component to use.
+        """
+        if not np.isin(component_name, self.component_names):
+            print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
+                    self.component_names))
+            return
+        if not hasattr(self, 'bervs'):
+            print("No barycentric shifts computed.")
+            return 
+        basename = component_name+'_'
+        all_rvs = np.asarray(getattr(self, basename+'rvs'))
+        all_bervs = np.tile(self.bervs[None,:], (self.R,1))
+        setattr(self, basename+'rvs', all_rvs + all_bervs)
+        if hasattr(self, basename+'time_rvs'):
+            time_rvs = np.asarray(getattr(self, basename+'time_rvs'))
+            setattr(self, basename+'time_rvs', time_rvs + self.bervs) 
+        self.pipeline_rvs += self.bervs
+        setattr(self, basename+'bary_corr', True)
+        
+    def write_rvs(self, component_name, filename, all_orders=False):
+        """Write out a text file containing time series RVs.
+        
+        Parameters
+        ----------
+        component_name : `str`
+            Name of the model component to use.
+        all_orders : `bool`
+            If True, include one column for each individual orders
+        """
+        if not np.isin(component_name, self.component_names):
+            print("Results: component name {0} not recognized. Valid options are: {1}".format(component_name, 
+                    self.component_names))
+            return
+        t = Table()
+        t['dates'] = self.dates
+        t.meta['comments'] = ['Table of wobble RVs for {0} component; all units m/s.'.format(component_name)]
+        if getattr(self, '{0}_bary_corr'.format(component_name)):
+            t.meta['comments'].append('RVs have been barycentric corrected.')
+        else:
+            t.meta['comments'].append('RVs are in observatory rest frame.')
+        if getattr(self, '{0}_drift_corr'.format(component_name)):
+            t.meta['comments'].append('RVs have been corrected for instrumental drift.')
+        
+        if hasattr(self, '{0}_time_rvs'.format(component_name)):
+            t['RV'] = getattr(self, '{0}_time_rvs'.format(component_name))
+            t['RV_err'] = getattr(self, '{0}_time_sigmas'.format(component_name))
+        if all_orders:
+            all_rvs = getattr(self, '{0}_rvs'.format(component_name))
+            all_ivars = getattr(self, '{0}_ivars_rvs'.format(component_name))
+            for r,o in enumerate(self.orders):
+                t['RV_order{0}'.format(o)] = all_rvs[r]
+                t['RV_order{0}_err'.format(o)] = 1./np.sqrt(all_ivars[r])
+        t['pipeline_rv'] = self.pipeline_rvs
+        t['pipeline_rv_err'] = self.pipeline_sigmas
+        t.write(filename, format='ascii')
+        print('Output saved to file: {0}'.format(filename))
+        
+    def plot_spectrum(self, r, n, data, filename, xlim=None, ylim=[0., 1.3], ylim_resids=[-0.1,0.1]):
+        """Output a figure showing synthesized fit to a section of spectrum.
+        
+        Parameters
+        ----------
+        r : `int`
+            Index of echelle order to plot, within range (0,R]
+        n : `int`
+            Index of observation epoch to plot.
+        data : `wobble.Data` object
+            Pointer to the Data object containing spectra.
+        filename : `str`
+            Name & path under which to save the output plot.
+        xlim : 
+            Optional x-range; passed to matplotlib.
+        ylim : 
+            Optional y-range for main plot; passed to matplotlib.
+        ylim_resids : 
+            Optional y-range for residuals plot; passed to matplotlib.
+        """
+        fig, (ax, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(12,5))
+        xs = np.exp(data.xs[r][n])
+        ax.scatter(xs, np.exp(data.ys[r][n]), marker=".", alpha=0.5, c='k', label='data', s=40)
+        mask = data.ivars[r][n] <= 1.e-8
+        ax.scatter(xs[mask], np.exp(data.ys[r][n][mask]), marker=".", alpha=1., c='white', s=20)
+        for c in self.component_names:
+            ax.plot(xs, np.exp(getattr(self, "{0}_ys_predicted".format(c))[r][n]), alpha=0.8)
+        ax2.scatter(xs, np.exp(data.ys[r][n]) - np.exp(self.ys_predicted[r][n]), 
+                    marker=".", alpha=0.5, c='k', label='data', s=40)
+        ax2.scatter(xs[mask], np.exp(data.ys[r][n][mask]) - np.exp(self.ys_predicted[r][n][mask]), 
+                    marker=".", alpha=1., c='white', s=20)
+        ax.set_ylim(ylim)
+        ax2.set_ylim(ylim_resids)
+        ax.set_xticklabels([])
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=0.05)
+        plt.savefig(filename)
+        plt.close(fig)
+        
+    def plot_chromatic_rvs(self, min_order=None, max_order=None, percentiles=(16,84), wavelengths=None, scale='log',  ylim=None, center=True, filename=None):
+        """Output a representative percentile plot showing the chromaticity apparent in the rv signal.
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to plot.
+        max_order : 'int'
+                    Maximum order to plot. 
+        percentiles : 'tuple'
+                    Optional upper and lower percentile to plot.
+        wavelengths : 'tuple'
+                    Optional wavelength range (in Angstroms) to use instead of orders. 
+        scale : 'str'
+                    Optional scale; passed to matplotlib.
+        ylim : 'tuple'
+                    Optional ylim; passed to matplotlib.
+        center : 'boolean' 
+                    Determines whether the epochs are median centered before percentiles are calculated. 
+        filename : 'str'
+                    Saves plot if given. Optional filename; passed to matplotlib e.g. 'filename.png'
+   	"""
+        if min_order == None:
+            min_order = 0
+        if max_order == None:
+            max_order = len(self.orders)
+        orders = np.arange(min_order, max_order)
+        x = np.array([np.exp(np.mean(order)) for order in self.star_template_xs[min_order:max_order]])
+        if wavelengths != None:
+            orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
+            x = x[orders]
+        if center == True:
+            median = np.median(np.array(self.star_rvs)[orders], axis=1).T
+        else:
+            median = 0
+        upper = np.percentile(np.array(self.star_rvs)[orders].T - median, percentiles[1], axis=0).T
+        upper_sigma = np.sqrt(1/np.array(self.star_ivars_rvs))[orders, np.argmin(abs(np.array(self.star_rvs)[orders].T - upper.T).T, axis=1)]
+        lower = np.percentile(np.array(self.star_rvs)[orders].T - median, percentiles[0], axis=0).T
+        lower_sigma = np.sqrt(1/np.array(self.star_ivars_rvs))[orders, np.argmin(abs(np.array(self.star_rvs)[orders].T - lower.T).T, axis=1)]
+        m, b = np.polyfit(x, upper, 1)
+        m2, b2 = np.polyfit(x, lower, 1)
+        y = m*x + b
+        y2 = m2*x + b2
+        plt.errorbar(x, upper, upper_sigma, fmt='o')
+        plt.errorbar(x, lower, lower_sigma, fmt='o')
+        plt.plot(x, y, color='tab:blue')
+        plt.plot(x, y2, color='tab:orange')
+        plt.fill_between(x, y, y2, color='lightgray')
+        plt.ylabel('Radial Velocity [m/s]')
+        plt.xlabel('Wavelength λ [Å]')
+        plt.ylim(ylim)
+        plt.xscale(scale)
+        if filename != None:
+            plt.savefig(filename)
+        plt.show()
+        
+        
+    
+    def chromatic_index(self, min_order=None, max_order=None, wavelengths=None):
+        """ Returns a 2 by n array representing the chromatic index along with uncertainty for each epoch (calculated as slope of the linear least squares fit).
+        
+        Parameters
+        ----------
+        min_order : 'int'
+                    Minimum order to use in the calculation of the chromatic indices.
+        max_order : 'int'
+                    Maximum order to use in the calculation of the chromatic indices.
+        wavelengths : 'tuple'
+                    Optional wavelength range (in Angstroms) to use instead of orders. 
+        """
+        if min_order == None:
+            min_order = 0
+        if max_order == None:
+            max_order = len(self.orders)
+        orders = np.arange(min_order, max_order)
+        x = np.array([np.mean(order) for order in self.star_template_xs[min_order:max_order]])
+        if wavelengths != None:
+            orders = ((x > int(wavelengths[0])) & (x < int(wavelengths[1])))
+            x = x[orders]
+        chromatic_indices = []
+        sigmas = []
+        for epoch in range(len(self.epochs)): 
+           coefs = np.polyfit(x, np.array(self.star_rvs)[orders, epoch], 1, full=True)
+           chromatic_indices.append(coefs[0][0])
+           sigmas.append(np.sqrt(coefs[1][0]))
+        return [chromatic_indices, sigmas]

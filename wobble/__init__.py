@@ -1,17 +1,20 @@
 name = "wobble"
 from .utils import bin_data, get_session, doppler, fit_continuum
 from .interp import interp
-from .data import Data
+from .data import Data, Spectrum
 from .results import Results
 from .model import Model, Component
 from .history import History
+from .regularization import *
 
 def optimize_order(model, **kwargs):
     '''
     optimize the model for order r in data
     '''      
     model.setup()    
-    model.optimize(**kwargs)
+    h = model.optimize(**kwargs)
+    if 'save_history' in kwargs and kwargs['save_history']:
+        return h
 
 def optimize_orders(data, **kwargs):
     """

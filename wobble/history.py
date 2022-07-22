@@ -40,8 +40,17 @@ class History(object):
         if i == 0:
             self.template_xs = [session.run(c.template_xs) for c in model.components]
             
-                
-        
+    def plot_nll(self):
+        """
+        Generate a plot of the -log(likelihood) fit metric at each optimization step.
+        """
+        fig, ax = plt.subplots(1,1)
+        ax.scatter(np.arange(len(self.nll_history)), self.nll_history)
+        ax.set_yscale('log')
+        ax.set_xlabel('Optimizer iteration #', fontsize=14)
+        ax.set_ylabel(r'$-\mathrm{ln(like)}$', fontsize=14)
+        return fig
+                  
     def animfunc(self, i, xs, ys, xlims, ylims, ax, driver, xlabel, ylabel):
         """
         Produces each frame; called by History.plot()
@@ -90,7 +99,7 @@ class History(object):
         ys = self.rvs_history[ind]
         if compare_to_pipeline:
             ys -= np.repeat([self.data.pipeline_rvs], self.niter, axis=0)    
-            ylabel = 'RV Residuals to HARPS Pipeline (m/s)'
+            ylabel = 'RV Residuals to Pipeline (m/s)'
         else:
             ylabel = 'RV (m/s)'
         return self.plot(xs, ys, linestyle='scatter', ylabel=ylabel, xlabel='JD', **kwargs)     
@@ -150,12 +159,9 @@ class History(object):
         return ani  
         
                 
-    def save_plots(self, basename, epochs=[0,50], movies=True):
-        plt.scatter(np.arange(len(self.nll_history)), self.nll_history)
-        ax = plt.gca()
-        ax.set_yscale('log')
-        plt.savefig(basename+'_order{0}_nll.png'.format(self.order))   
-        plt.clf()        
+    def save_plots(self, basename, epochs_to_plot=[0,50], movies=True):
+        nll_plot = self.plot_nll()
+        nll_plot.savefig(basename+'_order{0}_nll.png'.format(self.order)) 
         if movies:
             rvs_ani_star = self.plot_rvs(0, compare_to_pipeline=True)
             rvs_ani_star.save(basename+'_order{0}_rvs_star.mp4'.format(self.order), fps=30, extra_args=['-vcodec', 'libx264'])    
