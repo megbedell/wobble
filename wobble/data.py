@@ -162,9 +162,9 @@ class Data(object):
             attr2 = getattr(data2, attr)
             full_attr = [np.append(attr1[i], attr2[i], axis=0) for i in range(self.R)]
             setattr(self, attr, full_attr)
-        self.epochs = [self.epochs, data2.epochs] # this is a hack that needs to be fixed
-        #self.epoch_groups.append((self.N + data2.epochs)) # inconsistency in the meaning of epochs
-        self.N = self.N + data2.N
+        self.epochs = np.append(self.epochs, data2.epochs + self.N) # this is a hack
+        #self.epoch_groups.append((self.N + data2.epochs)) # is this needed?
+        self.N += data2.N
             
        
     def read(self, filename, orders=None, epochs=None):
@@ -256,17 +256,10 @@ class Data(object):
         except:
             epochs = np.arange(self.N)
         snrs_by_epoch = np.sqrt(np.nanmean(self.ivars, axis=(0,2)))
-        epochs_to_cut = snrs_by_epoch < min_snr
-        if np.sum(epochs_to_cut) > 0:
-            print("Data: Dropping epochs {0} because they have average SNR < {1:.0f}".format(epochs[epochs_to_cut], min_snr))
-            epochs = epochs[~epochs_to_cut]
-            for attr in REQUIRED_3D:
-                old = getattr(self, attr)
-                setattr(self, attr, [o[~epochs_to_cut] for o in old]) # might fail if self.N = 1
-            for attr in np.append(REQUIRED_1D, OPTIONAL_1D):
-                setattr(self, attr, getattr(self,attr)[~epochs_to_cut])
-            self.epochs = epochs
-            self.N = len(epochs)
+        bad_epoch_mask = snrs_by_epoch < min_snr
+        if np.sum(bad_epoch_mask) > 0:
+            print("Data: Dropping epochs {0} because they have average SNR < {1:.0f}".format(epochs[bad_epoch_mask], min_snr))
+            self.delete_epochs(bad_epoch_mask)
         if self.N == 0:
             print("All epochs failed the quality cuts with min_snr={0:.0f}.".format(min_snr))
             return  
@@ -282,6 +275,20 @@ class Data(object):
             setattr(self, attr, new)
         self.orders = self.orders[good_order_mask]
         self.R = len(self.orders)
+
+    def delete_epochs(self, bad_epoch_mask):
+        """
+        Take an N-epoch length boolean mask & drop all epochs marked True.
+        """
+        good_epoch_mask = ~bad_epoch_mask
+        for attr in REQUIRED_3D:
+            old = getattr(self, attr)
+            setattr(self, attr, [o[good_epoch_mask] for o in old]) # might fail if self.N = 1
+        for attr in np.append(REQUIRED_1D, OPTIONAL_1D):
+            old = np.array(getattr(self,attr)) # fix bug with filelist being a list
+            setattr(self, attr, old[good_epoch_mask])
+        self.epochs = self.epochs[good_epoch_mask]
+        self.N = len(self.epochs)
         
 class Spectrum(object):
     """

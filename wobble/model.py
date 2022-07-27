@@ -54,8 +54,8 @@ class Model(object):
         name : `str`
             The name of the component. Must be unique.
         starting_rvs : `np.ndarray`
-            N-epoch length vector of initial guesses for RVs; will be used
-            to stack & average data resids for initialization of the template.
+            Vector of initial guesses for RVs; will be used for initialization.
+            Length should be the same as `epochs` if keyword specified, otherwise `data.N`.
         epochs : `np.ndarray`
             Indices between 0:N denoting epochs where this component is present 
             in the data. Defaults to all N epochs.
@@ -66,11 +66,11 @@ class Model(object):
             print("The model already has a component named {0}. Try something else!".format(name))
             return
         if epochs is None: # component is used in all data epochs by default
-            epoch_mask = np.ones(self.data.N, dtype='bool')
-        else:
-            #assert len(epochs) == len(starting_rvs), "ERROR: mismatch in numbers of epochs and starting_rvs"
-            epoch_mask = np.isin(np.arange(self.data.N), epochs)
-            starting_rvs[~epoch_mask] = np.nan # NaNs at unused epochs for initialization
+            epoch_mask = np.ones(self.data.N, dtype='bool')    
+        else: # component is used in a subset of epochs
+            epoch_mask = np.isin(np.arange(self.data.N), epochs) # N-length data mask
+            if len(epochs) < len(starting_rvs):  # rvs specified for more than epochs used
+                starting_rvs = starting_rvs[epochs]         
         c = Component(name, self.r, starting_rvs, epoch_mask, **kwargs)
         self.components.append(c)
         self.component_names.append(name)
@@ -86,12 +86,13 @@ class Model(object):
         """
         if starting_rvs is None:
             starting_rvs = -1. * np.copy(self.data.bervs)
-            if epochs is not None:
-                starting_rvs = starting_rvs[epochs]
+        if epochs is not None: 
+            if len(epochs) < len(starting_rvs):  # rvs specified for more than epochs used
+                starting_rvs = starting_rvs[epochs] 
         kwargs['regularization_par_file'] = kwargs.get('regularization_par_file', 
                                                        pwd+'regularization/default_star.hdf5')
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.1)
-        self.add_component(name, starting_rvs, epochs=epochs **kwargs)
+        self.add_component(name, starting_rvs, epochs=epochs, **kwargs)
 
     def add_telluric(self, name, starting_rvs=None, epochs=None, **kwargs):
         """
@@ -102,6 +103,9 @@ class Model(object):
         """
         if starting_rvs is None:
             starting_rvs = np.zeros(self.data.N)
+        if epochs is not None: 
+            if len(epochs) < len(starting_rvs):  # rvs specified for more than epochs used
+                starting_rvs = starting_rvs[epochs] 
         kwargs['learning_rate_template'] = kwargs.get('learning_rate_template', 0.01)
         kwargs['scale_by_airmass'] = kwargs.get('scale_by_airmass', True)
         kwargs['rvs_fixed'] = kwargs.get('rvs_fixed', True)
@@ -135,7 +139,10 @@ class Model(object):
         assert False not in np.isfinite(data_ys), "Non-finite value(s) or NaN(s) in log spectral values."
         assert False not in np.isfinite(data_ivars), "Non-finite value(s) or NaN(s) in inverse variance."
         for c in self.components:
-            data_ys = c.initialize_template(data_xs, data_ys, data_ivars)
+            resids = c.initialize_template(data_xs[:,:][c.epoch_mask], 
+                                           data_ys[:,:][c.epoch_mask], 
+                                           data_ivars[:,:][c.epoch_mask])
+            data_ys[:,:][c.epoch_mask] = resids
 
     def setup(self):
         """Initialize component templates and do TensorFlow magic in prep for optimizing"""
@@ -143,7 +150,7 @@ class Model(object):
         self.synth = tf.zeros(np.shape(self.data.xs[self.r]), dtype=T, name='synth')
         for c in self.components:
             c.setup(self.data, self.r)
-            self.synth = tf.add(self.synth, c.synth, name='synth_add_{0}'.format(c.name))
+            self.synth[c.epoch_mask,:] = tf.add(self.synth, c.synth, name='synth_add_{0}'.format(c.name))
             
         self.nll = 0.5*tf.reduce_sum(tf.square(tf.constant(self.data.ys[self.r], dtype=T) 
                                                - self.synth, name='nll_data-model_sq') 
@@ -326,6 +333,10 @@ class Component(object):
     template_xs : `np.ndarray` or `None` (default `None`)
         Grid of x-values for the spectral template in the same units as 
         data `xs`. If `None`, generate automatically upon initialization.
+    template_dx : `float` or `None` (default `None`)
+        Spacing between control points in the log-uniform x-value grid of 
+        the spectral template. Only used if `template_xs` is not specified.
+        If `None', generate automatically.
     template_ys : `np.ndarray` or `None` (default `None`)
         Grid of starting guess y-values for the spectral template 
         in the same units as data `ys`.
@@ -377,13 +388,15 @@ class Component(object):
     def __init__(self, name, r, starting_rvs, epoch_mask, 
                  rvs_fixed=False, template_fixed=False, rv_steps = 1,
                  variable_bases=0, scale_by_airmass=False,
-                 template_xs=None, template_ys=None, initialize_at_zero=False,    
+                 template_xs=None, template_ys=None, template_dx=None,
+                 initialize_at_zero=False,    
                  learning_rate_rvs=1., learning_rate_template=0.01, 
                  learning_rate_basis=0.01, regularization_par_file=None, 
                  **kwargs):
         for attr in ['name', 'r', 'starting_rvs', 'epoch_mask',
                     'rvs_fixed', 'template_fixed', 'rv_steps', 
-                    'template_xs', 'template_ys', 'initialize_at_zero',
+                    'template_xs', 'template_ys', 'template_dx', 
+                    'initialize_at_zero',
                     'learning_rate_rvs', 'learning_rate_template',
                     'learning_rate_basis', 'scale_by_airmass']:
             setattr(self, attr, eval(attr))
@@ -450,7 +463,7 @@ class Component(object):
                                                     tf.reduce_sum(tf.square(self.basis_weights))))
 
         # Apply doppler and synthesize component model predictions
-        shifted_xs = tf.add(self.data_xs, tf.log(doppler(self.rvs))[:, None], name='shifted_xs_'+self.name)
+        shifted_xs = tf.add(self.data_xs[self.epoch_mask,:], tf.log(doppler(self.rvs))[:, None], name='shifted_xs_'+self.name)
         inner_zeros = tf.zeros(shifted_xs.shape[:-1], dtype=T)
         expand_inner = lambda x: tf.add(x, inner_zeros[..., None], name='expand_inner_'+self.name)
         if self.K == 0:
@@ -468,8 +481,8 @@ class Component(object):
                                    name='airmass_einsum_'+self.name)
             #self.synth = tf.add(self.synth, tf.constant(np.log(data.airms[:,None]), dtype=T), 
             #                       name=f'airmass_log_add_{self.name}')
-        A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
-        self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
+        #A = tf.constant(self.epoch_mask.astype('float'), dtype=T) # identity matrix
+        #self.synth = tf.multiply(A[:,None], self.synth, name='epoch_masking_'+self.name)
         #self.synth = tf.einsum('n,nm->nm', A, self.synth, name='epoch_masking_'+self.name)
 
 
@@ -478,13 +491,14 @@ class Component(object):
         to make a composite spectrum. Returns residuals after removing this 
         component from the data.
         Must be done BEFORE running `Component.setup()`.
-        
-        NOTE: if epochs are masked out, this code implicitly relies on their RVs being NaNs.
         """
         N = len(self.starting_rvs)
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
         if self.template_xs is None:
-            dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
+            if self.template_dx is None:
+                dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
+            else:
+                dx = self.template_dx
             tiny = 10.
             self.template_xs = np.arange(np.nanmin(shifted_xs)-tiny*dx,
                                    np.nanmax(shifted_xs)+tiny*dx, dx)
@@ -503,9 +517,8 @@ class Component(object):
             resids = np.empty((np.sum(self.epoch_mask),len(self.template_ys)))
             i = 0
             for n in range(N): # populate resids with informative epochs
-                if self.epoch_mask[n]: # this epoch contains the component
-                    resids[i] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
-                    i += 1
+                resids[i] = np.interp(self.template_xs, shifted_xs[n], data_ys[n]) - self.template_ys
+                i += 1
             u,s,v = np.linalg.svd(resids, compute_uv=True, full_matrices=False)
             basis_vectors = v[:self.K,:] # eigenspectra (K x M)
             basis_weights = u[:, :self.K] * s[None, :self.K] # weights (N x K)
@@ -517,8 +530,7 @@ class Component(object):
             full_template += np.dot(self.basis_weights, self.basis_vectors)
         data_resids = np.copy(data_ys)
         for n in range(N):
-            if self.epoch_mask[n]:
-                data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
+            data_resids[n] -= np.interp(shifted_xs[n], self.template_xs, full_template[n])
         return data_resids
         
         
