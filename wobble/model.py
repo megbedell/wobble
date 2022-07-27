@@ -328,6 +328,10 @@ class Component(object):
         in the same units as data `ys`.
         If `None`, generate automatically upon initialization.  
         If not `None`, `template_xs` must be provided in the same shape.
+    template_dx : `float` or `None` (default `None`)
+        Spacing between control points in the log-uniform x-value grid of 
+        the spectral template. Only used if `template_xs` is not specified.
+        If `None', generate automatically.
     initialize_at_zero : `bool` (default `False`)
         If `True`, initialize template as a flat continuum. Equivalent to
         providing a vector of zeros with `template_ys` keyword but does
@@ -374,13 +378,15 @@ class Component(object):
     def __init__(self, name, r, starting_rvs, epoch_mask, 
                  rvs_fixed=False, template_fixed=False, rv_steps = 1,
                  variable_bases=0, scale_by_airmass=False,
-                 template_xs=None, template_ys=None, initialize_at_zero=False,    
+                 template_xs=None, template_ys=None, template_dx=None,
+                 initialize_at_zero=False,    
                  learning_rate_rvs=1., learning_rate_template=0.01, 
                  learning_rate_basis=0.01, regularization_par_file=None, 
                  **kwargs):
         for attr in ['name', 'r', 'starting_rvs', 'epoch_mask',
                     'rvs_fixed', 'template_fixed', 'rv_steps', 
-                    'template_xs', 'template_ys', 'initialize_at_zero',
+                    'template_xs', 'template_ys', 'template_dx', 
+                    'initialize_at_zero',
                     'learning_rate_rvs', 'learning_rate_template',
                     'learning_rate_basis', 'scale_by_airmass']:
             setattr(self, attr, eval(attr))
@@ -481,7 +487,10 @@ class Component(object):
         N = len(self.starting_rvs)
         shifted_xs = data_xs + np.log(doppler(self.starting_rvs[:, None], tensors=False)) # component rest frame
         if self.template_xs is None:
-            dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
+            if self.template_dx is None:
+                dx = 2.*(np.log(6000.01) - np.log(6000.)) # log-uniform spacing
+            else:
+                dx = self.template_dx
             tiny = 10.
             self.template_xs = np.arange(np.nanmin(shifted_xs)-tiny*dx,
                                    np.nanmax(shifted_xs)+tiny*dx, dx)
