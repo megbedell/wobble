@@ -459,16 +459,16 @@ class Spectrum(object):
         spec_file = str.replace(filename, 'ccf_G2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_M2', 'e2ds') 
         spec_file = str.replace(spec_file, 'ccf_K5', 'e2ds')
-        snrs = np.arange(R, dtype=np.float) # order-by-order SNR
+        wavepar = np.arange(4*R, dtype=float).reshape(R,4)
+        snrs = np.arange(R, dtype=float) # order-by-order SNR
         with fits.open(spec_file) as sp:  # assumes same directory
             spec = sp[0].data
+            for i in np.nditer(wavepar, op_flags=['readwrite']):
+                i[...] = header['HIERARCH ESO DRS CAL TH COEFF LL{0}'.format(str(int(i)))]            
             for i in np.nditer(snrs, op_flags=['readwrite']):
                 i[...] = sp[0].header['HIERARCH ESO DRS SPE EXT SN{0}'.format(str(int(i)))]
-            wave_file = sp[0].header['HIERARCH ESO DRS CAL TH FILE']
-        path = spec_file[0:str.rfind(spec_file,'/')+1]
-        with fits.open(path+wave_file) as ww: # assumes same directory
-            wave = ww[0].data
-        xs = [wave[r] for r in range(R)]
+        xx = np.arange(len(spec[0]))
+        xs = [wavepar[r,0] + wavepar[r,1]*xx + wavepar[r,2]*xx**2 + wavepar[r,3]*xx**3 for r in range(R)]
         ys = [spec[r] for r in range(R)]
         ivars = [snrs[r]**2/spec[r]/np.nanmean(spec[r,:]) for r in range(R)] # scaling hack
         self.populate(xs, ys, ivars, **metadata)
